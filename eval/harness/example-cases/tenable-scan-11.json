@@ -1,0 +1,1 @@
+{ "id": "tenable-scan-11", "prompt": "Investigate detection 48111 involving 10.0.30.4 scanning many hosts.", "group_id": "evallab", "expected": { "disposition": "benign-authorized", "attack": [], "min_rung": "metrics" }, "notes": "Authorized Tenable scanner; should close at metric tier via memory + scope." }

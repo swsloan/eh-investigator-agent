@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  ============================================================================
+  THREAT HUNT REPORT — TEMPLATE (worked example)
+  ----------------------------------------------------------------------------
+  This file is a populated EXAMPLE. Copy it to the report location and edit in
+  place. Replace ALL example content with the hunt's facts. The host, domain,
+  and IDs here are invented (WKSTN-2207, cdn-sync-update[.]net, HUNT-2026-014) —
+  never ship them in a real report.
+
+  A hunt is hypothesis-driven and proactive. "No evidence found" is a valid,
+  valuable outcome — say so plainly and state how much you covered. The reader
+  must be able to separate fact from inference, reproduce every query, and see
+  exactly what the hunt did and did NOT cover.
+
+  STATUS TOKENS (drive all status color through these — never invent colors):
+    Finding / outcome severity ........ data-sev="critical|high|medium|low|info"
+    Confidence ........................ data-conf="high|moderate|low"
+    Evidence tag ...................... <span class="tag obs">Observed</span>
+                                        <span class="tag ass">Assessed</span>
+    MITRE technique ................... <span class="tag mitre">T1071.004</span>
+    Entity role ....................... data-role="offender|target|infra|identity|external"
+    Limits bucket ..................... data-kind="clean|unknown|blind"
+    Next-step urgency ................. data-urgency="now|soon|tune"
+  ============================================================================
+-->
+<title>Threat Hunt — DNS-Tunneled C2 Across the Enterprise</title>
+<link rel="stylesheet" href="/vendor/source-sans-3/source-sans-3.css">
+<style>
+:root{
+  --sapphire:#261F63; --plum:#7F2854; --accent:#00AAEF;
+  --gradient:linear-gradient(135deg,#261F63,#7F2854);
+  --ink:#1A1A22; --ink-soft:#54555F; --ink-faint:#85868F;
+  --rule:#D9D8E0; --rule-soft:#ECEBF1; --paper:#FFFFFF; --panel:#FAFAFC;
+  --card:#FFFFFF; --canvas:#E9E9EE; --code-ink:#2C2C38; --sheet-shadow:0 2px 30px rgba(20,18,40,.14); --lift-shadow:0 10px 28px rgba(20,18,40,.16);
+  --sapphire-chip:#ECEBF6;
+  --critical:#9E1B1B; --high:#C0531C; --medium:#A36F0B; --low:#3F7A4F; --info:#586173;
+  --critical-bg:#FBEDED; --high-bg:#FCF0E8; --medium-bg:#FBF4E2; --low-bg:#ECF5EE; --info-bg:#EEF0F3;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --maxw:7.5in;
+}
+html[data-report-theme="dark"]{
+  color-scheme:dark;
+  --sapphire:#B3A8F2; --plum:#D171A0; --accent:#37C0F5;
+  --ink:#ECECF2; --ink-soft:#C4C3CF; --ink-faint:#9B9BA6;
+  --rule:#3A3947; --rule-soft:#2E2D3A; --paper:#15141C; --panel:#1F1E28;
+  --card:#232230; --canvas:#0F0E14; --code-ink:#D7D6E4; --sheet-shadow:0 2px 30px rgba(0,0,0,.45); --lift-shadow:0 10px 28px rgba(0,0,0,.38);
+  --sapphire-chip:#2A2740;
+  --critical:#FF8585; --high:#FF9A5C; --medium:#F2C356; --low:#67D391; --info:#A6A6B4;
+  --critical-bg:#3A1D22; --high-bg:#392616; --medium-bg:#342B16; --low-bg:#183427; --info-bg:#2A2A35;
+}
+@media screen and (prefers-color-scheme:dark){
+  html:not([data-report-theme="light"]){
+    color-scheme:dark;
+    --sapphire:#B3A8F2; --plum:#D171A0; --accent:#37C0F5;
+    --ink:#ECECF2; --ink-soft:#C4C3CF; --ink-faint:#9B9BA6;
+    --rule:#3A3947; --rule-soft:#2E2D3A; --paper:#15141C; --panel:#1F1E28;
+    --card:#232230; --canvas:#0F0E14; --code-ink:#D7D6E4; --sheet-shadow:0 2px 30px rgba(0,0,0,.45); --lift-shadow:0 10px 28px rgba(0,0,0,.38);
+    --sapphire-chip:#2A2740;
+    --critical:#FF8585; --high:#FF9A5C; --medium:#F2C356; --low:#67D391; --info:#A6A6B4;
+    --critical-bg:#3A1D22; --high-bg:#392616; --medium-bg:#342B16; --low-bg:#183427; --info-bg:#2A2A35;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{font-family:"Source Sans 3",Arial,Helvetica,sans-serif;color:var(--ink);background:var(--canvas);margin:0;font-size:10.5pt;line-height:1.5;-webkit-font-smoothing:antialiased}
+.sheet{background:var(--paper);max-width:var(--maxw);margin:28px auto;padding:0 0 .42in;box-shadow:var(--sheet-shadow)}
+p{margin:0 0 .55em}
+a{color:var(--accent);text-decoration:none}
+strong,b{font-weight:700}
+code,.mono{font-family:var(--mono);font-size:.84em}
+code{background:var(--rule-soft);padding:.06em .35em;border-radius:3px;color:var(--code-ink)}
+ul{margin:.2em 0 .4em;padding-left:1.15em}
+li{margin:0 0 .25em}
+.small{font-size:9pt;color:var(--ink-soft)}
+
+/* ---------- Masthead (the one gradient moment) ---------- */
+.masthead{background:var(--gradient);color:#fff;padding:.4in .62in .58in}
+.brandbar{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.brandbar .logo{width:142px;height:auto;display:block}
+.classif{font-size:7.5pt;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#fff;border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.10);padding:3px 10px;border-radius:99px;white-space:nowrap}
+.doc-kind{font-size:8.5pt;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.66);margin:.32in 0 7px}
+h1.report-title{font-size:23pt;line-height:1.1;font-weight:900;letter-spacing:-.012em;color:#fff;margin:0 0 .18em}
+.subtitle{font-size:12pt;font-weight:300;color:rgba(255,255,255,.85);margin:0;max-width:6.2in}
+.meta-row{display:flex;flex-wrap:wrap;gap:5px 26px;margin-top:18px;padding-top:12px;border-top:1px solid rgba(255,255,255,.22);font-size:8.7pt;color:rgba(255,255,255,.62)}
+.meta-row b{color:#fff;font-weight:600}
+
+/* ---------- Verdict card (overlaps masthead) ---------- */
+.verdict{margin:-.36in .62in 0;background:var(--card);border:1px solid var(--rule);border-radius:10px;box-shadow:var(--lift-shadow);overflow:hidden;display:grid;grid-template-columns:7px 1fr;break-inside:avoid;position:relative}
+.verdict .accent{background:var(--info)}
+.verdict[data-sev="critical"] .accent{background:var(--critical)}
+.verdict[data-sev="high"] .accent{background:var(--high)}
+.verdict[data-sev="medium"] .accent{background:var(--medium)}
+.verdict[data-sev="low"] .accent{background:var(--low)}
+.verdict-grid{display:grid;grid-template-columns:1.15fr 1fr 1fr}
+.vcell{padding:15px 18px 13px;border-right:1px solid var(--rule-soft)}
+.vcell:last-child{border-right:0}
+.vlabel{font-size:7.8pt;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:6px}
+.vvalue{font-size:15pt;font-weight:800;line-height:1.05;color:var(--ink)}
+.vnote{font-size:8.5pt;color:var(--ink-faint);margin-top:5px;line-height:1.35}
+.status-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;background:var(--info)}
+.verdict[data-sev="critical"] .status-dot{background:var(--critical)}
+.verdict[data-sev="high"] .status-dot{background:var(--high)}
+.verdict[data-sev="medium"] .status-dot{background:var(--medium)}
+.verdict[data-sev="low"] .status-dot{background:var(--low)}
+.sev-pill{display:inline-block;font-size:11.5pt;font-weight:800;padding:1px 11px;border-radius:99px}
+.verdict[data-sev="critical"] .sev-pill{color:var(--critical);background:var(--critical-bg)}
+.verdict[data-sev="high"] .sev-pill{color:var(--high);background:var(--high-bg)}
+.verdict[data-sev="medium"] .sev-pill{color:var(--medium);background:var(--medium-bg)}
+.verdict[data-sev="low"] .sev-pill{color:var(--low);background:var(--low-bg)}
+.verdict[data-sev="info"] .sev-pill{color:var(--info);background:var(--info-bg)}
+.confmeter{display:inline-flex;gap:3px;margin-top:8px}
+.confmeter span{width:24px;height:6px;border-radius:99px;background:var(--rule)}
+.vcell[data-conf="low"] .confmeter span:nth-child(-n+1),
+.vcell[data-conf="moderate"] .confmeter span:nth-child(-n+2),
+.vcell[data-conf="high"] .confmeter span:nth-child(-n+3){background:var(--sapphire)}
+
+/* ---------- Evidence-ladder strip (depth reached) ---------- */
+.ladder-strip{margin:.16in .62in 0;display:flex;flex-wrap:wrap;gap:9px 28px;align-items:center;padding:9px 15px;border:1px solid var(--rule);border-radius:8px;background:var(--panel);break-inside:avoid}
+.ls-group{display:flex;align-items:center;gap:9px}
+.ls-label{font-size:7.6pt;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-faint)}
+.rung{position:relative;font-size:8.6pt;font-weight:700;color:var(--ink-faint);background:var(--card);border:1px solid var(--rule);border-radius:99px;padding:2px 11px}
+.rung:not(:last-child){margin-right:15px}
+.rung:not(:last-child)::after{content:"\203A";position:absolute;right:-13px;top:50%;transform:translateY(-50%);color:var(--ink-faint);font-weight:800}
+.rung.reached{color:#fff;background:var(--sapphire);border-color:var(--sapphire)}
+.src-pill{font-size:8.6pt;font-weight:700;color:var(--sapphire);background:var(--sapphire-chip);border-radius:99px;padding:2px 11px}
+
+/* ---------- Sections ---------- */
+section{padding:.18in .62in 0}
+.sec-head{display:flex;align-items:center;gap:11px;margin:.65em 0 .55em;break-after:avoid}
+.sec-head::after{content:"";flex:1;height:1px;background:var(--rule-soft)}
+.sec-num{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:21px;padding:0 10px;border-radius:99px;background:var(--sapphire);color:#fff;font-size:8.5pt;font-weight:700;letter-spacing:.04em}
+.sec-head h2{font-size:13.5pt;font-weight:800;color:var(--sapphire);margin:0;letter-spacing:-.005em;white-space:nowrap}
+.sec-sub{font-size:9.3pt;color:var(--ink-faint);margin:-.15em 0 .8em 41px;break-after:avoid}
+
+/* ---------- Analyst summary ---------- */
+.summary{margin-top:.3em;border:1px solid var(--rule);border-left:4px solid var(--sapphire);background:var(--panel);padding:14px 18px;border-radius:0 8px 8px 0;font-size:10.8pt;line-height:1.58;break-inside:avoid}
+
+/* ---------- Key numbers ---------- */
+.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:.45em 0 .2em}
+.metric{border:1px solid var(--rule);border-top:3px solid var(--sapphire);border-radius:7px;padding:10px 11px 9px;background:var(--card);break-inside:avoid}
+.metric .mval{font-size:17pt;font-weight:900;color:var(--sapphire);line-height:1;letter-spacing:-.01em}
+.metric .mlabel{font-size:7.8pt;color:var(--ink-faint);text-transform:uppercase;font-weight:800;letter-spacing:.09em;margin-top:5px}
+.metric .mnote{font-size:8.5pt;color:var(--ink-soft);margin-top:2px;line-height:1.35}
+
+/* ---------- Entities ---------- */
+.entity-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.entity{border:1px solid var(--rule);border-left:4px solid var(--info);border-radius:0 8px 8px 0;padding:11px 14px;background:var(--card);break-inside:avoid}
+.entity[data-role="offender"]{border-left-color:var(--critical)}
+.entity[data-role="target"]{border-left-color:var(--sapphire)}
+.entity[data-role="infra"]{border-left-color:var(--high)}
+.entity[data-role="identity"]{border-left-color:var(--medium)}
+.entity[data-role="external"]{border-left-color:var(--info)}
+.ename{font-weight:700;font-size:10.5pt;line-height:1.2}
+.eip{font-family:var(--mono);font-size:8.3pt;color:var(--ink-soft);margin-top:2px}
+.erole{font-size:9pt;color:var(--ink-soft);margin-top:5px;line-height:1.4}
+.ecrit{display:inline-block;margin-top:7px;font-size:7.5pt;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:2px 8px;border-radius:99px;background:var(--rule-soft);color:var(--ink-soft)}
+.entity[data-role="offender"] .ecrit{background:var(--critical-bg);color:var(--critical)}
+.entity[data-role="target"] .ecrit{background:var(--sapphire-chip);color:var(--sapphire)}
+.entity[data-role="infra"] .ecrit{background:var(--high-bg);color:var(--high)}
+.entity[data-role="identity"] .ecrit{background:var(--medium-bg);color:var(--medium)}
+
+/* ---------- Attack-chain flow ---------- */
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;align-items:stretch;margin:.25em 0 .85em}
+.flow-node{border:1px solid var(--rule);border-radius:8px;padding:9px 10px;background:var(--panel);position:relative;break-inside:avoid}
+.flow-node:not(:last-child)::after{content:"›";position:absolute;right:-9px;top:50%;transform:translateY(-50%);color:var(--ink-faint);font-weight:800;font-size:12pt;line-height:1}
+.flow-node .stage{font-size:7.3pt;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-faint)}
+.flow-node .name{font-weight:800;font-size:9.6pt;line-height:1.15;margin-top:3px}
+.flow-node .state{font-size:8.3pt;color:var(--ink-soft);margin-top:5px;line-height:1.35}
+.flow-node[data-sev="critical"]{border-color:var(--critical);background:var(--critical-bg)}
+.flow-node[data-sev="high"]{border-color:var(--high);background:var(--high-bg)}
+.flow-node[data-sev="medium"]{border-color:var(--medium);background:var(--medium-bg)}
+.flow-node[data-sev="low"]{border-color:var(--low);background:var(--low-bg)}
+
+/* ---------- Timeline ---------- */
+.timeline{margin-top:.2em}
+.tl-item{display:grid;grid-template-columns:118px 28px 1fr;padding:0 0 15px;break-inside:avoid}
+.tl-item:last-child{padding-bottom:2px}
+.tl-time{font-family:var(--mono);font-size:8.3pt;color:var(--ink-soft);text-align:right;padding-right:14px;padding-top:1px;line-height:1.4}
+.tl-time .d{color:var(--ink-faint)}
+.tl-rail{position:relative;display:flex;justify-content:center}
+.tl-rail::before{content:"";position:absolute;top:4px;bottom:-15px;width:2px;background:var(--rule-soft)}
+.tl-item:last-child .tl-rail::before{display:none}
+.tl-dot{position:relative;z-index:1;width:13px;height:13px;border-radius:50%;background:var(--card);border:3.5px solid var(--info);margin-top:2px}
+.tl-item[data-sev="critical"] .tl-dot{border-color:var(--critical)}
+.tl-item[data-sev="high"] .tl-dot{border-color:var(--high)}
+.tl-item[data-sev="medium"] .tl-dot{border-color:var(--medium)}
+.tl-item[data-sev="low"] .tl-dot{border-color:var(--low)}
+.tl-body{padding-left:7px}
+.tl-head{font-weight:700;font-size:10pt}
+.tl-id{font-family:var(--mono);font-size:7.6pt;font-weight:600;color:var(--sapphire);background:var(--sapphire-chip);padding:1px 6px;border-radius:4px;margin-left:5px;vertical-align:1px}
+.tl-body p{font-size:9.4pt;color:var(--ink-soft);margin:.2em 0 0;line-height:1.45}
+
+/* ---------- Findings ---------- */
+.finding{border:1px solid var(--rule);border-left:4px solid var(--sapphire);border-radius:0 8px 8px 0;padding:12px 15px;margin:11px 0;break-inside:avoid;background:var(--card)}
+.finding .q{font-weight:800;color:var(--sapphire);font-size:11.3pt;line-height:1.3;margin-bottom:2px}
+.finding .answer{font-weight:700;font-size:10.3pt;color:var(--ink);margin:0 0 .35em}
+.finding .why{font-size:8.8pt;color:var(--ink-faint);margin-bottom:9px}
+.finding p{font-size:9.7pt;line-height:1.5}
+.tag{display:inline-block;font-size:7.4pt;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:99px;margin-right:6px;vertical-align:1px}
+.tag.obs{background:var(--sapphire-chip);color:var(--sapphire)}
+.tag.ass{border:1px solid var(--medium);color:var(--medium);background:var(--card)}
+.tag.mitre{border:1px solid var(--rule);color:var(--ink-soft);background:var(--panel);text-transform:none;letter-spacing:.02em}
+.evref{font-family:var(--mono);font-size:8.4pt;font-weight:600}
+.fmeta{margin-top:9px;padding-top:8px;border-top:1px solid var(--rule-soft);font-size:8.6pt;color:var(--ink-faint)}
+.fmeta b{color:var(--ink-soft)}
+
+/* ---------- Evidence table ---------- */
+table{width:100%;border-collapse:collapse;font-size:8.8pt}
+th{background:var(--sapphire);color:#fff;text-align:left;padding:7px 9px;font-weight:700;font-size:8.2pt;letter-spacing:.05em;text-transform:uppercase}
+td{border-bottom:1px solid var(--rule-soft);padding:7px 9px;vertical-align:top;overflow-wrap:anywhere}
+tr:nth-child(even) td{background:var(--panel)}
+td.mono,td .mono{word-break:break-word}
+.eid{display:inline-block;font-family:var(--mono);font-size:8pt;font-weight:700;color:var(--sapphire);background:var(--sapphire-chip);padding:1px 7px;border-radius:4px}
+
+/* ---------- Limits buckets ---------- */
+.bucket{border:1px solid var(--rule);border-left-width:4px;border-radius:0 8px 8px 0;padding:10px 14px;margin:9px 0;break-inside:avoid;background:var(--card)}
+.bucket h3{font-size:10.3pt;margin:0 0 5px;color:var(--ink);display:flex;align-items:center;gap:8px}
+.bucket h3::before{content:"";flex:none;width:9px;height:9px;border-radius:50%;background:var(--info)}
+.bucket[data-kind="clean"]{border-left-color:var(--low)}
+.bucket[data-kind="clean"] h3::before{background:var(--low)}
+.bucket[data-kind="unknown"]{border-left-color:var(--medium)}
+.bucket[data-kind="unknown"] h3::before{background:var(--medium)}
+.bucket[data-kind="blind"]{border-left-color:var(--info)}
+.bucket ul{margin:.1em 0 .2em}
+.bucket li{font-size:9.5pt;color:var(--ink-soft)}
+
+/* ---------- Next steps ---------- */
+.step{display:grid;grid-template-columns:auto 1fr;gap:12px;border:1px solid var(--rule);border-radius:8px;padding:11px 13px;margin:9px 0;break-inside:avoid;align-items:start;background:var(--card)}
+.step .upill{font-size:7.4pt;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:3px 9px;border-radius:99px;white-space:nowrap;margin-top:2px;text-align:center;align-self:start}
+.step[data-urgency="now"] .upill{background:var(--critical-bg);color:var(--critical)}
+.step[data-urgency="soon"] .upill{background:var(--medium-bg);color:var(--medium)}
+.step[data-urgency="tune"] .upill{background:var(--info-bg);color:var(--info)}
+.step .body{font-size:9.5pt;line-height:1.5}
+.step .body b{font-size:10pt}
+
+/* ---------- Footer ---------- */
+.report-footer{margin:.45in .62in 0}
+.report-footer .gradient-rule{height:2px;border-radius:99px;background:var(--gradient);margin-bottom:10px}
+.report-footer .cols{display:flex;justify-content:space-between;font-size:8pt;color:var(--ink-faint)}
+
+/* ---------- Print ---------- */
+@page{size:letter;margin:.4in}
+@media print{
+  html{
+    color-scheme:light;
+    --sapphire:#261F63; --plum:#7F2854; --accent:#00AAEF;
+    --ink:#1A1A22; --ink-soft:#54555F; --ink-faint:#85868F;
+    --rule:#D9D8E0; --rule-soft:#ECEBF1; --paper:#FFFFFF; --panel:#FAFAFC;
+    --card:#FFFFFF; --canvas:#FFFFFF; --code-ink:#2C2C38; --sheet-shadow:none; --lift-shadow:none;
+    --sapphire-chip:#ECEBF6;
+    --critical:#9E1B1B; --high:#C0531C; --medium:#A36F0B; --low:#3F7A4F; --info:#586173;
+    --critical-bg:#FBEDED; --high-bg:#FCF0E8; --medium-bg:#FBF4E2; --low-bg:#ECF5EE; --info-bg:#EEF0F3;
+  }
+  body{background:#fff}
+  .sheet{box-shadow:none;margin:0;max-width:none}
+  .verdict{box-shadow:none}
+}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<!-- 1. TITLE / HEADER -->
+<header class="masthead">
+  <div class="brandbar">
+    <svg class="logo" role="img" aria-label="ExtraHop" viewBox="0 0 223.8 22.1" xmlns="http://www.w3.org/2000/svg"><g fill="#FFFFFF"><path d="M0,0h15.9v5.1h-10v3.4h8.2v4.8H5.8V17h10.7v5.1H0V0z M26.9,10.8L19.4,0h7.2l3.7,5.7L33.8,0h6.5l-6.8,10.2 L41.8,22h-7.3L30,15.3l-4.3,6.8h-6.4L26.9,10.8z M49.3,5.1h-6.8V0h19.4v5.1h-6.7V22h-5.9V5.1z M66,0h9.1c1.2,0,2.3,0.2,3.2,0.5 c1,0.3,1.8,0.8,2.5,1.4s1.2,1.4,1.6,2.3S83,6.1,83,7.3c0,1.5-0.3,2.7-1,3.8c-0.6,1.1-1.5,1.9-2.5,2.6l4.7,8.5h-6.3l-3.7-7.5h-2.4 v7.5H66V0z M74.5,10c0.8,0,1.4-0.2,1.9-0.7s0.7-1.1,0.7-1.9s-0.2-1.5-0.7-2s-1.1-0.7-1.9-0.7h-2.8V10H74.5z M94.2,0h6.7l7.8,22 h-6.3l-1.4-4.6h-7.4L92.1,22h-6L94.2,0z M99.8,13.2l-2.4-8.1l-2.5,8.1H99.8z M112.7,0h5.8v8.1h13V0h5.8v22h-5.8v-8.6h-13V22h-5.8V0 z M153.2,22c-1.6,0-3-0.3-4.4-0.8c-1.3-0.6-2.5-1.3-3.5-2.3s-1.7-2.1-2.3-3.5c-0.5-1.4-0.8-2.8-0.8-4.4s0.3-3.1,0.8-4.4 c0.5-1.4,1.3-2.5,2.3-3.5s2.1-1.7,3.5-2.3c1.3-0.5,2.8-0.8,4.4-0.8H166c1.6,0,3,0.3,4.4,0.8c1.3,0.6,2.5,1.3,3.5,2.3 s1.7,2.1,2.3,3.5C176.7,8,177,9.4,177,11s-0.3,3.1-0.8,4.4c-0.5,1.4-1.3,2.5-2.3,3.5s-2.1,1.7-3.5,2.3c-1.3,0.5-2.8,0.8-4.4,0.8 C166,22,153.2,22,153.2,22z M166.1,16.8c0.8,0,1.5-0.2,2.2-0.5c0.6-0.3,1.2-0.7,1.6-1.2c0.4-0.5,0.8-1.1,1-1.9 c0.2-0.7,0.3-1.5,0.3-2.3s-0.1-1.5-0.3-2.3c-0.2-0.7-0.6-1.3-1-1.9c-0.4-0.5-1-0.9-1.6-1.2S166.9,5,166.1,5h-12.8 c-0.8,0-1.5,0.2-2.2,0.5c-0.6,0.3-1.2,0.7-1.6,1.2c-0.4,0.5-0.8,1.1-1,1.9c-0.2,0.7-0.3,1.5-0.3,2.3s0.1,1.5,0.3,2.3 c0.2,0.7,0.6,1.3,1,1.9c0.4,0.5,1,0.9,1.6,1.2c0.6,0.3,1.4,0.5,2.2,0.5H166.1z M181.9,0h25.2c1.2,0,2.3,0.2,3.2,0.5 c1,0.3,1.8,0.8,2.5,1.4s1.2,1.4,1.6,2.3c0.4,0.9,0.6,2,0.6,3.2c0,1.1-0.2,2.1-0.6,3.1c-0.4,0.9-0.9,1.7-1.6,2.3 c-0.7,0.7-1.5,1.1-2.4,1.5c-0.9,0.3-2,0.5-3.1,0.5h-19.7v7.3h-5.7V0z M206.7,10.1c0.8,0,1.4-0.3,1.9-0.8s0.7-1.2,0.7-1.9 c0-0.8-0.2-1.5-0.7-2c-0.4-0.5-1.1-0.8-1.9-0.8h-19v5.5H206.7z"/><path d="M222,3.8c-0.3,0-0.6-0.1-0.9-0.2c-0.3-0.2-0.5-0.4-0.7-0.7s-0.2-0.6-0.2-1s0.1-0.7,0.2-1c0.2-0.3,0.4-0.5,0.7-0.7 S221.7,0,222,0c0.3,0,0.6,0.1,0.9,0.2c0.3,0.2,0.5,0.4,0.7,0.7s0.2,0.6,0.2,1s-0.1,0.7-0.2,1c-0.2,0.3-0.4,0.5-0.7,0.7 C222.6,3.8,222.3,3.8,222,3.8z M222,3.5c0.3,0,0.5-0.1,0.7-0.2c0.2-0.1,0.4-0.3,0.5-0.6c0.1-0.2,0.2-0.5,0.2-0.8s-0.1-0.6-0.2-0.8 c-0.1-0.2-0.3-0.4-0.5-0.6c-0.2-0.1-0.5-0.2-0.7-0.2c-0.3,0-0.5,0.1-0.7,0.2s-0.4,0.3-0.5,0.6c-0.1,0.2-0.2,0.5-0.2,0.8 s0.1,0.6,0.2,0.8c0.1,0.2,0.3,0.4,0.5,0.6C221.5,3.4,221.7,3.5,222,3.5z M221.3,2.9v-2h0.7c0.2,0,0.4,0,0.5,0.1s0.2,0.3,0.2,0.5 c0,0.1,0,0.2-0.1,0.3S222.4,2,222.3,2l0.4,0.8h-0.4L222,2.1h-0.4v0.7L221.3,2.9L221.3,2.9z M221.7,1.9h0.3c0.1,0,0.2,0,0.3-0.1 s0.1-0.1,0.1-0.2s0-0.2-0.1-0.2c-0.1-0.1-0.2-0.1-0.3-0.1h-0.3V1.9z"/></g></svg>
+    <div class="classif">TLP:AMBER · Internal</div>
+  </div>
+  <div class="doc-kind">Threat Hunt Report · HUNT-2026-014 · Command &amp; Control</div>
+  <h1 class="report-title">Hunt for DNS-Tunneled C2 Across the Enterprise</h1>
+  <p class="subtitle">Hypothesis-driven sweep for low-and-slow DNS exfiltration; one host confirmed beaconing, the environment otherwise clean</p>
+  <div class="meta-row">
+    <span><b>Conducted:</b> 2026-06-12T09:00:00Z–2026-06-12T16:40:00Z</span>
+    <span><b>Hunt window:</b> 2026-05-29–2026-06-12 (14 days)</span>
+    <span><b>Prepared by:</b> ExtraHop Investigation Agent</span>
+    <span><b>Data sources:</b> ExtraHop RevealX (DNS records, device metrics) · NRD intel feed</span>
+  </div>
+</header>
+
+<!-- 2. OUTCOME -->
+<div class="verdict" data-sev="high">
+  <div class="accent"></div>
+  <div class="verdict-grid">
+    <div class="vcell">
+      <div class="vlabel">Outcome</div>
+      <div class="vvalue"><span class="status-dot"></span>Findings Identified</div>
+      <div class="vnote">One host matched the full hypothesis; rest of environment clean</div>
+    </div>
+    <div class="vcell" data-conf="high">
+      <div class="vlabel">Confidence</div>
+      <div class="vvalue">High</div>
+      <div class="confmeter"><span></span><span></span><span></span></div>
+    </div>
+    <div class="vcell">
+      <div class="vlabel">Severity</div>
+      <div class="vvalue"><span class="sev-pill">High</span></div>
+      <div class="vnote">Active covert channel from a corporate workstation</div>
+    </div>
+  </div>
+</div>
+
+<!-- LADDER STRIP — evidence depth reached (mirror evidence/verdict.json).
+     Mark the rungs you actually climbed with class "reached"; leave the rest muted. -->
+<div class="ladder-strip">
+  <div class="ls-group">
+    <span class="ls-label">Evidence depth</span>
+    <span class="rung reached">Metrics</span>
+    <span class="rung reached">Records</span>
+    <span class="rung">Packets</span>
+  </div>
+</div>
+
+<!-- 3. HUNT SUMMARY -->
+<section>
+  <div class="sec-head"><span class="sec-num">1</span><h2>Hunt Summary</h2></div>
+  <div class="summary">
+    We hypothesized that an adversary using DNS as a covert C2 channel would generate
+    <b>abnormal TXT/NULL query volume</b>, <b>high-entropy subdomains</b>, and <b>regular beacon
+    timing</b> to a small set of destinations. Over a <b>14-day window across 4,200 internal hosts</b>,
+    exactly one host — <b>WKSTN-2207</b> — exhibited all three signatures against the newly-registered
+    domain <code>cdn-sync-update[.]net</code>: 92% TXT queries, mean subdomain entropy 4.1, and a
+    60-second ±2s beacon. No other host matched any leg of the signature. Treat WKSTN-2207 as
+    compromised pending endpoint confirmation; the analytic that found it should become a standing
+    detection.
+  </div>
+</section>
+
+<!-- 4. KEY NUMBERS (optional; delete if not useful) -->
+<section>
+  <div class="metric-grid">
+    <div class="metric"><div class="mval">14 d</div><div class="mlabel">Hunt Window</div><div class="mnote">2026-05-29 → 06-12</div></div>
+    <div class="metric"><div class="mval">4,200</div><div class="mlabel">Hosts in Scope</div><div class="mnote">monitored segments</div></div>
+    <div class="metric"><div class="mval">1</div><div class="mlabel">Hosts Flagged</div><div class="mnote">WKSTN-2207</div></div>
+    <div class="metric"><div class="mval">11,300</div><div class="mlabel">Anomalous Queries</div><div class="mnote">TXT to one domain, 14 d</div></div>
+  </div>
+</section>
+
+<!-- 5. HYPOTHESIS AND SCOPE -->
+<section>
+  <div class="sec-head"><span class="sec-num">2</span><h2>Hypothesis and Scope</h2></div>
+  <p><b>Hypothesis.</b> An implant using DNS tunneling for C2 or exfiltration will, on at least one
+  internal host, produce a query profile that diverges from that host's peers on three axes at once:
+  query-type mix (TXT/NULL-heavy), subdomain randomness (high Shannon entropy), and timing (low-variance
+  beacon interval). A host matching all three against an unfamiliar domain is the lead worth confirming.</p>
+  <p><b>Techniques targeted.</b> <span class="tag mitre">T1071.004</span> Application Layer Protocol: DNS ·
+  <span class="tag mitre">T1048.003</span> Exfiltration Over Unencrypted Non-C2 Protocol.</p>
+  <p class="sec-sub" style="margin-left:0">In scope: all hosts visible to monitored sensors over the 14-day window; DNS A/AAAA/TXT/NULL/CNAME records and per-device query metrics. Out of scope: DoH/DoT to external resolvers (does not transit internal DNS), the guest VLAN and lab segment (unsensed), and query payload content.</p>
+</section>
+
+<!-- 6. METHODOLOGY -->
+<section>
+  <div class="sec-head"><span class="sec-num">3</span><h2>Methodology</h2></div>
+  <p class="sec-sub" style="margin-left:0">Each step is reproducible from the Evidence Summary. Analytics were run per host and compared against the host's own 30-day baseline and the environment median.</p>
+  <div class="finding">
+    <div class="q">Step 1 — Stack-count query types per host</div>
+    <p class="answer">Surface hosts whose TXT/NULL share is a statistical outlier.</p>
+    <p><span class="tag obs">Observed</span>Aggregated DNS records by client and qtype over 14 days; flagged hosts above the 99.5th percentile for TXT share (<a class="evref" href="#E1">E1</a>).</p>
+  </div>
+  <div class="finding">
+    <div class="q">Step 2 — Entropy-score subdomains for flagged hosts</div>
+    <p class="answer">Separate human-readable lookups from machine-generated tunneling labels.</p>
+    <p><span class="tag obs">Observed</span>Computed mean Shannon entropy of the leftmost label per destination; tunneling shows high, uniform entropy (<a class="evref" href="#E2">E2</a>).</p>
+  </div>
+  <div class="finding">
+    <div class="q">Step 3 — Beacon-interval analysis + intel enrichment</div>
+    <p class="answer">Confirm automated timing and check destination reputation.</p>
+    <p><span class="tag obs">Observed</span>Measured inter-query interval variance per (host, domain); enriched destinations against the newly-registered-domain feed (<a class="evref" href="#E3">E3</a>, <a class="evref" href="#E4">E4</a>).</p>
+  </div>
+</section>
+
+<!-- 7. ENTITIES -->
+<section>
+  <div class="sec-head"><span class="sec-num">4</span><h2>Entities Identified</h2></div>
+  <div class="entity-grid">
+    <div class="entity" data-role="offender">
+      <div>
+        <div class="ename">WKSTN-2207</div>
+        <div class="eip">10.20.44.61 · engineering VLAN · Windows 11</div>
+        <div class="erole">Source of the TXT-heavy, high-entropy, beaconing queries.</div>
+        <div class="ecrit">Hunt Lead · Confirmed</div>
+      </div>
+    </div>
+    <div class="entity" data-role="external">
+      <div>
+        <div class="ename">cdn-sync-update[.]net</div>
+        <div class="eip">registered 2026-05-27 · 2 days before window</div>
+        <div class="erole">Sole destination of the anomalous queries; newly-registered, no business use on file.</div>
+        <div class="ecrit">Suspected C2</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 8. HUNT FINDINGS -->
+<section>
+  <div class="sec-head"><span class="sec-num">5</span><h2>Hunt Findings</h2></div>
+
+  <div class="finding">
+    <div class="q">F1 — Does any host show a tunneling-shaped query profile?</div>
+    <p class="answer">Yes — one host. WKSTN-2207 is a clear outlier on all three axes.</p>
+    <div class="why">Why it mattered: a single-axis outlier is noise; all three at once is the hypothesis.</div>
+    <p><span class="tag obs">Observed</span>WKSTN-2207: 92% TXT queries (env baseline 0.3%), mean subdomain entropy 4.1 (baseline 2.2), beacon interval 60s ±2s — all against <code>cdn-sync-update[.]net</code> (<a class="evref" href="#E1">E1</a>, <a class="evref" href="#E2">E2</a>, <a class="evref" href="#E3">E3</a>).</p>
+    <p><span class="tag ass">Assessed</span>The uniform high entropy and metronomic timing indicate automated tooling, not a misconfigured application.</p>
+    <div class="fmeta"><b>Confidence:</b> High · <span class="tag mitre">T1071.004</span></div>
+  </div>
+
+  <div class="finding">
+    <div class="q">F2 — Is the destination known-good or suspicious?</div>
+    <p class="answer">Suspicious — registered two days before activity began, no business association.</p>
+    <div class="why">Why it mattered: legitimate CDNs and telemetry can also be TXT-heavy.</div>
+    <p><span class="tag obs">Observed</span><code>cdn-sync-update[.]net</code> appears on the newly-registered-domain feed (created 2026-05-27); it is not in the corporate allowlist or any vendor inventory (<a class="evref" href="#E4">E4</a>).</p>
+    <div class="fmeta"><b>Confidence:</b> Moderate — reputation is suggestive, not proof; endpoint confirmation pending.</div>
+  </div>
+
+  <div class="finding">
+    <div class="q">F3 — Did any other host match the signature?</div>
+    <p class="answer">No. The other 4,199 in-scope hosts showed no matching behavior — a clean negative result.</p>
+    <div class="why">Why it mattered: scoping the blast radius is as important as finding the lead.</div>
+    <p><span class="tag obs">Observed</span>No other host exceeded the TXT-share threshold; no other high-entropy beaconing destination surfaced across the window (<a class="evref" href="#E1">E1</a>).</p>
+    <p><span class="tag ass">Assessed</span>The activity is isolated to WKSTN-2207 within monitored scope. This does not clear unsensed segments (§7).</p>
+    <div class="fmeta"><b>Confidence:</b> High (within coverage)</div>
+  </div>
+</section>
+
+<!-- 9. EVIDENCE SUMMARY -->
+<section>
+  <div class="sec-head"><span class="sec-num">6</span><h2>Evidence Summary</h2></div>
+  <p class="sec-sub">Every item reproducible from the workspace evidence files. Queries are exact excli-interface invocations.</p>
+  <table>
+    <tr><th style="width:42px">ID</th><th style="width:115px">Source</th><th>Query / tool call</th><th style="width:78px">Collected (UTC)</th><th style="width:32%">Result</th></tr>
+    <tr id="E1"><td><span class="eid">E1</span></td><td>DNS records</td><td class="mono">./excli-interface search_records -json '{"types":["~dns"],"groupBy":["client","qtype"],"from":-1209600000}'</td><td class="mono">10:14:02</td><td>TXT-share by host; WKSTN-2207 sole outlier · <code>evidence/records/dns-qtype-by-host.json</code></td></tr>
+    <tr id="E2"><td><span class="eid">E2</span></td><td>DNS records</td><td class="mono">./excli-interface search_records -json '{"types":["~dns"],"filter":{...client 10.20.44.61...}}' (entropy scored in scratch/)</td><td class="mono">10:28:51</td><td>Mean label entropy 4.1 vs 2.2 baseline · <code>evidence/records/dns-wkstn2207.json</code></td></tr>
+    <tr id="E3"><td><span class="eid">E3</span></td><td>Device metrics</td><td class="mono">./excli-interface execute_metric_query -json '{...dns_query count for 10.20.44.61, 1m buckets, -14d...}'</td><td class="mono">10:41:19</td><td>60s ±2s inter-query interval · <code>evidence/metrics/dns-beacon-wkstn2207.json</code></td></tr>
+    <tr id="E4"><td><span class="eid">E4</span></td><td>NRD intel feed</td><td class="mono">lookup cdn-sync-update[.]net</td><td class="mono">10:52:08</td><td>Registered 2026-05-27; not allowlisted · <code>evidence/intel/nrd-cdn-sync-update.json</code></td></tr>
+  </table>
+</section>
+
+<!-- 10. COVERAGE AND LIMITS -->
+<section>
+  <div class="sec-head"><span class="sec-num">7</span><h2>Coverage and Limits</h2></div>
+  <p class="sec-sub" style="margin-left:0">A "clean" result only covers what was actually hunted. This hunt reached ~88% of the host population; the guest VLAN and lab segment are not sensed and were not examined.</p>
+  <div class="bucket" data-kind="clean">
+    <h3>Hunted and clean</h3>
+    <ul>
+      <li>4,199 in-scope hosts showed no TXT/NULL outlier, no high-entropy beaconing destination (E1).</li>
+      <li>No other host queried <code>cdn-sync-update[.]net</code> in the window.</li>
+    </ul>
+  </div>
+  <div class="bucket" data-kind="unknown">
+    <h3>Could not determine</h3>
+    <ul>
+      <li>Whether data was successfully exfiltrated, and what — query payload content was not decoded.</li>
+      <li>Initial access vector and dwell time before the window.</li>
+    </ul>
+  </div>
+  <div class="bucket" data-kind="blind">
+    <h3>What ExtraHop can't see</h3>
+    <ul>
+      <li>DoH/DoT resolving to external servers without transiting internal DNS.</li>
+      <li>The on-host process that generated the queries — endpoint (EDR) territory.</li>
+      <li>The guest VLAN and lab segment, which no sensor observes.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 11. RECOMMENDATIONS -->
+<section>
+  <div class="sec-head"><span class="sec-num">8</span><h2>Recommendations</h2></div>
+  <div class="step" data-urgency="now"><span class="upill">Escalate</span>
+    <div class="body"><b>Isolate WKSTN-2207, pull EDR for the window, and block <code>cdn-sync-update[.]net</code> at the resolver.</b> Hand off to IR as a suspected active compromise.</div>
+  </div>
+  <div class="step" data-urgency="soon"><span class="upill">Hunt further</span>
+    <div class="body"><b>Extend the sweep to the guest VLAN and 90 days of DNS history</b> for the domain and its registration siblings; check whether WKSTN-2207 contacted other NRDs.</div>
+  </div>
+  <div class="step" data-urgency="tune"><span class="upill">Operationalize</span>
+    <div class="body"><b>Promote the TXT-share + entropy + beacon analytic to a standing detection</b> and wire the NRD intel feed into enrichment so this hunt runs continuously instead of on demand.</div>
+  </div>
+</section>
+
+<div class="report-footer">
+  <div class="gradient-rule"></div>
+  <div class="cols">
+    <span>Generated by the ExtraHop Investigation Agent</span>
+    <span>HUNT-2026-014 · 2026-06-12</span>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,18 @@
+# Overlay for the Phase 0 local-LLM comparison. Run with:
+#   docker compose -f docker-compose.yml -f docker-compose.qwen.yml up -d graphiti-mcp
+# This flips graphiti-mcp to use the local Ollama qwen2.5:14b model for
+# extraction and writes into a separate group_id ("pocqwen") so the result can
+# be diffed against the Anthropic graph ("pocextrahop"). Revert to Anthropic with:
+#   docker compose up -d graphiti-mcp
+services:
+  graphiti-mcp:
+    environment:
+      LLM_PROVIDER: "openai"          # OpenAI-compatible → Ollama
+      MODEL_NAME: "qwen2.5:14b"
+      OPENAI_API_URL: "http://ollama:11434/v1"
+      OPENAI_API_KEY: "ollama"
+      # The MCP factory doesn't pass base_url into the OpenAI *LLM* client, so
+      # redirect it via the OpenAI SDK's env var (harmless for the embedder,
+      # which already targets Ollama explicitly).
+      OPENAI_BASE_URL: "http://ollama:11434/v1"
+      GRAPHITI_GROUP_ID: "pocqwen"

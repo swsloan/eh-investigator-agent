@@ -1,0 +1,1 @@
+{"disposition":"malicious","confidence":"high","highest_rung_used":"records","detection_source":"behavioral","attack_techniques":["T1071.001"],"evidence_chain":[{"claim":"60s periodic beacon","source":"evidence/metrics/beacon.json"}],"residual_uncertainty":""}

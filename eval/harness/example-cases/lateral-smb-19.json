@@ -1,0 +1,1 @@
+{ "id": "lateral-smb-19", "prompt": "Investigate detection 48219 on host 10.0.20.9 (lateral movement over SMB).", "group_id": "evallab", "expected": { "disposition": "malicious", "attack": ["T1021.002"], "min_rung": "records" } }

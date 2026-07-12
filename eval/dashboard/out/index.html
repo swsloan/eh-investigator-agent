@@ -1,0 +1,85 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eval dashboard</title><style>:root{--sapphire:#261F63;--plum:#7F2854;--accent:#00AAEF;--gradient:linear-gradient(135deg,#261F63,#7F2854);
+--ink:#1A1A22;--ink-soft:#54555F;--ink-faint:#85868F;--rule:#D9D8E0;--rule-soft:#ECEBF1;--paper:#FFF;--panel:#FAFAFC;--card:#FFF;--canvas:#E9E9EE;
+--ok:#3F7A4F;--ok-bg:#ECF5EE;--bad:#9E1B1B;--bad-bg:#FBEDED;--warn:#A36F0B;--warn-bg:#FBF4E2;--sapphire-chip:#ECEBF6;
+--mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;--maxw:8in;}
+@media(prefers-color-scheme:dark){:root:not([data-report-theme="light"]){
+--sapphire:#B3A8F2;--plum:#D171A0;--accent:#37C0F5;--ink:#ECECF2;--ink-soft:#C4C3CF;--ink-faint:#9B9BA6;
+--rule:#3A3947;--rule-soft:#2E2D3A;--paper:#15141C;--panel:#1F1E28;--card:#232230;--canvas:#0F0E14;
+--ok:#67D391;--ok-bg:#183427;--bad:#FF8585;--bad-bg:#3A1D22;--warn:#F2C356;--warn-bg:#342B16;--sapphire-chip:#2A2740;}}
+*{box-sizing:border-box}
+body{font-family:"Source Sans 3",Arial,Helvetica,sans-serif;color:var(--ink);background:var(--canvas);margin:0;font-size:11pt;line-height:1.5}
+.sheet{background:var(--paper);max-width:var(--maxw);margin:24px auto;padding:0 0 .4in;box-shadow:0 2px 30px rgba(20,18,40,.14)}
+a{color:var(--accent);text-decoration:none}
+.masthead{background:var(--gradient);color:#fff;padding:.34in .55in .4in}
+.doc-kind{font-size:8.5pt;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.66);margin-bottom:6px}
+h1{font-size:20pt;font-weight:900;margin:0 0 .12em;letter-spacing:-.01em}
+.meta{font-size:8.7pt;color:rgba(255,255,255,.66);margin-top:12px;display:flex;flex-wrap:wrap;gap:4px 22px}
+.meta b{color:#fff;font-weight:600}
+.gate{display:inline-flex;align-items:center;gap:8px;font-size:11pt;font-weight:800;padding:5px 15px;border-radius:99px;margin:.28in .55in 0}
+.gate.pass{color:var(--ok);background:var(--ok-bg)}
+.gate.fail{color:var(--bad);background:var(--bad-bg)}
+section{padding:.14in .55in 0}
+.h2{font-size:12pt;font-weight:800;color:var(--sapphire);margin:.5em 0 .5em}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.tile{background:var(--panel);border-radius:8px;padding:11px 13px;border:1px solid var(--rule)}
+.tile.hero{border-left:3px solid var(--sapphire)}
+.tile .lbl{font-size:8.6pt;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.08em;font-weight:800}
+.tile .val{font-size:22pt;font-weight:900;color:var(--sapphire);line-height:1.05;margin-top:2px}
+.tile .sub{font-size:8.6pt;margin-top:3px;color:var(--ink-soft)}
+.up{color:var(--ok)} .down{color:var(--ok)} .bad{color:var(--bad)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.panel{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:12px 14px}
+.panel .pt{font-size:10.5pt;font-weight:700;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:9pt}
+th{text-align:left;color:var(--ink-faint);font-weight:700;padding:5px 6px;border-bottom:1px solid var(--rule)}
+td{padding:6px 6px;border-bottom:1px solid var(--rule-soft);vertical-align:top}
+.mono{font-family:var(--mono);font-size:8.4pt}
+.pill{display:inline-block;font-size:8pt;font-weight:700;padding:1px 8px;border-radius:99px}
+.pill.ok{color:var(--ok);background:var(--ok-bg)} .pill.bad{color:var(--bad);background:var(--bad-bg)}
+.cm{font-size:9.5pt;table-layout:fixed}
+.cm td,.cm th{text-align:center;padding:5px}
+.cm .diag{background:var(--ok);color:#fff;border-radius:4px}
+.cm .fc{background:var(--bad);color:#fff;border-radius:4px}
+.rowlink td{border-bottom:1px solid var(--rule-soft)}
+.note{font-size:8.6pt;color:var(--ink-faint);margin-top:7px}
+.footer{margin:.3in .55in 0;padding-top:12px;border-top:1px solid var(--rule);font-size:8.5pt;color:var(--ink-faint);display:flex;justify-content:space-between}</style></head><body><div class="sheet">
+<header class="masthead"><div class="doc-kind">Investigation eval · trend</div>
+<h1>Eval dashboard</h1>
+<div class="meta"><span><b>Runs:</b> 6</span><span><b>Backends:</b> claude, pi</span><span><b>Latest:</b> 2026-07-09T14-02Z-v3</span></div></header>
+<div class="gate pass">&#10003; Latest gate (claude): PASS</div>
+<section><div class="h2">Latest run <span class="note">(claude &middot; 2026-07-09T14-02Z-v3)</span></div><div class="tiles">
+<div class="tile hero" style="border-left-color:var(--ok)">
+  <div class="lbl">False-close rate</div><div class="val" style="color:var(--ok)">0.0%</div>
+  <div class="sub"><span class="up">target &lt; 5%</span> · <span class="up">&#8600; 12.5 pts vs prev</span></div></div>
+<div class="tile"><div class="lbl">Verdict accuracy</div><div class="val">95%</div><div class="sub"><span class="up">&#8599; 10.0 pts vs prev</span></div></div>
+<div class="tile"><div class="lbl">Ladder adherence</div><div class="val">94%</div><div class="sub"><span class="up">&#8599; 8.0 pts vs prev</span></div></div>
+<div class="tile"><div class="lbl">Cost / case</div><div class="val">$0.49</div><div class="sub"><span class="up">&#8600; $0.03 vs prev</span></div></div>
+</div></section>
+<section><div class="panel" style="margin-bottom:12px"><div class="pt">Progress over runs — claude</div><svg viewBox="0 0 660 220" style="width:100%;height:auto" role="img" aria-label="Progress over runs: false-close rate, verdict accuracy, and ladder adherence across runs, with the autonomy-gate threshold">
+<line x1="46" y1="186" x2="516" y2="186" stroke="var(--rule)"/>
+<line x1="46" y1="16" x2="46" y2="186" stroke="var(--rule)"/>
+<text x="40" y="19" text-anchor="end" font-size="9" fill="var(--ink-faint)">100%</text>
+<text x="40" y="104" text-anchor="end" font-size="9" fill="var(--ink-faint)">50%</text>
+<text x="40" y="189" text-anchor="end" font-size="9" fill="var(--ink-faint)">0%</text>
+<line x1="46" y1="177.5" x2="516" y2="177.5" stroke="#E24B4A" stroke-dasharray="5 4" opacity="0.7"/>
+<text x="518" y="174.5" font-size="9" fill="#A32D2D">gate · false-close &lt; 5%</text>
+<polyline fill="none" stroke="#E24B4A" stroke-width="2.5" points="46.0,122.3 200.7,143.5 355.3,164.8 510.0,186.0"/><circle cx="46.0" cy="122.3" r="3" fill="#E24B4A"/><circle cx="200.7" cy="143.5" r="3" fill="#E24B4A"/><circle cx="355.3" cy="164.8" r="3" fill="#E24B4A"/><circle cx="510.0" cy="186.0" r="3" fill="#E24B4A"/><polyline fill="none" stroke="#378ADD" stroke-width="2.5" points="46.0,84.0 200.7,58.5 355.3,41.5 510.0,24.5"/><circle cx="46.0" cy="84.0" r="3" fill="#378ADD"/><circle cx="200.7" cy="58.5" r="3" fill="#378ADD"/><circle cx="355.3" cy="41.5" r="3" fill="#378ADD"/><circle cx="510.0" cy="24.5" r="3" fill="#378ADD"/><polyline fill="none" stroke="#7F77DD" stroke-width="2.5" points="46.0,97.6 200.7,63.6 355.3,39.8 510.0,26.2"/><circle cx="46.0" cy="97.6" r="3" fill="#7F77DD"/><circle cx="200.7" cy="63.6" r="3" fill="#7F77DD"/><circle cx="355.3" cy="39.8" r="3" fill="#7F77DD"/><circle cx="510.0" cy="26.2" r="3" fill="#7F77DD"/>
+<rect x="518" y="22" width="10" height="10" rx="2" fill="#E24B4A"/><text x="532" y="31" font-size="9.5" fill="var(--ink-soft)">false-close</text><rect x="518" y="38" width="10" height="10" rx="2" fill="#378ADD"/><text x="532" y="47" font-size="9.5" fill="var(--ink-soft)">accuracy</text><rect x="518" y="54" width="10" height="10" rx="2" fill="#7F77DD"/><text x="532" y="63" font-size="9.5" fill="var(--ink-soft)">adherence</text>
+<text x="46.0" y="202" text-anchor="middle" font-size="9.5" fill="var(--ink-soft)">baseline</text><text x="46.0" y="213" text-anchor="middle" font-size="8" fill="var(--ink-faint)">pre-ladder</text><text x="200.7" y="202" text-anchor="middle" font-size="9.5" fill="var(--ink-soft)">evidence-ladder@v1</text><text x="200.7" y="213" text-anchor="middle" font-size="8" fill="var(--ink-faint)">ladder v1</text><text x="355.3" y="202" text-anchor="middle" font-size="9.5" fill="var(--ink-soft)">evidence-ladder@v2</text><text x="355.3" y="213" text-anchor="middle" font-size="8" fill="var(--ink-faint)">+detection source</text><text x="510.0" y="202" text-anchor="middle" font-size="9.5" fill="var(--ink-soft)">evidence-ladder@v3</text><text x="510.0" y="213" text-anchor="middle" font-size="8" fill="var(--ink-faint)">+source rule verified</text>
+</svg></div><div class="panel" style="margin-bottom:12px"><div class="pt">Progress over runs — pi</div><svg viewBox="0 0 660 220" style="width:100%;height:auto" role="img" aria-label="Progress over runs: false-close rate, verdict accuracy, and ladder adherence across runs, with the autonomy-gate threshold">
+<line x1="46" y1="186" x2="516" y2="186" stroke="var(--rule)"/>
+<line x1="46" y1="16" x2="46" y2="186" stroke="var(--rule)"/>
+<text x="40" y="19" text-anchor="end" font-size="9" fill="var(--ink-faint)">100%</text>
+<text x="40" y="104" text-anchor="end" font-size="9" fill="var(--ink-faint)">50%</text>
+<text x="40" y="189" text-anchor="end" font-size="9" fill="var(--ink-faint)">0%</text>
+<line x1="46" y1="177.5" x2="516" y2="177.5" stroke="#E24B4A" stroke-dasharray="5 4" opacity="0.7"/>
+<text x="518" y="174.5" font-size="9" fill="#A32D2D">gate · false-close &lt; 5%</text>
+<polyline fill="none" stroke="#E24B4A" stroke-width="2.5" points="46.0,143.5 510.0,164.8"/><circle cx="46.0" cy="143.5" r="3" fill="#E24B4A"/><circle cx="510.0" cy="164.8" r="3" fill="#E24B4A"/><polyline fill="none" stroke="#378ADD" stroke-width="2.5" points="46.0,67.0 510.0,50.0"/><circle cx="46.0" cy="67.0" r="3" fill="#378ADD"/><circle cx="510.0" cy="50.0" r="3" fill="#378ADD"/><polyline fill="none" stroke="#7F77DD" stroke-width="2.5" points="46.0,84.0 510.0,58.5"/><circle cx="46.0" cy="84.0" r="3" fill="#7F77DD"/><circle cx="510.0" cy="58.5" r="3" fill="#7F77DD"/>
+<rect x="518" y="22" width="10" height="10" rx="2" fill="#E24B4A"/><text x="532" y="31" font-size="9.5" fill="var(--ink-soft)">false-close</text><rect x="518" y="38" width="10" height="10" rx="2" fill="#378ADD"/><text x="532" y="47" font-size="9.5" fill="var(--ink-soft)">accuracy</text><rect x="518" y="54" width="10" height="10" rx="2" fill="#7F77DD"/><text x="532" y="63" font-size="9.5" fill="var(--ink-soft)">adherence</text>
+<text x="46.0" y="202" text-anchor="middle" font-size="9.5" fill="var(--ink-soft)">evidence-ladder@v1</text><text x="46.0" y="213" text-anchor="middle" font-size="8" fill="var(--ink-faint)">local v1</text><text x="510.0" y="202" text-anchor="middle" font-size="9.5" fill="var(--ink-soft)">evidence-ladder@v2</text><text x="510.0" y="213" text-anchor="middle" font-size="8" fill="var(--ink-faint)">local v2</text>
+</svg></div></section>
+<section><div class="h2">All runs</div><table><tr><th>run</th><th>backend</th><th>date</th><th>false-close</th><th>accuracy</th><th>adherence</th><th>diff</th><th style="text-align:right">gate</th></tr><tr><td><a href="2026-07-09T14-02Z-v3.html">evidence-ladder@v3</a></td><td>claude</td><td class="mono">2026-07-09</td><td>0.0%</td><td>95%</td><td>94%</td><td><a href="diff-2026-07-07T16-05Z-v2__2026-07-09T14-02Z-v3.html">vs prev</a></td><td style="text-align:right"><span class="pill ok">PASS</span></td></tr><tr><td>evidence-ladder@v2 (qwen2.5:14b) <span class="note">(history-only)</span></td><td>pi</td><td class="mono">2026-07-08</td><td>12.5%</td><td>80%</td><td>75%</td><td><span class="note">&mdash;</span></td><td style="text-align:right"><span class="pill bad">FAIL</span></td></tr><tr><td><a href="2026-07-07T16-05Z-v2.html">evidence-ladder@v2</a></td><td>claude</td><td class="mono">2026-07-07</td><td>12.5%</td><td>85%</td><td>86%</td><td><span class="note">&mdash;</span></td><td style="text-align:right"><span class="pill bad">FAIL</span></td></tr><tr><td>evidence-ladder@v1 <span class="note">(history-only)</span></td><td>claude</td><td class="mono">2026-07-04</td><td>25.0%</td><td>75%</td><td>72%</td><td><span class="note">&mdash;</span></td><td style="text-align:right"><span class="pill bad">FAIL</span></td></tr><tr><td>evidence-ladder@v1 (qwen2.5:14b) <span class="note">(history-only)</span></td><td>pi</td><td class="mono">2026-07-03</td><td>25.0%</td><td>70%</td><td>60%</td><td><span class="note">&mdash;</span></td><td style="text-align:right"><span class="pill bad">FAIL</span></td></tr><tr><td>baseline (pre-ladder) <span class="note">(history-only)</span></td><td>claude</td><td class="mono">2026-07-02</td><td>37.5%</td><td>60%</td><td>52%</td><td><span class="note">&mdash;</span></td><td style="text-align:right"><span class="pill bad">FAIL</span></td></tr></table></section>
+<div class="footer"><span>ExtraHop Investigation Agent — eval dashboard</span><span>generated from fixtures</span></div>
+</div></body></html>

@@ -1,0 +1,147 @@
+# Stable project name so container/network names don't change if the release
+# directory is renamed on the next upgrade.
+name: eh-investigator
+
+services:
+  eh-investigator:
+    build: .
+    image: eh-investigator-agent:local
+    # Published only to the host loopback interface, preserving the app's
+    # localhost-only security model (it has no built-in authentication).
+    ports:
+      - "127.0.0.1:3100:3100"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3100"
+      # Persist non-secret settings (backend, per-backend model prefs, challenger,
+      # evidence view, memory, ExtraHop host/family/TLS) in a mounted volume so
+      # choices survive restarts/recreates.
+      EH_CONFIG_PATH: "/app/data/config.json"
+      # Persist secrets (Anthropic key, ExtraHop creds) to a 0600 file in the
+      # same volume — the container has no OS keyring, so without this they'd
+      # reset on restart. Plaintext at rest, same posture as .env.
+      EH_SECRETS_PATH: "/app/data/secrets.json"
+      # Persisted eval store (reports history, label overrides, built dashboard)
+      # in the same config_data volume, so in-app eval runs + the dashboard survive
+      # restarts and share one store.
+      EH_EVAL_DATA_DIR: "/app/data/eval"
+      # Graphiti temporal memory (Phase 1): wire the agent to the MCP sidecar.
+      MEMORY_ENABLED: "1"
+      MEMORY_MCP_URL: "http://graphiti-mcp:8000/mcp"
+      # Shared memory namespace (per monitored environment). The app derives
+      # eh<sanitized-host> when unset; set it explicitly to keep the app (Pi
+      # extension) and the graphiti sidecar (Claude default) on one graph.
+      EH_MEMORY_GROUP_ID: ${EH_MEMORY_GROUP_ID:-}
+      # Read-only FalkorDB access for the memory-graph viz (GRAPH.RO_QUERY only).
+      # Same store the graphiti sidecar writes; the app reads it directly to render
+      # the "What do we know?" panel. Reachable on the compose network.
+      FALKORDB_URI: ${FALKORDB_URI:-redis://falkordb:6379}
+      FALKORDB_PASSWORD: ${FALKORDB_PASSWORD:-}
+      # Claude Code backend auth for a headless container, and the fallback the
+      # memory proxy uses if no key is set in Settings. Prefer setting the key
+      # in Settings → Memory (stored in the app secret store); this env is just
+      # the fallback. If you run an in-container `claude` /login you can drop it.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Shared token the graphiti sidecar uses to authenticate to the app's
+      # /memory-llm proxy (must match the sidecar's value).
+      EH_MEMORY_PROXY_TOKEN: ${EH_MEMORY_PROXY_TOKEN:-eh-memory-proxy-local}
+      # RevealX Enterprise
+      EXTRAHOP_HOST: ${EXTRAHOP_HOST:-}
+      EXTRAHOP_API_KEY: ${EXTRAHOP_API_KEY:-}
+      EXTRAHOP_INSECURE: ${EXTRAHOP_INSECURE:-false}
+      # — or — RevealX 360 (leave the two lines above unset)
+      EXTRAHOP_CLIENT_ID: ${EXTRAHOP_CLIENT_ID:-}
+      EXTRAHOP_CLIENT_SECRET: ${EXTRAHOP_CLIENT_SECRET:-}
+    volumes:
+      - workspaces:/app/workspaces
+      - pi_home:/root/.pi
+      # Persists the Claude Code login (CLAUDE_CONFIG_DIR points here). New
+      # volume; created on first up. Log in with:
+      #   docker compose run --rm -it eh-investigator claude   (then /login)
+      - claude_home:/root/.claude
+      # Persisted app settings (config.json). See EH_CONFIG_PATH above.
+      - config_data:/app/data
+    restart: unless-stopped
+
+  # --- Graphiti temporal-memory stack (Phase 0 PoC) ---
+  # FalkorDB graph store. Not published to the host — reachable only on the
+  # compose network. The Browser UI is exposed on loopback for graph inspection.
+  falkordb:
+    image: falkordb/falkordb:latest
+    environment:
+      FALKORDB_PASSWORD: ${FALKORDB_PASSWORD:-}
+      BROWSER: "1"
+    ports:
+      - "127.0.0.1:3001:3000"   # FalkorDB Browser UI (graph inspection)
+    volumes:
+      - falkordb_data:/var/lib/falkordb/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # Local extraction embeddings (nomic-embed-text) via Ollama's OpenAI-compatible
+  # endpoint, so embeddings never leave the host. The model is pulled after start.
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
+
+  # Graphiti MCP server (HTTP transport on :8000/mcp/). Anthropic does the
+  # entity/edge extraction; our custom config + ExtraHop ontology is mounted in.
+  graphiti-mcp:
+    # Custom image = upstream standalone + the anthropic package (see graphiti/Dockerfile).
+    image: eh-graphiti-mcp:local
+    build:
+      context: ./graphiti
+      dockerfile: Dockerfile
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    environment:
+      CONFIG_PATH: /app/mcp/config/config.yaml
+      FALKORDB_URI: redis://falkordb:6379
+      FALKORDB_DATABASE: ${FALKORDB_DATABASE:-extrahop}
+      FALKORDB_PASSWORD: ${FALKORDB_PASSWORD:-}
+      GRAPHITI_GROUP_ID: ${EH_MEMORY_GROUP_ID:-ehdefault}
+      SEMAPHORE_LIMIT: ${SEMAPHORE_LIMIT:-6}
+      MODEL_NAME: ${MODEL_NAME:-claude-sonnet-5}
+      # Route Anthropic extraction through the app proxy, which injects the
+      # UI-managed key. Graphiti authenticates to the proxy with the shared
+      # token (not the real key), so the real key lives only in the app.
+      # The MCP factory drops the config api_url for the Anthropic client, so
+      # redirect via the SDK's own env var (as with OPENAI_BASE_URL for Ollama).
+      ANTHROPIC_API_URL: "http://eh-investigator:3100/memory-llm"
+      ANTHROPIC_BASE_URL: "http://eh-investigator:3100/memory-llm"
+      ANTHROPIC_API_KEY: ${EH_MEMORY_PROXY_TOKEN:-eh-memory-proxy-local}
+      # Embedder → Ollama (OpenAI-compatible)
+      EMBEDDER_MODEL: ${EMBEDDER_MODEL:-nomic-embed-text}
+      OPENAI_API_URL: ${OPENAI_API_URL:-http://ollama:11434/v1}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-ollama}
+    volumes:
+      - ./graphiti/config.yaml:/app/mcp/config/config.yaml:ro
+    ports:
+      - "127.0.0.1:8000:8000"   # MCP HTTP endpoint (loopback only)
+    restart: unless-stopped
+
+volumes:
+  # Reuse the volumes created by the previous (v26.07.01) deployment so the Pi
+  # provider login and existing investigation workspaces are preserved across
+  # this upgrade. These names come from the old Compose project.
+  workspaces:
+    external: true
+    name: eh-investigator-agent-a70505d40e65_workspaces
+  pi_home:
+    external: true
+    name: eh-investigator-agent-a70505d40e65_pi_home
+  # New volume for the Claude Code backend login (managed by this project).
+  claude_home:
+  # Persisted app settings (config.json).
+  config_data:
+  # Graphiti memory stack volumes (managed by this project).
+  falkordb_data:
+  ollama_models:

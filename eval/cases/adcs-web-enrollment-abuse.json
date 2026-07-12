@@ -1,0 +1,11 @@
+{
+  "id": "adcs-web-enrollment-abuse",
+  "prompt": "Investigate suspected AD CS (Active Directory Certificate Services) certificate-enrollment abuse in the acmelegal.lab environment: determine whether any certificate was issued illegitimately — by whom, from what host, over what channel — and separate it from normal autoenrollment.",
+  "group_id": "evallab",
+  "notes": "Real adjudicated hunt (acmelegal.lab, 2026-07-09), record-derived (no packaged detection). Attack box KALI (172.16.206.22, curl/8.17.0) submitted a web-enrollment cert request (POST /certsrv/certfnsh.asp -> 401 then HTTP 200 = issued, 21:11:02 UTC) authenticating as acmelegal.lab\\ian.lindsay over NTLM, alongside MS-RPRN PrinterBug coercion of DC nlqawdc1 (172.16.204.10) and .153. Normal enrollment is RPC ICertRequestD2::Request2 with Kerberos packet privacy from four workstations = benign baseline the analyst must separate out. Malicious ESC-class AD CS abuse (ESC1 vs ESC8-relay inferred; exact template/SAN unrecoverable — packetstore retention aged out for the target day). Settles at the RECORD tier; packets were attempted but retention aged out, so a packet climb is neither possible nor expected (over-climb probe).",
+  "expected": {
+    "disposition": "malicious",
+    "attack": ["T1649", "T1187", "T1078.002"],
+    "min_rung": "records"
+  }
+}

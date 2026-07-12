@@ -1,0 +1,35 @@
+export const $ = (id) => document.getElementById(id);
+
+const connStatus = $('conn-status');
+
+export const dom = {
+  chatEl: $('chat'),
+  chatScroll: $('chat-scroll'),
+  emptyState: $('empty-state'),
+  inputEl: $('input'),
+  sendBtn: $('send-btn'),
+  stopBtn: $('stop-btn'),
+  attachBtn: $('attach-btn'),
+  fileInput: $('file-input'),
+  attachList: $('attach-list'),
+  sessionListEl: $('session-list'),
+  connStatus,
+  connText: connStatus.querySelector('.conn-text'),
+  usageReadout: $('usage-readout'),
+  filesList: $('files-list'),
+  dropOverlay: $('drop-overlay'),
+  viewerEl: $('viewer'),
+  viewerScrim: $('viewer-scrim'),
+  viewerBody: $('viewer-body'),
+  viewerStatus: $('viewer-status'),
+  viewerSummaryLayout: $('viewer-summary-layout'),
+  viewerDownloadWrap: $('viewer-download-wrap'),
+  viewerDownloadBtn: $('viewer-download'),
+  viewerDownloadMenu: $('viewer-download-menu'),
+  viewerDownloadFile: $('viewer-download-file'),
+  viewerDownloadFileLabel: $('viewer-download-file-label'),
+  viewerDownloadCsv: $('viewer-download-csv'),
+  viewerDownloadPdf: $('viewer-download-pdf'),
+  settingsModal: $('settings-modal'),
+  sessionModelModal: $('session-model-modal'),
+};

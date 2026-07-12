@@ -1,0 +1,532 @@
+import { getEvidenceSummary, listFiles, openPcapInWireshark, sessionFileUrl } from './api.js';
+import { renderMarkdown, highlightCode } from './markdown.js';
+import { themeReportHtml } from './theme.js';
+import { dom, $ } from './dom.js';
+import { state } from './state.js';
+import { csvDownloadName, downloadName, fmtBytes, fmtTime, pdfDownloadName, triggerDownload } from './utils.js';
+
+const ICON_FILE = '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>';
+const ICON_UPLOAD = '<path d="M12 17V7M7 11l5-5 5 5"/><path d="M4 21h16"/>';
+const ICON_FOLDER = '<path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>';
+
+const TEXT_EXTS = new Set(['txt', 'log', 'csv', 'tsv', 'yaml', 'yml', 'xml', 'ini', 'conf', 'sh', 'py', 'js', 'mjs', 'ts', 'sql', 'css', 'toml', 'env', 'jsonl', 'ndjson']);
+const IMG_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico']);
+const HTML_EXTS = new Set(['html', 'htm']);
+const PCAP_RE = /\.(?:pcap|pcapng|cap)(?:\.gz)?$/i;
+const HIGHLIGHT_LANG_BY_EXT = new Map([
+  ['py', 'python'],
+]);
+const SOURCE_PREVIEW_LIMIT = 400_000;
+const SUMMARY_DIR_RE = /^evidence\/(?:records|metrics|detections|entities)\//;
+const SUMMARY_LAYOUTS = new Set(['source', 'split', 'summary']);
+const SUMMARY_BACKFILL_RETRY_MS = [1_000, 2_000, 4_000, 8_000];
+
+function fileUrl(relPath, options = {}) {
+  return sessionFileUrl(state.session.id, relPath, options);
+}
+
+function isReportFile(file) {
+  const name = file.path.split('/').pop().toLowerCase();
+  return name.startsWith('report-') && (name.endsWith('.html') || name.endsWith('.htm'));
+}
+
+function isArtifactFile(file) {
+  return isReportFile(file);
+}
+
+function isSummarizableEvidenceJson(file) {
+  return Boolean(file?.path)
+    && file.path.toLowerCase().endsWith('.json')
+    && SUMMARY_DIR_RE.test(file.path)
+    && !file.path.startsWith('evidence/packets/');
+}
+
+function isPacketCapture(file) {
+  return PCAP_RE.test(String(file?.path || ''));
+}
+
+function defaultSummaryLayout() {
+  if (state.evidenceDefaultView === 'code') return 'source';
+  if (state.evidenceDefaultView === 'split') return 'split';
+  return 'summary';
+}
+
+function reportSeenKey(file) {
+  return `eh-report-seen:${state.session?.id || 'none'}:${file.path}:${Math.round(file.mtime)}:${file.size}`;
+}
+
+function isReportSeen(file) {
+  try { return localStorage.getItem(reportSeenKey(file)) === '1'; } catch { return false; }
+}
+
+function markReportSeen(file) {
+  try { localStorage.setItem(reportSeenKey(file), '1'); } catch { /* ignore private-mode quota errors */ }
+}
+
+function makeFileRow(file, isNew) {
+  const isUpload = file.path.startsWith('uploads/');
+  const isReport = isReportFile(file);
+  const isArtifact = isReport;
+  const reportUnseen = isArtifact && !isReportSeen(file);
+  const row = document.createElement('div');
+  row.className = 'file-row' + (isUpload ? ' upload' : '') + (reportUnseen ? ' report-unseen' : '') + (file.path === state.viewingPath ? ' viewing' : '');
+  row.innerHTML = `
+    <div class="file-icon">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${isUpload ? ICON_UPLOAD : ICON_FILE}</svg>
+    </div>
+    <div class="file-meta">
+      <div class="file-name"></div>
+      <div class="file-sub"></div>
+    </div>
+    ${isReport ? '<span class="file-report">REPORT</span>' : ''}
+    ${isNew ? '<span class="file-new">NEW</span>' : ''}
+    <button class="file-dl" title="Download">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v10M7 11l5 5 5-5"/><path d="M4 21h16"/></svg>
+    </button>`;
+  row.querySelector('.file-name').textContent = file.path.split('/').pop();
+  row.querySelector('.file-name').title = file.path;
+  row.querySelector('.file-sub').textContent = `${fmtBytes(file.size)} · ${fmtTime(file.mtime)}`;
+  row.addEventListener('click', () => {
+    if (isArtifact) {
+      markReportSeen(file);
+      row.classList.remove('report-unseen');
+    }
+    openViewer(file);
+  });
+  row.querySelector('.file-dl').addEventListener('click', (event) => {
+    event.stopPropagation();
+    triggerDownload(fileUrl(file.path, { dl: true }), downloadName(file.path));
+  });
+  return row;
+}
+
+function countFiles(node) {
+  let n = node.files.length;
+  for (const dir of node.dirs.values()) n += countFiles(dir);
+  return n;
+}
+
+function renderTree(files, newPaths) {
+  const tree = { files: [], dirs: new Map() };
+  for (const file of files) {
+    const parts = file.path.split('/');
+    let node = tree;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!node.dirs.has(parts[i])) node.dirs.set(parts[i], { files: [], dirs: new Map() });
+      node = node.dirs.get(parts[i]);
+    }
+    node.files.push(file);
+  }
+
+  const renderNode = (node, container, prefix) => {
+    for (const file of node.files) container.appendChild(makeFileRow(file, newPaths.has(file.path)));
+    const dirNames = [...node.dirs.keys()].sort();
+    for (const name of dirNames) {
+      const child = node.dirs.get(name);
+      const dirPath = prefix ? `${prefix}/${name}` : name;
+      const count = countFiles(child);
+      const hasNew = [...newPaths].some((path) => path.startsWith(dirPath + '/'));
+      if (hasNew) state.openDirs.add(dirPath);
+
+      const group = document.createElement('div');
+      group.className = 'dir-group' + (state.openDirs.has(dirPath) ? ' open' : '');
+      const row = document.createElement('div');
+      row.className = 'dir-row';
+      row.innerHTML = `
+        <svg class="dir-chevron" viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3l5 5-5 5"/></svg>
+        <div class="file-icon">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_FOLDER}</svg>
+        </div>
+        <div class="file-meta"><div class="file-name"></div></div>
+        ${hasNew ? '<span class="file-new">NEW</span>' : ''}
+        <span class="file-count"></span>`;
+      row.querySelector('.file-name').textContent = name + '/';
+      row.querySelector('.file-count').textContent = count;
+      row.addEventListener('click', () => {
+        group.classList.toggle('open');
+        if (group.classList.contains('open')) state.openDirs.add(dirPath);
+        else state.openDirs.delete(dirPath);
+      });
+      const children = document.createElement('div');
+      children.className = 'dir-children';
+      renderNode(child, children, dirPath);
+      group.appendChild(row);
+      group.appendChild(children);
+      container.appendChild(group);
+    }
+  };
+
+  dom.filesList.innerHTML = '';
+  renderNode(tree, dom.filesList, '');
+}
+
+export async function refreshFiles() {
+  if (!state.session) return;
+  const data = await listFiles(state.session.id);
+  if (!data) return;
+  const { files } = data;
+  const firstLoad = state.knownFiles === null;
+  if (firstLoad) state.knownFiles = new Set(files.map((file) => file.path));
+
+  if (!files.length) {
+    dom.filesList.innerHTML = '<div class="files-empty">No files yet. Upload evidence or ask the agent to produce a report.</div>';
+    return;
+  }
+  const newPaths = new Set();
+  for (const file of files) {
+    if (!firstLoad && !state.knownFiles.has(file.path)) newPaths.add(file.path);
+    state.knownFiles.add(file.path);
+  }
+  renderTree(files, newPaths);
+}
+
+function setViewerStatus(text, kind = '') {
+  dom.viewerStatus.textContent = text;
+  dom.viewerStatus.className = `viewer-status ${kind}`.trim();
+  dom.viewerStatus.classList.toggle('hidden', !text);
+}
+
+export function closeDownloadMenu() {
+  dom.viewerDownloadMenu.classList.add('hidden');
+  dom.viewerDownloadBtn.setAttribute('aria-expanded', 'false');
+}
+
+export function isDownloadMenuOpen() {
+  return !dom.viewerDownloadMenu.classList.contains('hidden');
+}
+
+function toggleDownloadMenu() {
+  const isOpen = isDownloadMenuOpen();
+  dom.viewerDownloadMenu.classList.toggle('hidden', isOpen);
+  dom.viewerDownloadBtn.setAttribute('aria-expanded', String(!isOpen));
+}
+
+function setSummaryLayout(layout) {
+  const next = SUMMARY_LAYOUTS.has(layout) ? layout : 'split';
+  state.summaryPaneLayout = next;
+  dom.viewerBody.dataset.summaryLayout = next;
+  dom.viewerSummaryLayout.querySelectorAll('[data-summary-layout]').forEach((button) => {
+    const active = button.dataset.summaryLayout === next;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
+function setSummaryLayoutControlsVisible(visible, layout) {
+  dom.viewerSummaryLayout.classList.toggle('hidden', !visible);
+  if (visible) {
+    setSummaryLayout(layout || state.summaryPaneLayout || defaultSummaryLayout());
+  } else {
+    state.summaryPaneLayout = 'split';
+    setSummaryLayout('split');
+    delete dom.viewerBody.dataset.summaryLayout;
+    dom.viewerSummaryLayout.classList.add('hidden');
+  }
+}
+
+async function downloadPdfPath(relPath) {
+  if (!relPath) return;
+  closeDownloadMenu();
+  setViewerStatus('Preparing PDF...');
+  dom.viewerDownloadPdf.disabled = true;
+  try {
+    const res = await fetch(fileUrl(relPath, { format: 'pdf' }));
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `PDF export failed (HTTP ${res.status})`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    triggerDownload(url, pdfDownloadName(relPath));
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    if (state.viewingPath === relPath) {
+      setViewerStatus('PDF downloaded', 'ok');
+      setTimeout(() => {
+        if (state.viewingPath === relPath && dom.viewerStatus.textContent === 'PDF downloaded') setViewerStatus('');
+      }, 1800);
+    }
+  } catch (err) {
+    if (state.viewingPath === relPath) setViewerStatus(err.message, 'error');
+  } finally {
+    dom.viewerDownloadPdf.disabled = false;
+  }
+}
+
+async function downloadCsvPath(relPath) {
+  if (!relPath) return;
+  closeDownloadMenu();
+  triggerDownload(fileUrl(relPath, { format: 'csv' }), csvDownloadName(relPath));
+}
+
+function summaryCacheKey(file) {
+  return `${state.session?.id || 'none'}:${file.path}:${Math.round(file.mtime || 0)}:${file.size || 0}`;
+}
+
+function setSummaryPane(pane, html, kind = '') {
+  pane.className = `viewer-summary-pane ${kind}`.trim();
+  pane.innerHTML = html;
+}
+
+function hasPendingBackfills(summary) {
+  return Array.isArray(summary?.pendingBackfills) && summary.pendingBackfills.length > 0;
+}
+
+function scheduleSummaryBackfillRefresh(file, pane, cacheKey, attempt = 0) {
+  if (attempt >= SUMMARY_BACKFILL_RETRY_MS.length) return;
+  const activePath = file.path;
+  setTimeout(() => {
+    if (state.viewingPath !== activePath || !pane.isConnected) return;
+    state.summaryCache.delete(cacheKey);
+    loadSummaryPane(file, pane, { refresh: true, attempt: attempt + 1 });
+  }, SUMMARY_BACKFILL_RETRY_MS[attempt]);
+}
+
+function renderSummaryLayout(file, sourceHtml) {
+  const summaryId = `summary-${Math.random().toString(36).slice(2)}`;
+  dom.viewerBody.className = 'viewer-body summary-mode';
+  dom.viewerBody.innerHTML = `
+    <section id="${summaryId}" class="viewer-summary-pane loading">
+      <div class="viewer-summary-loading">Summarizing evidence...</div>
+    </section>
+    <section class="viewer-source-pane">${sourceHtml}</section>`;
+  setSummaryLayout(state.summaryPaneLayout || defaultSummaryLayout());
+  return dom.viewerBody.querySelector(`#${summaryId}`);
+}
+
+function truncatedSourcePreview(text) {
+  return text.length > SOURCE_PREVIEW_LIMIT
+    ? text.slice(0, SOURCE_PREVIEW_LIMIT) + '\n... (truncated preview)'
+    : text;
+}
+
+function renderHighlightedSource(text, language) {
+  dom.viewerBody.className = 'viewer-body';
+  dom.viewerBody.innerHTML = `<pre class="raw"><code class="language-${language}"></code></pre>`;
+  const code = dom.viewerBody.querySelector('code');
+  code.textContent = truncatedSourcePreview(text);
+  highlightCode(code);
+}
+
+async function loadSummaryPane(file, pane, { refresh = false, attempt = 0 } = {}) {
+  const cacheKey = summaryCacheKey(file);
+  const cached = state.summaryCache.get(cacheKey);
+  if (cached && !refresh) {
+    setSummaryPane(pane, cached.html, cached.kind);
+    if (hasPendingBackfills(cached)) scheduleSummaryBackfillRefresh(file, pane, cacheKey, attempt);
+    return;
+  }
+  const activePath = file.path;
+  try {
+    const result = await getEvidenceSummary(state.session.id, file.path, { refresh });
+    if (state.viewingPath !== activePath || !pane.isConnected) return;
+    if (!result.ok) throw new Error(result.data.error || 'Could not summarize evidence.');
+    state.summaryCache.set(cacheKey, result.data);
+    setSummaryPane(pane, result.data.html, result.data.kind);
+    if (hasPendingBackfills(result.data)) scheduleSummaryBackfillRefresh(file, pane, cacheKey, attempt);
+  } catch (err) {
+    if (state.viewingPath !== activePath || !pane.isConnected) return;
+    setSummaryPane(pane, '<div class="summary-empty"></div>', 'error');
+    pane.querySelector('.summary-empty').textContent = err.message;
+    if (dom.viewerBody.dataset.summaryLayout === 'summary') setSummaryLayout('source');
+  }
+}
+
+function renderPacketCaptureViewer(file) {
+  const available = Boolean(state.wiresharkAvailable);
+  dom.viewerBody.className = 'viewer-body';
+  dom.viewerBody.innerHTML = `
+    <div class="pcap-preview">
+      <svg class="pcap-icon" viewBox="0 0 64 64" aria-hidden="true">
+        <path class="pcap-file-body" d="M18 8h20l12 12v34a4 4 0 0 1-4 4H18a4 4 0 0 1-4-4V12a4 4 0 0 1 4-4z"/>
+        <path class="pcap-file-fold" d="M38 8v12h12"/>
+        <path class="pcap-file-line" d="M22 34h20"/>
+        <path class="pcap-file-line" d="M22 43h16"/>
+        <path class="pcap-file-pulse" d="M22 25h6l3-6 5 12 3-6h5"/>
+      </svg>
+      <h3>Packet capture</h3>
+      <p>${available ? 'Open this capture in Wireshark from the local app, or download it.' : 'Wireshark was not detected on this machine. You can still download the capture.'}</p>
+      <div class="pcap-actions">
+        <button id="viewer-open-wireshark" class="btn-primary slim" type="button" ${available ? '' : 'disabled'}>Open in Wireshark</button>
+        <button id="viewer-download-pcap" class="btn-secondary slim" type="button">Download</button>
+      </div>
+    </div>`;
+  const openBtn = $('viewer-open-wireshark');
+  const downloadBtn = $('viewer-download-pcap');
+  openBtn.title = available ? 'Open packet capture in Wireshark' : 'Wireshark is not installed or not on PATH';
+  openBtn.addEventListener('click', async () => {
+    if (!state.session || !state.viewingPath) return;
+    openBtn.disabled = true;
+    setViewerStatus('Opening Wireshark...');
+    const { ok, data } = await openPcapInWireshark(state.session.id, state.viewingPath);
+    if (ok) {
+      setViewerStatus('Sent to Wireshark', 'ok');
+    } else {
+      setViewerStatus(data.error || 'Could not open Wireshark', 'error');
+    }
+    openBtn.disabled = !available;
+  });
+  downloadBtn.addEventListener('click', () => {
+    triggerDownload(fileUrl(file.path, { dl: true }), downloadName(file.path));
+  });
+}
+
+export function closeViewer() {
+  closeDownloadMenu();
+  dom.viewerEl.classList.add('hidden');
+  dom.viewerScrim.classList.add('hidden');
+  state.viewingPath = null;
+  state.viewingIsHtml = false;
+  state.viewingIsJson = false;
+  state.viewingFile = null;
+  state.summaryPaneLayout = 'split';
+  setSummaryLayoutControlsVisible(false);
+  dom.viewerBody.className = 'viewer-body';
+  setViewerStatus('');
+  dom.filesList.querySelectorAll('.file-row.viewing').forEach((el) => el.classList.remove('viewing'));
+}
+
+export function isViewerOpen() {
+  return !dom.viewerEl.classList.contains('hidden');
+}
+
+export async function openViewer(file) {
+  const ext = (file.path.split('.').pop() || '').toLowerCase();
+  const activePath = file.path;
+  state.viewingPath = file.path;
+  state.viewingIsHtml = HTML_EXTS.has(ext);
+  state.viewingIsJson = ext === 'json';
+  state.viewingFile = file;
+  const canSummarize = isSummarizableEvidenceJson(file);
+  $('viewer-name').textContent = file.path;
+  $('viewer-sub').textContent = `${fmtBytes(file.size)} · ${fmtTime(file.mtime)}`;
+  setViewerStatus('');
+  closeDownloadMenu();
+  dom.viewerDownloadBtn.title = state.viewingIsHtml || state.viewingIsJson ? 'Download options' : 'Download';
+  dom.viewerDownloadFileLabel.textContent = state.viewingIsJson ? 'Download JSON' : 'Download';
+  dom.viewerDownloadCsv.classList.toggle('hidden', !state.viewingIsJson);
+  dom.viewerDownloadPdf.classList.toggle('hidden', !state.viewingIsHtml);
+  setSummaryLayoutControlsVisible(canSummarize, canSummarize ? defaultSummaryLayout() : undefined);
+  dom.viewerBody.className = 'viewer-body';
+  dom.viewerBody.innerHTML = '<div class="viewer-msg">Loading…</div>';
+  dom.viewerEl.classList.remove('hidden');
+  dom.viewerScrim.classList.remove('hidden');
+  dom.filesList.querySelectorAll('.file-row.viewing').forEach((el) => el.classList.remove('viewing'));
+
+  try {
+    if (isPacketCapture(file)) {
+      renderPacketCaptureViewer(file);
+      return;
+    }
+    if (IMG_EXTS.has(ext)) {
+      dom.viewerBody.className = 'viewer-body';
+      dom.viewerBody.innerHTML = '<div class="viewer-img"><img alt=""></div>';
+      dom.viewerBody.querySelector('img').src = fileUrl(file.path);
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      if (canSummarize) {
+        const pane = renderSummaryLayout(file, '<div class="viewer-msg compact">File is too large to preview. Use the download button above for the source JSON.</div>');
+        loadSummaryPane(file, pane);
+      } else {
+        dom.viewerBody.innerHTML = '<div class="viewer-msg">File is too large to preview — use the download button above.</div>';
+      }
+      return;
+    }
+    const res = await fetch(fileUrl(file.path));
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buf = await res.arrayBuffer();
+    if (state.viewingPath !== activePath) return;
+    const bytes = new Uint8Array(buf.slice(0, 8000));
+    if (bytes.includes(0)) {
+      if (canSummarize) {
+        const pane = renderSummaryLayout(file, '<div class="viewer-msg compact">Binary-looking source preview skipped. Use the download button above for the source JSON.</div>');
+        loadSummaryPane(file, pane);
+      } else {
+        dom.viewerBody.innerHTML = '<div class="viewer-msg">Binary file — no preview available. Use the download button above.</div>';
+      }
+      return;
+    }
+    const text = new TextDecoder().decode(buf);
+
+    if (state.viewingIsHtml) {
+      const iframe = document.createElement('iframe');
+      iframe.setAttribute('sandbox', '');
+      iframe.srcdoc = themeReportHtml(text);
+      dom.viewerBody.className = 'viewer-body';
+      dom.viewerBody.innerHTML = '';
+      dom.viewerBody.appendChild(iframe);
+    } else if (ext === 'md' || ext === 'markdown') {
+      dom.viewerBody.className = 'viewer-body';
+      dom.viewerBody.innerHTML = '<div class="md"></div>';
+      renderMarkdown(dom.viewerBody.querySelector('.md'), text);
+    } else if (ext === 'json') {
+      let pretty = text;
+      try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch { /* show as-is */ }
+      if (canSummarize) {
+        const pane = renderSummaryLayout(file, '<pre class="raw"><code class="language-json"></code></pre>');
+        const code = dom.viewerBody.querySelector('.viewer-source-pane code');
+        code.textContent = truncatedSourcePreview(pretty);
+        highlightCode(code);
+        loadSummaryPane(file, pane);
+      } else {
+        renderHighlightedSource(pretty, 'json');
+      }
+    } else if (HIGHLIGHT_LANG_BY_EXT.has(ext)) {
+      renderHighlightedSource(text, HIGHLIGHT_LANG_BY_EXT.get(ext));
+    } else if (TEXT_EXTS.has(ext) || !ext) {
+      dom.viewerBody.className = 'viewer-body';
+      dom.viewerBody.innerHTML = '<pre class="raw"></pre>';
+      dom.viewerBody.querySelector('pre').textContent = text;
+    } else {
+      dom.viewerBody.className = 'viewer-body';
+      dom.viewerBody.innerHTML = '<pre class="raw"></pre>';
+      dom.viewerBody.querySelector('pre').textContent = text;
+    }
+  } catch (err) {
+    dom.viewerBody.className = 'viewer-body';
+    dom.viewerBody.innerHTML = '<div class="viewer-msg"></div>';
+    dom.viewerBody.querySelector('.viewer-msg').textContent = `Could not load file: ${err.message}`;
+  }
+  refreshFiles();
+}
+
+export function refreshThemedReportPreview() {
+  if (state.viewingIsHtml && state.viewingFile) openViewer(state.viewingFile);
+}
+
+export function initFileViewer() {
+  dom.viewerDownloadBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (!state.viewingPath) return;
+    if (!state.viewingIsHtml && !state.viewingIsJson) {
+      triggerDownload(fileUrl(state.viewingPath, { dl: true }), downloadName(state.viewingPath));
+      return;
+    }
+    toggleDownloadMenu();
+  });
+  dom.viewerDownloadFile.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (!state.viewingPath) return;
+    closeDownloadMenu();
+    triggerDownload(fileUrl(state.viewingPath, { dl: true }), downloadName(state.viewingPath));
+  });
+  dom.viewerDownloadCsv.addEventListener('click', (event) => {
+    event.stopPropagation();
+    downloadCsvPath(state.viewingPath);
+  });
+  dom.viewerDownloadPdf.addEventListener('click', (event) => {
+    event.stopPropagation();
+    downloadPdfPath(state.viewingPath);
+  });
+  dom.viewerSummaryLayout.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-summary-layout]');
+    if (!button) return;
+    event.stopPropagation();
+    setSummaryLayout(button.dataset.summaryLayout);
+  });
+  $('viewer-close').addEventListener('click', closeViewer);
+  dom.viewerScrim.addEventListener('click', closeViewer);
+  document.addEventListener('click', (event) => {
+    if (!dom.viewerDownloadWrap.contains(event.target)) closeDownloadMenu();
+  });
+}

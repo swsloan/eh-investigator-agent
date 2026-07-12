@@ -1,0 +1,97 @@
+# Graphiti MCP config for the ExtraHop Investigation Agent (Phase 0 PoC).
+# LLM  = Anthropic (extraction) — only derived text leaves the host.
+# Embedder = local Ollama (nomic-embed-text) via the OpenAI-compatible endpoint,
+#            so embeddings stay on-box. The MCP server has no in-process
+#            sentence-transformers option, so we route the "openai" embedder at
+#            Ollama instead. Supports ${VAR:default} expansion.
+
+server:
+  transport: "http"
+  host: "0.0.0.0"
+  port: 8000
+
+llm:
+  provider: ${LLM_PROVIDER:anthropic}   # 'anthropic' (default) or 'openai' (→ Ollama, for local comparison)
+  model: ${MODEL_NAME:claude-sonnet-5}
+  temperature: 0          # deterministic extraction (dropped for Anthropic via image patch; used by openai/Ollama)
+  max_tokens: 4096
+  providers:
+    anthropic:
+      api_key: ${ANTHROPIC_API_KEY}
+      api_url: ${ANTHROPIC_API_URL:https://api.anthropic.com}
+      max_retries: 3
+    openai:                              # OpenAI-compatible client pointed at Ollama for local LLM extraction
+      api_key: ${OPENAI_API_KEY:ollama}
+      api_url: ${OPENAI_API_URL:http://ollama:11434/v1}
+
+embedder:
+  provider: "openai"                       # OpenAI-compatible client, pointed at Ollama
+  model: ${EMBEDDER_MODEL:nomic-embed-text}
+  dimensions: 768                          # nomic-embed-text = 768 dims (not 1536)
+  providers:
+    openai:
+      api_key: ${OPENAI_API_KEY:ollama}    # Ollama ignores the key; dummy value
+      api_url: ${OPENAI_API_URL:http://ollama:11434/v1}
+
+database:
+  provider: "falkordb"
+  providers:
+    falkordb:
+      uri: ${FALKORDB_URI:redis://falkordb:6379}
+      password: ${FALKORDB_PASSWORD:}
+      database: ${FALKORDB_DATABASE:extrahop}
+
+graphiti:
+  group_id: ${GRAPHITI_GROUP_ID:main}      # per monitored environment (D3)
+  episode_id_prefix: ${EPISODE_ID_PREFIX:}
+  user_id: ${USER_ID:eh_investigator}
+
+  # ExtraHop NDR ontology (D4/D5). Entity types the extractor should prefer.
+  entity_types:
+    - name: "Device"
+      description: "A network device/asset observed by ExtraHop (host, server, workstation, appliance). Has a role and may belong to a network segment."
+    - name: "Identity"
+      description: "Any authenticating actor: AD/Kerberos user, service account, admin/privileged account, cloud/federated identity (Entra ID, Okta, IAM), local machine account, non-human credential (API key, token, service principal), or a non-human tool/agent operating in the environment such as a vulnerability scanner (e.g. Tenable, Nessus)."
+    - name: "Endpoint"
+      description: "An external or remote IP address / host a device communicates with (peer, C2, internet endpoint), including the CDN or cloud/hosting infrastructure fronting it (e.g. Cloudflare, Amazon CloudFront)."
+    - name: "NetworkSegment"
+      description: "A VLAN, subnet, or zone (e.g. PCI, DMZ, internal) that devices belong to."
+    - name: "DetectionType"
+      description: "A category/kind of ExtraHop detection (e.g. 'Lateral Movement', 'C2 Beaconing', 'Data Exfiltration')."
+    - name: "Detection"
+      description: "A specific ExtraHop detection instance, with a risk score, time, and involved offender/victim devices or identities."
+    - name: "Investigation"
+      description: "An investigation performed in this tool, concluding with a disposition."
+    - name: "Analyst"
+      description: "A human security analyst operating this tool (distinct from Identity, which is observed in the monitored environment)."
+    - name: "Disposition"
+      description: "The verdict of an investigation: malicious, benign, false-positive, or benign-authorized."
+    - name: "MitreTechnique"
+      description: "A MITRE ATT&CK tactic or technique associated with a detection."
+    - name: "IOC"
+      description: "An indicator of compromise: a malicious or abused domain, file hash, IP, URL/URI, or external service/model API abused for command-and-control (e.g. an LLM inference API used to generate attack commands)."
+    - name: "Service"
+      description: "A network service/application/protocol (e.g. SMB, LDAP, HTTPS, RDP)."
+    - name: "Group"
+      description: "An AD or IdP group that identities belong to."
+
+  # Documentation-only edge (fact) types to steer relationship extraction.
+  edge_types:
+    - name: "AuthenticatedTo"
+      description: "An identity authenticated to / logged in on a device (track over time for lateral-movement signals)."
+    - name: "InvolvedIn"
+      description: "A device or identity was the offender or victim in a detection."
+    - name: "MemberOf"
+      description: "A device belongs to a network segment, or an identity belongs to a group."
+    - name: "CommunicatesWith"
+      description: "A device communicates with an external endpoint."
+    - name: "ConcludedDisposition"
+      description: "An investigation concluded a disposition about a device, detection, or identity."
+    - name: "ClassifiedAs"
+      description: "A device or identity was characterized (e.g. domain controller, authorized scanner, backup server)."
+    - name: "MapsTo"
+      description: "A detection maps to a MITRE ATT&CK technique."
+    - name: "FlaggedAs"
+      description: "An endpoint or identity was flagged as an IOC."
+    - name: "Prefers"
+      description: "An analyst prefers a reporting or investigation practice."

@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://extrahop.local/eval/history.schema.json",
+  "title": "Eval run record",
+  "description": "One line of eval/reports/history.jsonl — the aggregate result of a single eval run. Append-only; the dashboard's trend view reads the whole file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id", "timestamp", "backend", "case_count", "aggregates", "gate"],
+  "properties": {
+    "run_id": { "type": "string", "description": "Filesystem-safe unique id; also the name of the per-run detail file (<run_id>.json)." },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "git_sha": { "type": "string" },
+    "skill_version": { "type": "string", "description": "Which agent/skill build produced this run (e.g. evidence-ladder@v3)." },
+    "label": { "type": "string", "description": "Short human label for the x-axis annotation on the trend chart." },
+    "backend": { "type": "string", "enum": ["pi", "claude"] },
+    "model": { "type": "string" },
+    "case_count": { "type": "integer", "minimum": 1 },
+    "aggregates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["false_close_rate", "verdict_accuracy", "ladder_adherence"],
+      "properties": {
+        "false_close_rate": { "type": "number", "minimum": 0, "maximum": 1, "description": "Fraction of expected-malicious cases predicted non-malicious. The headline safety metric." },
+        "verdict_accuracy": { "type": "number", "minimum": 0, "maximum": 1 },
+        "ladder_adherence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "attack_accuracy": { "type": "number", "minimum": 0, "maximum": 1 },
+        "groundedness": { "type": "number", "minimum": 0, "maximum": 1, "description": "LLM-judge score; advisory, not gating." },
+        "cost_per_case_usd": { "type": "number", "minimum": 0 },
+        "tokens_per_case": { "type": "number", "minimum": 0 },
+        "wallclock_per_case_s": { "type": "number", "minimum": 0 },
+        "confusion": {
+          "type": "object",
+          "description": "Rows = expected disposition, cols = predicted disposition, values = counts.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "calibration": {
+          "type": "array",
+          "description": "Reliability curve: accuracy within each stated-confidence bucket.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["bucket", "accuracy", "n"],
+            "properties": {
+              "bucket": { "type": "string", "enum": ["low", "medium", "high"] },
+              "accuracy": { "type": "number", "minimum": 0, "maximum": 1 },
+              "n": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "adherence": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Fractions of cases exhibiting each ladder behavior (independent rates, need not sum to 1).",
+          "properties": {
+            "entered_right_rung": { "type": "number", "minimum": 0, "maximum": 1 },
+            "false_climb": { "type": "number", "minimum": 0, "maximum": 1, "description": "Reached a deeper rung than the question needed." },
+            "under_investigated": { "type": "number", "minimum": 0, "maximum": 1, "description": "Stopped below the rung the case required." },
+            "under_corroborated": { "type": "number", "minimum": 0, "maximum": 1, "description": "Verdict on a behavioral/IDS trigger without record corroboration." }
+          }
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass", "false_close_target"],
+      "properties": {
+        "pass": { "type": "boolean" },
+        "false_close_target": { "type": "number", "minimum": 0, "maximum": 1 },
+        "reasons": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

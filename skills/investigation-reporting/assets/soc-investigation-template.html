@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  ============================================================================
+  SOC SECURITY INVESTIGATION REPORT — TEMPLATE (worked example)
+  ----------------------------------------------------------------------------
+  This file is a populated EXAMPLE. Copy it to the report location and edit in
+  place. Replace ALL example content with the investigation's facts. The hosts,
+  users, IDs, and IPs here are invented (WKSTN-4471, j.lawson@CORP.EXAMPLE,
+  dc01.corp.example, detection 7421146) — never ship them in a real report.
+
+  Design intent:
+    - ExtraHop brand: Sapphire→Plum gradient quarantined to the masthead;
+      white canvas; Source Sans 3; color below the masthead carries MEANING only
+      (severity, confidence, observed-vs-assessed, entity role, bucket, urgency).
+    - Verdict card overlaps the masthead so disposition/confidence/severity is
+      the first thing read. Keep it above the fold.
+    - US Letter / print-to-PDF friendly. Page breaks planned via break-inside.
+    - Each finding opens with a bold one-line answer (.answer) so the report is
+      scannable from Q-lines and answer-lines alone.
+
+  STATUS TOKENS (drive all status color through these — never invent colors):
+    Severity / disposition accent ..... data-sev="critical|high|medium|low|info"
+    Confidence ........................ data-conf="high|moderate|low"
+    Evidence tag ...................... <span class="tag obs">Observed</span>
+                                        <span class="tag ass">Assessed</span>
+    MITRE technique ................... <span class="tag mitre">T1558.003</span>
+    Entity role ....................... data-role="offender|target|infra|identity|external"
+    Limits bucket ..................... data-kind="clean|unknown|blind"
+    Next-step urgency ................. data-urgency="now|soon|tune"
+  ============================================================================
+-->
+<title>Security Investigation — Suspected Kerberoasting from WKSTN-4471</title>
+<link rel="stylesheet" href="/vendor/source-sans-3/source-sans-3.css">
+<style>
+:root{
+  --sapphire:#261F63; --plum:#7F2854; --accent:#00AAEF;
+  --gradient:linear-gradient(135deg,#261F63,#7F2854);
+  --ink:#1A1A22; --ink-soft:#54555F; --ink-faint:#85868F;
+  --rule:#D9D8E0; --rule-soft:#ECEBF1; --paper:#FFFFFF; --panel:#FAFAFC;
+  --card:#FFFFFF; --canvas:#E9E9EE; --code-ink:#2C2C38; --sheet-shadow:0 2px 30px rgba(20,18,40,.14); --lift-shadow:0 10px 28px rgba(20,18,40,.16);
+  --sapphire-chip:#ECEBF6;
+  --critical:#9E1B1B; --high:#C0531C; --medium:#A36F0B; --low:#3F7A4F; --info:#586173;
+  --critical-bg:#FBEDED; --high-bg:#FCF0E8; --medium-bg:#FBF4E2; --low-bg:#ECF5EE; --info-bg:#EEF0F3;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --maxw:7.5in;
+}
+html[data-report-theme="dark"]{
+  color-scheme:dark;
+  --sapphire:#B3A8F2; --plum:#D171A0; --accent:#37C0F5;
+  --ink:#ECECF2; --ink-soft:#C4C3CF; --ink-faint:#9B9BA6;
+  --rule:#3A3947; --rule-soft:#2E2D3A; --paper:#15141C; --panel:#1F1E28;
+  --card:#232230; --canvas:#0F0E14; --code-ink:#D7D6E4; --sheet-shadow:0 2px 30px rgba(0,0,0,.45); --lift-shadow:0 10px 28px rgba(0,0,0,.38);
+  --sapphire-chip:#2A2740;
+  --critical:#FF8585; --high:#FF9A5C; --medium:#F2C356; --low:#67D391; --info:#A6A6B4;
+  --critical-bg:#3A1D22; --high-bg:#392616; --medium-bg:#342B16; --low-bg:#183427; --info-bg:#2A2A35;
+}
+@media screen and (prefers-color-scheme:dark){
+  html:not([data-report-theme="light"]){
+    color-scheme:dark;
+    --sapphire:#B3A8F2; --plum:#D171A0; --accent:#37C0F5;
+    --ink:#ECECF2; --ink-soft:#C4C3CF; --ink-faint:#9B9BA6;
+    --rule:#3A3947; --rule-soft:#2E2D3A; --paper:#15141C; --panel:#1F1E28;
+    --card:#232230; --canvas:#0F0E14; --code-ink:#D7D6E4; --sheet-shadow:0 2px 30px rgba(0,0,0,.45); --lift-shadow:0 10px 28px rgba(0,0,0,.38);
+    --sapphire-chip:#2A2740;
+    --critical:#FF8585; --high:#FF9A5C; --medium:#F2C356; --low:#67D391; --info:#A6A6B4;
+    --critical-bg:#3A1D22; --high-bg:#392616; --medium-bg:#342B16; --low-bg:#183427; --info-bg:#2A2A35;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{font-family:"Source Sans 3",Arial,Helvetica,sans-serif;color:var(--ink);background:var(--canvas);margin:0;font-size:10.5pt;line-height:1.5;-webkit-font-smoothing:antialiased}
+.sheet{background:var(--paper);max-width:var(--maxw);margin:28px auto;padding:0 0 .42in;box-shadow:var(--sheet-shadow)}
+p{margin:0 0 .55em}
+a{color:var(--accent);text-decoration:none}
+strong,b{font-weight:700}
+code,.mono{font-family:var(--mono);font-size:.84em}
+code{background:var(--rule-soft);padding:.06em .35em;border-radius:3px;color:var(--code-ink)}
+ul{margin:.2em 0 .4em;padding-left:1.15em}
+li{margin:0 0 .25em}
+.small{font-size:9pt;color:var(--ink-soft)}
+
+/* ---------- Masthead (the one gradient moment) ---------- */
+.masthead{background:var(--gradient);color:#fff;padding:.4in .62in .58in}
+.brandbar{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.brandbar .logo{width:142px;height:auto;display:block}
+.classif{font-size:7.5pt;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#fff;border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.10);padding:3px 10px;border-radius:99px;white-space:nowrap}
+.doc-kind{font-size:8.5pt;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.66);margin:.32in 0 7px}
+h1.report-title{font-size:23pt;line-height:1.1;font-weight:900;letter-spacing:-.012em;color:#fff;margin:0 0 .18em}
+.subtitle{font-size:12pt;font-weight:300;color:rgba(255,255,255,.85);margin:0;max-width:6.2in}
+.meta-row{display:flex;flex-wrap:wrap;gap:5px 26px;margin-top:18px;padding-top:12px;border-top:1px solid rgba(255,255,255,.22);font-size:8.7pt;color:rgba(255,255,255,.62)}
+.meta-row b{color:#fff;font-weight:600}
+
+/* ---------- Verdict card (overlaps masthead) ---------- */
+.verdict{margin:-.36in .62in 0;background:var(--card);border:1px solid var(--rule);border-radius:10px;box-shadow:var(--lift-shadow);overflow:hidden;display:grid;grid-template-columns:7px 1fr;break-inside:avoid;position:relative}
+.verdict .accent{background:var(--info)}
+.verdict[data-sev="critical"] .accent{background:var(--critical)}
+.verdict[data-sev="high"] .accent{background:var(--high)}
+.verdict[data-sev="medium"] .accent{background:var(--medium)}
+.verdict[data-sev="low"] .accent{background:var(--low)}
+.verdict-grid{display:grid;grid-template-columns:1.15fr 1fr 1fr}
+.vcell{padding:15px 18px 13px;border-right:1px solid var(--rule-soft)}
+.vcell:last-child{border-right:0}
+.vlabel{font-size:7.8pt;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:6px}
+.vvalue{font-size:15pt;font-weight:800;line-height:1.05;color:var(--ink)}
+.vnote{font-size:8.5pt;color:var(--ink-faint);margin-top:5px;line-height:1.35}
+.status-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;background:var(--info)}
+.verdict[data-sev="critical"] .status-dot{background:var(--critical)}
+.verdict[data-sev="high"] .status-dot{background:var(--high)}
+.verdict[data-sev="medium"] .status-dot{background:var(--medium)}
+.verdict[data-sev="low"] .status-dot{background:var(--low)}
+.sev-pill{display:inline-block;font-size:11.5pt;font-weight:800;padding:1px 11px;border-radius:99px}
+.verdict[data-sev="critical"] .sev-pill{color:var(--critical);background:var(--critical-bg)}
+.verdict[data-sev="high"] .sev-pill{color:var(--high);background:var(--high-bg)}
+.verdict[data-sev="medium"] .sev-pill{color:var(--medium);background:var(--medium-bg)}
+.verdict[data-sev="low"] .sev-pill{color:var(--low);background:var(--low-bg)}
+.verdict[data-sev="info"] .sev-pill{color:var(--info);background:var(--info-bg)}
+.confmeter{display:inline-flex;gap:3px;margin-top:8px}
+.confmeter span{width:24px;height:6px;border-radius:99px;background:var(--rule)}
+.vcell[data-conf="low"] .confmeter span:nth-child(-n+1),
+.vcell[data-conf="moderate"] .confmeter span:nth-child(-n+2),
+.vcell[data-conf="high"] .confmeter span:nth-child(-n+3){background:var(--sapphire)}
+
+/* ---------- Evidence-ladder strip (depth reached + detection source) ---------- */
+.ladder-strip{margin:.16in .62in 0;display:flex;flex-wrap:wrap;gap:9px 28px;align-items:center;padding:9px 15px;border:1px solid var(--rule);border-radius:8px;background:var(--panel);break-inside:avoid}
+.ls-group{display:flex;align-items:center;gap:9px}
+.ls-label{font-size:7.6pt;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-faint)}
+.rung{position:relative;font-size:8.6pt;font-weight:700;color:var(--ink-faint);background:var(--card);border:1px solid var(--rule);border-radius:99px;padding:2px 11px}
+.rung:not(:last-child){margin-right:15px}
+.rung:not(:last-child)::after{content:"\203A";position:absolute;right:-13px;top:50%;transform:translateY(-50%);color:var(--ink-faint);font-weight:800}
+.rung.reached{color:#fff;background:var(--sapphire);border-color:var(--sapphire)}
+.src-pill{font-size:8.6pt;font-weight:700;color:var(--sapphire);background:var(--sapphire-chip);border-radius:99px;padding:2px 11px}
+
+/* ---------- Sections ---------- */
+section{padding:.18in .62in 0}
+.sec-head{display:flex;align-items:center;gap:11px;margin:.65em 0 .55em;break-after:avoid}
+.sec-head::after{content:"";flex:1;height:1px;background:var(--rule-soft)}
+.sec-num{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:21px;padding:0 10px;border-radius:99px;background:var(--sapphire);color:#fff;font-size:8.5pt;font-weight:700;letter-spacing:.04em}
+.sec-head h2{font-size:13.5pt;font-weight:800;color:var(--sapphire);margin:0;letter-spacing:-.005em;white-space:nowrap}
+.sec-sub{font-size:9.3pt;color:var(--ink-faint);margin:-.15em 0 .8em 41px;break-after:avoid}
+
+/* ---------- Analyst summary ---------- */
+.summary{margin-top:.3em;border:1px solid var(--rule);border-left:4px solid var(--sapphire);background:var(--panel);padding:14px 18px;border-radius:0 8px 8px 0;font-size:10.8pt;line-height:1.58;break-inside:avoid}
+
+/* ---------- Key numbers ---------- */
+.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:.45em 0 .2em}
+.metric{border:1px solid var(--rule);border-top:3px solid var(--sapphire);border-radius:7px;padding:10px 11px 9px;background:var(--card);break-inside:avoid}
+.metric .mval{font-size:17pt;font-weight:900;color:var(--sapphire);line-height:1;letter-spacing:-.01em}
+.metric .mlabel{font-size:7.8pt;color:var(--ink-faint);text-transform:uppercase;font-weight:800;letter-spacing:.09em;margin-top:5px}
+.metric .mnote{font-size:8.5pt;color:var(--ink-soft);margin-top:2px;line-height:1.35}
+
+/* ---------- Entities ---------- */
+.entity-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.entity{border:1px solid var(--rule);border-left:4px solid var(--info);border-radius:0 8px 8px 0;padding:11px 14px;background:var(--card);break-inside:avoid}
+.entity[data-role="offender"]{border-left-color:var(--critical)}
+.entity[data-role="target"]{border-left-color:var(--sapphire)}
+.entity[data-role="infra"]{border-left-color:var(--high)}
+.entity[data-role="identity"]{border-left-color:var(--medium)}
+.entity[data-role="external"]{border-left-color:var(--info)}
+.ename{font-weight:700;font-size:10.5pt;line-height:1.2}
+.eip{font-family:var(--mono);font-size:8.3pt;color:var(--ink-soft);margin-top:2px}
+.erole{font-size:9pt;color:var(--ink-soft);margin-top:5px;line-height:1.4}
+.ecrit{display:inline-block;margin-top:7px;font-size:7.5pt;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:2px 8px;border-radius:99px;background:var(--rule-soft);color:var(--ink-soft)}
+.entity[data-role="offender"] .ecrit{background:var(--critical-bg);color:var(--critical)}
+.entity[data-role="target"] .ecrit{background:var(--sapphire-chip);color:var(--sapphire)}
+.entity[data-role="infra"] .ecrit{background:var(--high-bg);color:var(--high)}
+.entity[data-role="identity"] .ecrit{background:var(--medium-bg);color:var(--medium)}
+
+/* ---------- Attack-chain flow ---------- */
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;align-items:stretch;margin:.25em 0 .85em}
+.flow-node{border:1px solid var(--rule);border-radius:8px;padding:9px 10px;background:var(--panel);position:relative;break-inside:avoid}
+.flow-node:not(:last-child)::after{content:"›";position:absolute;right:-9px;top:50%;transform:translateY(-50%);color:var(--ink-faint);font-weight:800;font-size:12pt;line-height:1}
+.flow-node .stage{font-size:7.3pt;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-faint)}
+.flow-node .name{font-weight:800;font-size:9.6pt;line-height:1.15;margin-top:3px}
+.flow-node .state{font-size:8.3pt;color:var(--ink-soft);margin-top:5px;line-height:1.35}
+.flow-node[data-sev="critical"]{border-color:var(--critical);background:var(--critical-bg)}
+.flow-node[data-sev="high"]{border-color:var(--high);background:var(--high-bg)}
+.flow-node[data-sev="medium"]{border-color:var(--medium);background:var(--medium-bg)}
+.flow-node[data-sev="low"]{border-color:var(--low);background:var(--low-bg)}
+
+/* ---------- Timeline ---------- */
+.timeline{margin-top:.2em}
+.tl-item{display:grid;grid-template-columns:118px 28px 1fr;padding:0 0 15px;break-inside:avoid}
+.tl-item:last-child{padding-bottom:2px}
+.tl-time{font-family:var(--mono);font-size:8.3pt;color:var(--ink-soft);text-align:right;padding-right:14px;padding-top:1px;line-height:1.4}
+.tl-time .d{color:var(--ink-faint)}
+.tl-rail{position:relative;display:flex;justify-content:center}
+.tl-rail::before{content:"";position:absolute;top:4px;bottom:-15px;width:2px;background:var(--rule-soft)}
+.tl-item:last-child .tl-rail::before{display:none}
+.tl-dot{position:relative;z-index:1;width:13px;height:13px;border-radius:50%;background:var(--card);border:3.5px solid var(--info);margin-top:2px}
+.tl-item[data-sev="critical"] .tl-dot{border-color:var(--critical)}
+.tl-item[data-sev="high"] .tl-dot{border-color:var(--high)}
+.tl-item[data-sev="medium"] .tl-dot{border-color:var(--medium)}
+.tl-item[data-sev="low"] .tl-dot{border-color:var(--low)}
+.tl-body{padding-left:7px}
+.tl-head{font-weight:700;font-size:10pt}
+.tl-id{font-family:var(--mono);font-size:7.6pt;font-weight:600;color:var(--sapphire);background:var(--sapphire-chip);padding:1px 6px;border-radius:4px;margin-left:5px;vertical-align:1px}
+.tl-body p{font-size:9.4pt;color:var(--ink-soft);margin:.2em 0 0;line-height:1.45}
+
+/* ---------- Findings ---------- */
+.finding{border:1px solid var(--rule);border-left:4px solid var(--sapphire);border-radius:0 8px 8px 0;padding:12px 15px;margin:11px 0;break-inside:avoid;background:var(--card)}
+.finding .q{font-weight:800;color:var(--sapphire);font-size:11.3pt;line-height:1.3;margin-bottom:2px}
+.finding .answer{font-weight:700;font-size:10.3pt;color:var(--ink);margin:0 0 .35em}
+.finding .why{font-size:8.8pt;color:var(--ink-faint);margin-bottom:9px}
+.finding p{font-size:9.7pt;line-height:1.5}
+.tag{display:inline-block;font-size:7.4pt;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:99px;margin-right:6px;vertical-align:1px}
+.tag.obs{background:var(--sapphire-chip);color:var(--sapphire)}
+.tag.ass{border:1px solid var(--medium);color:var(--medium);background:var(--card)}
+.tag.mitre{border:1px solid var(--rule);color:var(--ink-soft);background:var(--panel);text-transform:none;letter-spacing:.02em}
+.evref{font-family:var(--mono);font-size:8.4pt;font-weight:600}
+.fmeta{margin-top:9px;padding-top:8px;border-top:1px solid var(--rule-soft);font-size:8.6pt;color:var(--ink-faint)}
+.fmeta b{color:var(--ink-soft)}
+
+/* ---------- Evidence table ---------- */
+table{width:100%;border-collapse:collapse;font-size:8.8pt}
+th{background:var(--sapphire);color:#fff;text-align:left;padding:7px 9px;font-weight:700;font-size:8.2pt;letter-spacing:.05em;text-transform:uppercase}
+td{border-bottom:1px solid var(--rule-soft);padding:7px 9px;vertical-align:top;overflow-wrap:anywhere}
+tr:nth-child(even) td{background:var(--panel)}
+td.mono,td .mono{word-break:break-word}
+.eid{display:inline-block;font-family:var(--mono);font-size:8pt;font-weight:700;color:var(--sapphire);background:var(--sapphire-chip);padding:1px 7px;border-radius:4px}
+
+/* ---------- Limits buckets ---------- */
+.bucket{border:1px solid var(--rule);border-left-width:4px;border-radius:0 8px 8px 0;padding:10px 14px;margin:9px 0;break-inside:avoid;background:var(--card)}
+.bucket h3{font-size:10.3pt;margin:0 0 5px;color:var(--ink);display:flex;align-items:center;gap:8px}
+.bucket h3::before{content:"";flex:none;width:9px;height:9px;border-radius:50%;background:var(--info)}
+.bucket[data-kind="clean"]{border-left-color:var(--low)}
+.bucket[data-kind="clean"] h3::before{background:var(--low)}
+.bucket[data-kind="unknown"]{border-left-color:var(--medium)}
+.bucket[data-kind="unknown"] h3::before{background:var(--medium)}
+.bucket[data-kind="blind"]{border-left-color:var(--info)}
+.bucket ul{margin:.1em 0 .2em}
+.bucket li{font-size:9.5pt;color:var(--ink-soft)}
+
+/* ---------- Next steps ---------- */
+.step{display:grid;grid-template-columns:auto 1fr;gap:12px;border:1px solid var(--rule);border-radius:8px;padding:11px 13px;margin:9px 0;break-inside:avoid;align-items:start;background:var(--card)}
+.step .upill{font-size:7.4pt;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:3px 9px;border-radius:99px;white-space:nowrap;margin-top:2px;text-align:center;align-self:start}
+.step[data-urgency="now"] .upill{background:var(--critical-bg);color:var(--critical)}
+.step[data-urgency="soon"] .upill{background:var(--medium-bg);color:var(--medium)}
+.step[data-urgency="tune"] .upill{background:var(--info-bg);color:var(--info)}
+.step .body{font-size:9.5pt;line-height:1.5}
+.step .body b{font-size:10pt}
+
+/* ---------- Footer ---------- */
+.report-footer{margin:.45in .62in 0}
+.report-footer .gradient-rule{height:2px;border-radius:99px;background:var(--gradient);margin-bottom:10px}
+.report-footer .cols{display:flex;justify-content:space-between;font-size:8pt;color:var(--ink-faint)}
+
+/* ---------- Print ---------- */
+@page{size:letter;margin:.4in}
+@media print{
+  html{
+    color-scheme:light;
+    --sapphire:#261F63; --plum:#7F2854; --accent:#00AAEF;
+    --ink:#1A1A22; --ink-soft:#54555F; --ink-faint:#85868F;
+    --rule:#D9D8E0; --rule-soft:#ECEBF1; --paper:#FFFFFF; --panel:#FAFAFC;
+    --card:#FFFFFF; --canvas:#FFFFFF; --code-ink:#2C2C38; --sheet-shadow:none; --lift-shadow:none;
+    --sapphire-chip:#ECEBF6;
+    --critical:#9E1B1B; --high:#C0531C; --medium:#A36F0B; --low:#3F7A4F; --info:#586173;
+    --critical-bg:#FBEDED; --high-bg:#FCF0E8; --medium-bg:#FBF4E2; --low-bg:#ECF5EE; --info-bg:#EEF0F3;
+  }
+  body{background:#fff}
+  .sheet{box-shadow:none;margin:0;max-width:none}
+  .verdict{box-shadow:none}
+}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<!-- 1. TITLE / HEADER -->
+<header class="masthead">
+  <div class="brandbar">
+    <svg class="logo" role="img" aria-label="ExtraHop" viewBox="0 0 223.8 22.1" xmlns="http://www.w3.org/2000/svg"><g fill="#FFFFFF"><path d="M0,0h15.9v5.1h-10v3.4h8.2v4.8H5.8V17h10.7v5.1H0V0z M26.9,10.8L19.4,0h7.2l3.7,5.7L33.8,0h6.5l-6.8,10.2 L41.8,22h-7.3L30,15.3l-4.3,6.8h-6.4L26.9,10.8z M49.3,5.1h-6.8V0h19.4v5.1h-6.7V22h-5.9V5.1z M66,0h9.1c1.2,0,2.3,0.2,3.2,0.5 c1,0.3,1.8,0.8,2.5,1.4s1.2,1.4,1.6,2.3S83,6.1,83,7.3c0,1.5-0.3,2.7-1,3.8c-0.6,1.1-1.5,1.9-2.5,2.6l4.7,8.5h-6.3l-3.7-7.5h-2.4 v7.5H66V0z M74.5,10c0.8,0,1.4-0.2,1.9-0.7s0.7-1.1,0.7-1.9s-0.2-1.5-0.7-2s-1.1-0.7-1.9-0.7h-2.8V10H74.5z M94.2,0h6.7l7.8,22 h-6.3l-1.4-4.6h-7.4L92.1,22h-6L94.2,0z M99.8,13.2l-2.4-8.1l-2.5,8.1H99.8z M112.7,0h5.8v8.1h13V0h5.8v22h-5.8v-8.6h-13V22h-5.8V0 z M153.2,22c-1.6,0-3-0.3-4.4-0.8c-1.3-0.6-2.5-1.3-3.5-2.3s-1.7-2.1-2.3-3.5c-0.5-1.4-0.8-2.8-0.8-4.4s0.3-3.1,0.8-4.4 c0.5-1.4,1.3-2.5,2.3-3.5s2.1-1.7,3.5-2.3c1.3-0.5,2.8-0.8,4.4-0.8H166c1.6,0,3,0.3,4.4,0.8c1.3,0.6,2.5,1.3,3.5,2.3 s1.7,2.1,2.3,3.5C176.7,8,177,9.4,177,11s-0.3,3.1-0.8,4.4c-0.5,1.4-1.3,2.5-2.3,3.5s-2.1,1.7-3.5,2.3c-1.3,0.5-2.8,0.8-4.4,0.8 C166,22,153.2,22,153.2,22z M166.1,16.8c0.8,0,1.5-0.2,2.2-0.5c0.6-0.3,1.2-0.7,1.6-1.2c0.4-0.5,0.8-1.1,1-1.9 c0.2-0.7,0.3-1.5,0.3-2.3s-0.1-1.5-0.3-2.3c-0.2-0.7-0.6-1.3-1-1.9c-0.4-0.5-1-0.9-1.6-1.2S166.9,5,166.1,5h-12.8 c-0.8,0-1.5,0.2-2.2,0.5c-0.6,0.3-1.2,0.7-1.6,1.2c-0.4,0.5-0.8,1.1-1,1.9c-0.2,0.7-0.3,1.5-0.3,2.3s0.1,1.5,0.3,2.3 c0.2,0.7,0.6,1.3,1,1.9c0.4,0.5,1,0.9,1.6,1.2c0.6,0.3,1.4,0.5,2.2,0.5H166.1z M181.9,0h25.2c1.2,0,2.3,0.2,3.2,0.5 c1,0.3,1.8,0.8,2.5,1.4s1.2,1.4,1.6,2.3c0.4,0.9,0.6,2,0.6,3.2c0,1.1-0.2,2.1-0.6,3.1c-0.4,0.9-0.9,1.7-1.6,2.3 c-0.7,0.7-1.5,1.1-2.4,1.5c-0.9,0.3-2,0.5-3.1,0.5h-19.7v7.3h-5.7V0z M206.7,10.1c0.8,0,1.4-0.3,1.9-0.8s0.7-1.2,0.7-1.9 c0-0.8-0.2-1.5-0.7-2c-0.4-0.5-1.1-0.8-1.9-0.8h-19v5.5H206.7z"/><path d="M222,3.8c-0.3,0-0.6-0.1-0.9-0.2c-0.3-0.2-0.5-0.4-0.7-0.7s-0.2-0.6-0.2-1s0.1-0.7,0.2-1c0.2-0.3,0.4-0.5,0.7-0.7 S221.7,0,222,0c0.3,0,0.6,0.1,0.9,0.2c0.3,0.2,0.5,0.4,0.7,0.7s0.2,0.6,0.2,1s-0.1,0.7-0.2,1c-0.2,0.3-0.4,0.5-0.7,0.7 C222.6,3.8,222.3,3.8,222,3.8z M222,3.5c0.3,0,0.5-0.1,0.7-0.2c0.2-0.1,0.4-0.3,0.5-0.6c0.1-0.2,0.2-0.5,0.2-0.8s-0.1-0.6-0.2-0.8 c-0.1-0.2-0.3-0.4-0.5-0.6c-0.2-0.1-0.5-0.2-0.7-0.2c-0.3,0-0.5,0.1-0.7,0.2s-0.4,0.3-0.5,0.6c-0.1,0.2-0.2,0.5-0.2,0.8 s0.1,0.6,0.2,0.8c0.1,0.2,0.3,0.4,0.5,0.6C221.5,3.4,221.7,3.5,222,3.5z M221.3,2.9v-2h0.7c0.2,0,0.4,0,0.5,0.1s0.2,0.3,0.2,0.5 c0,0.1,0,0.2-0.1,0.3S222.4,2,222.3,2l0.4,0.8h-0.4L222,2.1h-0.4v0.7L221.3,2.9L221.3,2.9z M221.7,1.9h0.3c0.1,0,0.2,0,0.3-0.1 s0.1-0.1,0.1-0.2s0-0.2-0.1-0.2c-0.1-0.1-0.2-0.1-0.3-0.1h-0.3V1.9z"/></g></svg>
+    <div class="classif">TLP:AMBER · Internal</div>
+  </div>
+  <div class="doc-kind">SOC Investigation Report · Detection 7421146 · Credential Access</div>
+  <h1 class="report-title">Suspected Kerberoasting from WKSTN-4471</h1>
+  <p class="subtitle">Anomalous RC4 service-ticket requests followed by SMB sessions to a domain controller</p>
+  <div class="meta-row">
+    <span><b>Collected:</b> 2026-06-10T21:42:11Z</span>
+    <span><b>Window:</b> 2026-06-10T14:00:00Z–21:30:00Z</span>
+    <span><b>Prepared by:</b> ExtraHop Investigation Agent</span>
+    <span><b>Data sources:</b> ExtraHop RevealX (detections, records, metrics)</span>
+  </div>
+</header>
+
+<!-- 2. VERDICT -->
+<div class="verdict" data-sev="high">
+  <div class="accent"></div>
+  <div class="verdict-grid">
+    <div class="vcell">
+      <div class="vlabel">Disposition</div>
+      <div class="vvalue"><span class="status-dot"></span>True Positive</div>
+      <div class="vnote">Real unauthorized credential-access activity</div>
+    </div>
+    <div class="vcell" data-conf="high">
+      <div class="vlabel">Confidence</div>
+      <div class="vvalue">High</div>
+      <div class="confmeter"><span></span><span></span><span></span></div>
+    </div>
+    <div class="vcell">
+      <div class="vlabel">Severity</div>
+      <div class="vvalue"><span class="sev-pill">High</span></div>
+      <div class="vnote">Service-account hashes exposed; no confirmed lateral movement</div>
+    </div>
+  </div>
+</div>
+
+<!-- LADDER STRIP — evidence depth + detection source (mirror evidence/verdict.json).
+     Mark the rungs you actually reached with class "reached"; leave the rest muted.
+     Detection source: "IDS signature" when the detection's categories include sec.ids
+     or its type is ids_* (properties.sid present); otherwise "Behavioral" — rule/ML/ARD
+     are NOT distinguishable from the API, so corroborate with records before trusting. -->
+<div class="ladder-strip">
+  <div class="ls-group">
+    <span class="ls-label">Evidence depth</span>
+    <span class="rung reached">Metrics</span>
+    <span class="rung reached">Records</span>
+    <span class="rung">Packets</span>
+  </div>
+  <div class="ls-group">
+    <span class="ls-label">Detection source</span>
+    <span class="src-pill">Behavioral · corroborated with records</span>
+  </div>
+</div>
+
+<!-- 3. ANALYST SUMMARY -->
+<section>
+  <div class="sec-head"><span class="sec-num">1</span><h2>Analyst Summary</h2></div>
+  <div class="summary">
+    Workstation <b>WKSTN-4471</b> (10.20.31.144), under the interactive session of
+    <b>j.lawson@CORP.EXAMPLE</b>, requested <b>23 Kerberos service tickets in 41 seconds</b>
+    at 18:22Z, all downgraded to <b>RC4-HMAC</b> and spanning 19 distinct service accounts —
+    behavior consistent with Kerberoasting, not normal application activity. The host then
+    opened SMB sessions to domain controller <b>dc01.corp.example</b> and read
+    <code>SYSVOL</code> policy files. No subsequent authentication from the roasted accounts
+    and no outbound exfiltration was observed in the window. Treat the 19 service-account
+    credentials as exposed: isolate WKSTN-4471, reset the affected accounts, and review
+    j.lawson's session for compromise.
+  </div>
+</section>
+
+<!-- 4. KEY NUMBERS (optional; delete if not useful) -->
+<section>
+  <div class="metric-grid">
+    <div class="metric"><div class="mval">23</div><div class="mlabel">TGS Requests</div><div class="mnote">in 41 seconds at 18:22Z</div></div>
+    <div class="metric"><div class="mval">19</div><div class="mlabel">Service Accounts</div><div class="mnote">distinct SPNs requested</div></div>
+    <div class="metric"><div class="mval">100%</div><div class="mlabel">RC4 Downgrade</div><div class="mnote">vs. 0.4% host baseline</div></div>
+    <div class="metric"><div class="mval">0</div><div class="mlabel">Roasted Logons</div><div class="mnote">no use of exposed accounts seen</div></div>
+  </div>
+</section>
+
+<!-- 5. ENTITIES -->
+<section>
+  <div class="sec-head"><span class="sec-num">2</span><h2>Entities Involved</h2></div>
+  <div class="entity-grid">
+    <div class="entity" data-role="offender">
+      <div>
+        <div class="ename">WKSTN-4471</div>
+        <div class="eip">10.20.31.144 · finance VLAN · Windows 11</div>
+        <div class="erole">Source of the anomalous TGS burst and SYSVOL reads.</div>
+        <div class="ecrit">Patient Zero</div>
+      </div>
+    </div>
+    <div class="entity" data-role="identity">
+      <div>
+        <div class="ename">j.lawson@CORP.EXAMPLE</div>
+        <div class="eip">interactive session on WKSTN-4471 since 14:03Z</div>
+        <div class="erole">Account whose session issued the requests; compromise of the account or the host is undetermined.</div>
+        <div class="ecrit">Standard User</div>
+      </div>
+    </div>
+    <div class="entity" data-role="target">
+      <div>
+        <div class="ename">dc01.corp.example</div>
+        <div class="eip">10.20.1.10 · KDC + SYSVOL</div>
+        <div class="erole">Served the TGS requests and subsequent SMB reads.</div>
+        <div class="ecrit">Domain Controller · Crown Jewel</div>
+      </div>
+    </div>
+    <div class="entity" data-role="target">
+      <div>
+        <div class="ename">19 service accounts</div>
+        <div class="eip">svc-sql01, svc-backup, svc-web… (full list: E2)</div>
+        <div class="erole">SPNs whose RC4 tickets — and therefore crackable hashes — were obtained.</div>
+        <div class="ecrit">Credentials Exposed</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6. SCOPE AND TIMELINE -->
+<section>
+  <div class="sec-head"><span class="sec-num">3</span><h2>Scope and Timeline</h2></div>
+  <p class="sec-sub">Examined: Kerberos, SMB/CIFS, DNS, and HTTP records for 10.20.31.144 over the 7.5-hour window; detection history for all involved entities. All times UTC.</p>
+
+  <div class="flow">
+    <div class="flow-node" data-sev="info">
+      <div class="stage">Initial Access</div><div class="name">Not observed</div>
+      <div class="state">Session predates window</div>
+    </div>
+    <div class="flow-node" data-sev="medium">
+      <div class="stage">Discovery</div><div class="name">LDAP SPN queries</div>
+      <div class="state">18:21:33Z · T1087.002</div>
+    </div>
+    <div class="flow-node" data-sev="high">
+      <div class="stage">Credential Access</div><div class="name">Kerberoasting</div>
+      <div class="state">18:22:07Z · T1558.003</div>
+    </div>
+    <div class="flow-node" data-sev="medium">
+      <div class="stage">Collection</div><div class="name">SYSVOL reads</div>
+      <div class="state">18:25:41Z · T1039</div>
+    </div>
+    <div class="flow-node" data-sev="info">
+      <div class="stage">Exfiltration</div><div class="name">Not observed</div>
+      <div class="state">Checked and clean (§7)</div>
+    </div>
+  </div>
+
+  <div class="timeline">
+    <div class="tl-item" data-sev="info">
+      <div class="tl-time">14:03:12<br><span class="d">Jun 10</span></div>
+      <div class="tl-rail"><div class="tl-dot"></div></div>
+      <div class="tl-body"><div class="tl-head">Interactive session begins <span class="tl-id">E5</span></div>
+      <p>j.lawson authenticates to WKSTN-4471 (AES256, normal pattern for this user).</p></div>
+    </div>
+    <div class="tl-item" data-sev="medium">
+      <div class="tl-time">18:21:33<br><span class="d">Jun 10</span></div>
+      <div class="tl-rail"><div class="tl-dot"></div></div>
+      <div class="tl-body"><div class="tl-head">LDAP service-account enumeration <span class="tl-id">E4</span></div>
+      <p>Queries to dc01 filtering on <code>servicePrincipalName=*</code>; first such query from this host in 30 days.</p></div>
+    </div>
+    <div class="tl-item" data-sev="high">
+      <div class="tl-time">18:22:07<br><span class="d">Jun 10</span></div>
+      <div class="tl-rail"><div class="tl-dot"></div></div>
+      <div class="tl-body"><div class="tl-head">TGS burst — detection 7421146 fires <span class="tl-id">E1</span> <span class="tl-id">E2</span></div>
+      <p>23 TGS-REQs in 41s, all RC4-HMAC (etype 23), 19 distinct SPNs. Host baseline is AES with ~2 TGS/hour.</p></div>
+    </div>
+    <div class="tl-item" data-sev="medium">
+      <div class="tl-time">18:25:41<br><span class="d">Jun 10</span></div>
+      <div class="tl-rail"><div class="tl-dot"></div></div>
+      <div class="tl-body"><div class="tl-head">SMB sessions to dc01 <span class="tl-id">E3</span></div>
+      <p>Two SMB sessions reading <code>\\dc01\SYSVOL</code> policy files (214 KB). No writes, no admin shares.</p></div>
+    </div>
+    <div class="tl-item" data-sev="low">
+      <div class="tl-time">18:31–21:30<br><span class="d">Jun 10</span></div>
+      <div class="tl-rail"><div class="tl-dot"></div></div>
+      <div class="tl-body"><div class="tl-head">Quiet period <span class="tl-id">E6</span> <span class="tl-id">E7</span></div>
+      <p>No further Kerberos anomalies, no logons by the 19 accounts, no large or novel outbound transfers from the host.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 7. KEY QUESTIONS AND FINDINGS -->
+<section>
+  <div class="sec-head"><span class="sec-num">4</span><h2>Key Questions and Findings</h2></div>
+
+  <div class="finding">
+    <div class="q">Q1 — Is the TGS burst attacker tooling or an application misbehaving?</div>
+    <p class="answer">Attacker tooling. The pattern matches Kerberoasting, not application behavior.</p>
+    <div class="why">Why it mattered: bulk RC4 ticket requests are the signature of Kerberoasting, but monitoring suites and legacy apps can look similar.</div>
+    <p><span class="tag obs">Observed</span>23 TGS-REQs in 41s, every one explicitly requesting RC4-HMAC, against 19 distinct SPNs, from a host whose 30-day baseline is AES-only and ~2 TGS/hour (<a class="evref" href="#E1">E1</a>, <a class="evref" href="#E2">E2</a>).</p>
+    <p><span class="tag obs">Observed</span>The burst was immediately preceded by first-seen LDAP SPN enumeration from the same host (<a class="evref" href="#E4">E4</a>).</p>
+    <p><span class="tag ass">Assessed</span>The enumerate-then-request sequence, uniform etype downgrade, and machine-speed pacing indicate credential-theft tooling (e.g. Rubeus/Impacket), not application behavior.</p>
+    <div class="fmeta"><b>Confidence:</b> High · <span class="tag mitre">T1558.003</span><span class="tag mitre">T1087.002</span></div>
+  </div>
+
+  <div class="finding">
+    <div class="q">Q2 — Did the activity progress beyond credential access?</div>
+    <p class="answer">No use of the exposed credentials seen in the window — but offline cracking is invisible here.</p>
+    <div class="why">Why it mattered: severity hinges on whether exposed hashes were cracked and used.</div>
+    <p><span class="tag obs">Observed</span>SMB reads of SYSVOL policy files from dc01 at 18:25Z (<a class="evref" href="#E3">E3</a>) — consistent with GPP/credential hunting, read-only.</p>
+    <p><span class="tag obs">Observed</span>No authentication events by any of the 19 service accounts from any source through 21:30Z (<a class="evref" href="#E6">E6</a>); no admin-share access, no new-service installs, no anomalous outbound volume from the host (<a class="evref" href="#E7">E7</a>).</p>
+    <p><span class="tag ass">Assessed</span>The intrusion was caught in the credential-access stage; hashes are exposed for offline cracking but had not been used inside the monitored window.</p>
+    <div class="fmeta"><b>Confidence:</b> Moderate — offline cracking is invisible to network telemetry, and the window ends at 21:30Z · <span class="tag mitre">T1039</span></div>
+  </div>
+
+  <div class="finding">
+    <div class="q">Q3 — Is j.lawson acting deliberately, or is the account/host compromised?</div>
+    <p class="answer">Undetermined — network data cannot separate user from malware in the same session. This is the open question driving next steps.</p>
+    <div class="why">Why it mattered: determines response path — insider process vs. compromise containment.</div>
+    <p><span class="tag obs">Observed</span>The session began 14:03Z with this user's normal authentication pattern; the malicious sequence starts 4h19m later with no observed inbound remote-access session to the host in between (<a class="evref" href="#E5">E5</a>).</p>
+    <p><span class="tag ass">Assessed</span>Undetermined. Network data cannot distinguish the user at the keyboard from malware in their session. Endpoint telemetry is required (§7, blind spots).</p>
+    <div class="fmeta"><b>Confidence:</b> Low (deliberately — this is the open question driving next steps)</div>
+  </div>
+</section>
+
+<!-- 8. ALTERNATIVES CONSIDERED -->
+<section>
+  <div class="sec-head"><span class="sec-num">5</span><h2>Alternatives Considered</h2></div>
+  <p><b>Vulnerability scanner or pentest engagement.</b> Would explain SPN enumeration and RC4 requests. Ruled out: WKSTN-4471 is not in the scanner inventory, no engagement window was on file, and scanners announce via consistent user-agents and broader port behavior absent here. Kept ruled-out after checking with the asset owner was recommended (not yet confirmed — see §7).</p>
+  <p><b>Legacy application requiring RC4.</b> Would explain etype downgrade but not the burst across 19 unrelated SPNs, the first-seen LDAP enumeration, or the 30-day AES-only baseline. Ruled out.</p>
+  <p><b>Detection false positive.</b> The underlying records were pulled and manually verified (E2): the requests are real and uniform. Ruled out.</p>
+</section>
+
+<!-- 9. EVIDENCE SUMMARY -->
+<section>
+  <div class="sec-head"><span class="sec-num">6</span><h2>Evidence Summary</h2></div>
+  <p class="sec-sub">Every item reproducible from the workspace evidence files. Queries are exact excli-interface invocations.</p>
+  <table>
+    <tr><th style="width:42px">ID</th><th style="width:115px">Source</th><th>Query / tool call</th><th style="width:78px">Collected (UTC)</th><th style="width:32%">Result</th></tr>
+    <tr id="E1"><td><span class="eid">E1</span></td><td>RevealX detections</td><td class="mono">./excli-interface get_detection -json '{"id":7421146}'</td><td class="mono">21:33:02</td><td>Kerberoasting detection, riskScore 82 · <code>evidence/detections/detection-7421146.json</code></td></tr>
+    <tr id="E2"><td><span class="eid">E2</span></td><td>Kerberos records</td><td class="mono">./excli-interface search_records -json '{"types":["~kerberos_request"],"filter":{...client 10.20.31.144, etype 23...},"from":-28800000}'</td><td class="mono">21:35:18</td><td>23 TGS-REQs / 19 SPNs / 41s · <code>evidence/records/kerberos-tgs-burst.json</code></td></tr>
+    <tr id="E3"><td><span class="eid">E3</span></td><td>SMB records</td><td class="mono">./excli-interface search_records -json '{"types":["~cifs"],"filter":{...client 10.20.31.144, server 10.20.1.10...}}'</td><td class="mono">21:37:46</td><td>2 sessions, SYSVOL read-only, 214 KB · <code>evidence/records/smb-dc01-sessions.json</code></td></tr>
+    <tr id="E4"><td><span class="eid">E4</span></td><td>LDAP records</td><td class="mono">./excli-interface search_records -json '{"types":["~ldap"],"filter":{...servicePrincipalName...}}'</td><td class="mono">21:38:59</td><td>SPN wildcard queries 18:21:33Z, first in 30d · <code>evidence/records/ldap-spn-enum.json</code></td></tr>
+    <tr id="E5"><td><span class="eid">E5</span></td><td>Kerberos records</td><td class="mono">./excli-interface search_records -json '{...AS-REQ history for 10.20.31.144, -30d...}'</td><td class="mono">21:39:41</td><td>Session start 14:03:12Z; AES256 baseline · <code>evidence/records/kerberos-session-baseline.json</code></td></tr>
+    <tr id="E6"><td><span class="eid">E6</span></td><td>Auth records</td><td class="mono">./excli-interface search_records -json '{...logons by 19 SPN accounts since 18:22Z...}'</td><td class="mono">21:40:27</td><td>0 events · <code>evidence/records/roasted-account-logons.json</code></td></tr>
+    <tr id="E7"><td><span class="eid">E7</span></td><td>Device metrics</td><td class="mono">./excli-interface execute_metric_query -json '{...bytes_out for device 10.20.31.144, 1h buckets...}'</td><td class="mono">21:41:05</td><td>No volume anomaly vs 7-day baseline · <code>evidence/metrics/wkstn4471-bytes-out.json</code></td></tr>
+  </table>
+</section>
+
+<!-- 10. LIMITS AND OPEN QUESTIONS -->
+<section>
+  <div class="sec-head"><span class="sec-num">7</span><h2>Limits and Open Questions</h2></div>
+  <div class="bucket" data-kind="clean">
+    <h3>Checked and clean</h3>
+    <ul>
+      <li>No use of the 19 exposed accounts from any host through 21:30Z (E6).</li>
+      <li>No admin-share (C$/ADMIN$) access, service installation, or DCSync-pattern replication traffic from WKSTN-4471.</li>
+      <li>No large, novel, or beaconing outbound transfer from the host in the window (E7).</li>
+    </ul>
+  </div>
+  <div class="bucket" data-kind="unknown">
+    <h3>Could not determine</h3>
+    <ul>
+      <li>Whether j.lawson or implanted tooling drove the activity (Q3).</li>
+      <li>Whether any exposed hash has been cracked — offline activity is invisible here.</li>
+      <li>Initial access vector, if the host is compromised; the session predates the examined window.</li>
+    </ul>
+  </div>
+  <div class="bucket" data-kind="blind">
+    <h3>What ExtraHop can't see</h3>
+    <ul>
+      <li>On-host process lineage, command lines, and the binary that issued the requests — endpoint (EDR) territory.</li>
+      <li>Traffic that never crossed a monitored sensor (host-local or unmonitored-segment activity).</li>
+      <li>Encrypted payload content; conclusions rest on protocol metadata, timing, and volume.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 11. RECOMMENDED NEXT STEPS -->
+<section>
+  <div class="sec-head"><span class="sec-num">8</span><h2>Recommended Next Steps</h2></div>
+  <div class="step" data-urgency="now"><span class="upill">Contain / Respond</span>
+    <div class="body"><b>Isolate WKSTN-4471; reset all 19 exposed service accounts</b> (rotate to 25+ character random passwords or gMSAs); suspend j.lawson pending endpoint review. Treat every RC4-issued hash as crackable.</div>
+  </div>
+  <div class="step" data-urgency="soon"><span class="upill">Investigate further</span>
+    <div class="body"><b>Pull EDR process telemetry for 18:20–18:30Z</b> on WKSTN-4471 to attribute the tooling; interview the user; extend the auth-log search for the 19 accounts beyond 21:30Z and into the following days.</div>
+  </div>
+  <div class="step" data-urgency="tune"><span class="upill">Tune detection</span>
+    <div class="body"><b>Disable RC4 (etype 23) issuance domain-wide</b> where compatibility allows; alert on any <code>servicePrincipalName=*</code> LDAP query from non-admin subnets; add the finance VLAN to the privileged-protocol watch list.</div>
+  </div>
+</section>
+
+<div class="report-footer">
+  <div class="gradient-rule"></div>
+  <div class="cols">
+    <span>Generated by the ExtraHop Investigation Agent</span>
+    <span>Detection 7421146 · 2026-06-10</span>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

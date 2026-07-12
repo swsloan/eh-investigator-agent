@@ -1,0 +1,81 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eval — 2026-07-04T11-30Z-v1</title><style>:root{--sapphire:#261F63;--plum:#7F2854;--accent:#00AAEF;--gradient:linear-gradient(135deg,#261F63,#7F2854);
+--ink:#1A1A22;--ink-soft:#54555F;--ink-faint:#85868F;--rule:#D9D8E0;--rule-soft:#ECEBF1;--paper:#FFF;--panel:#FAFAFC;--card:#FFF;--canvas:#E9E9EE;
+--ok:#3F7A4F;--ok-bg:#ECF5EE;--bad:#9E1B1B;--bad-bg:#FBEDED;--warn:#A36F0B;--warn-bg:#FBF4E2;--sapphire-chip:#ECEBF6;
+--mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;--maxw:8in;}
+@media(prefers-color-scheme:dark){:root:not([data-report-theme="light"]){
+--sapphire:#B3A8F2;--plum:#D171A0;--accent:#37C0F5;--ink:#ECECF2;--ink-soft:#C4C3CF;--ink-faint:#9B9BA6;
+--rule:#3A3947;--rule-soft:#2E2D3A;--paper:#15141C;--panel:#1F1E28;--card:#232230;--canvas:#0F0E14;
+--ok:#67D391;--ok-bg:#183427;--bad:#FF8585;--bad-bg:#3A1D22;--warn:#F2C356;--warn-bg:#342B16;--sapphire-chip:#2A2740;}}
+*{box-sizing:border-box}
+body{font-family:"Source Sans 3",Arial,Helvetica,sans-serif;color:var(--ink);background:var(--canvas);margin:0;font-size:11pt;line-height:1.5}
+.sheet{background:var(--paper);max-width:var(--maxw);margin:24px auto;padding:0 0 .4in;box-shadow:0 2px 30px rgba(20,18,40,.14)}
+a{color:var(--accent);text-decoration:none}
+.masthead{background:var(--gradient);color:#fff;padding:.34in .55in .4in}
+.doc-kind{font-size:8.5pt;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.66);margin-bottom:6px}
+h1{font-size:20pt;font-weight:900;margin:0 0 .12em;letter-spacing:-.01em}
+.meta{font-size:8.7pt;color:rgba(255,255,255,.66);margin-top:12px;display:flex;flex-wrap:wrap;gap:4px 22px}
+.meta b{color:#fff;font-weight:600}
+.gate{display:inline-flex;align-items:center;gap:8px;font-size:11pt;font-weight:800;padding:5px 15px;border-radius:99px;margin:.28in .55in 0}
+.gate.pass{color:var(--ok);background:var(--ok-bg)}
+.gate.fail{color:var(--bad);background:var(--bad-bg)}
+section{padding:.14in .55in 0}
+.h2{font-size:12pt;font-weight:800;color:var(--sapphire);margin:.5em 0 .5em}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.tile{background:var(--panel);border-radius:8px;padding:11px 13px;border:1px solid var(--rule)}
+.tile.hero{border-left:3px solid var(--sapphire)}
+.tile .lbl{font-size:8.6pt;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.08em;font-weight:800}
+.tile .val{font-size:22pt;font-weight:900;color:var(--sapphire);line-height:1.05;margin-top:2px}
+.tile .sub{font-size:8.6pt;margin-top:3px;color:var(--ink-soft)}
+.up{color:var(--ok)} .down{color:var(--ok)} .bad{color:var(--bad)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.panel{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:12px 14px}
+.panel .pt{font-size:10.5pt;font-weight:700;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:9pt}
+th{text-align:left;color:var(--ink-faint);font-weight:700;padding:5px 6px;border-bottom:1px solid var(--rule)}
+td{padding:6px 6px;border-bottom:1px solid var(--rule-soft);vertical-align:top}
+.mono{font-family:var(--mono);font-size:8.4pt}
+.pill{display:inline-block;font-size:8pt;font-weight:700;padding:1px 8px;border-radius:99px}
+.pill.ok{color:var(--ok);background:var(--ok-bg)} .pill.bad{color:var(--bad);background:var(--bad-bg)}
+.cm{font-size:9.5pt;table-layout:fixed}
+.cm td,.cm th{text-align:center;padding:5px}
+.cm .diag{background:var(--ok);color:#fff;border-radius:4px}
+.cm .fc{background:var(--bad);color:#fff;border-radius:4px}
+.rowlink td{border-bottom:1px solid var(--rule-soft)}
+.note{font-size:8.6pt;color:var(--ink-faint);margin-top:7px}
+.footer{margin:.3in .55in 0;padding-top:12px;border-top:1px solid var(--rule);font-size:8.5pt;color:var(--ink-faint);display:flex;justify-content:space-between}</style></head><body><div class="sheet">
+<header class="masthead"><div class="doc-kind">Eval scorecard</div>
+<h1>evidence-ladder@v1</h1>
+<div class="meta"><span><b>Run:</b> 2026-07-04T11-30Z-v1</span><span><b>When:</b> 2026-07-04T11:30:00Z</span><span><b>Backend:</b> claude/claude-sonnet-5</span><span><b>Commit:</b> b2c3d4e</span><span><b>Cases:</b> 20</span></div></header>
+<div class="gate fail">&#10007; Autonomy gate: FAIL — false-close rate 0.25 exceeds target 0.05</div>
+<section><div class="tiles">
+<div class="tile hero" style="border-left-color:var(--bad)">
+  <div class="lbl">False-close rate</div><div class="val" style="color:var(--bad)">25.0%</div>
+  <div class="sub"><span class="bad">target &lt; 5%</span> · <span class="up">&#8600; 12.5 pts vs prev</span></div></div>
+<div class="tile"><div class="lbl">Verdict accuracy</div><div class="val">75%</div><div class="sub"><span class="up">&#8599; 15.0 pts vs prev</span></div></div>
+<div class="tile"><div class="lbl">Ladder adherence</div><div class="val">72%</div><div class="sub"><span class="up">&#8599; 20.0 pts vs prev</span></div></div>
+<div class="tile"><div class="lbl">Cost / case</div><div class="val">$0.55</div><div class="sub"><span class="bad">&#8599; $0.13 vs prev</span></div></div>
+</div></section>
+<section><div class="grid2">
+<div class="panel"><div class="pt">Disposition confusion</div><table class="cm"><tr><th></th><th>mal</th><th>ben</th><th>FP</th><th>b-auth</th></tr><tr><td style="color:var(--ink-faint);text-align:right">mal</td><td class="diag">6</td><td class="fc">2</td><td class="">0</td><td class="">0</td></tr><tr><td style="color:var(--ink-faint);text-align:right">ben</td><td class="">1</td><td class="diag">5</td><td class="">0</td><td class="">0</td></tr><tr><td style="color:var(--ink-faint);text-align:right">FP</td><td class="">0</td><td class="">1</td><td class="diag">2</td><td class="">0</td></tr><tr><td style="color:var(--ink-faint);text-align:right">b-auth</td><td class="">0</td><td class="">1</td><td class="">0</td><td class="diag">2</td></tr></table>
+<div class="note">Rows = expected, cols = predicted. <span style="color:var(--bad)">Red</span> = malicious closed as non-malicious (false-close).</div></div>
+<div class="panel"><div class="pt">Confidence calibration</div><svg viewBox="0 0 250 150" style="width:100%;height:auto" role="img" aria-label="Confidence calibration: accuracy within each stated-confidence bucket versus the ideal diagonal">
+<line x1="30" y1="120" x2="240" y2="120" stroke="var(--rule)"/>
+<line x1="30" y1="10" x2="30" y2="120" stroke="var(--rule)"/>
+<line x1="30" y1="120" x2="240" y2="10" stroke="var(--ink-faint)" stroke-dasharray="4 4" opacity="0.5"/>
+<polyline fill="none" stroke="#378ADD" stroke-width="2.5" points="30.0,65.0 135.0,40.8 240.0,21.0"/>
+<circle cx="30.0" cy="65.0" r="3.5" fill="#378ADD"/><text x="30.0" y="136" text-anchor="middle" font-size="9" fill="var(--ink-soft)">low</text><circle cx="135.0" cy="40.8" r="3.5" fill="#378ADD"/><text x="135.0" y="136" text-anchor="middle" font-size="9" fill="var(--ink-soft)">medium</text><circle cx="240.0" cy="21.0" r="3.5" fill="#378ADD"/><text x="240.0" y="136" text-anchor="middle" font-size="9" fill="var(--ink-soft)">high</text>
+<text x="26" y="13" text-anchor="end" font-size="8.5" fill="var(--ink-faint)">100%</text>
+<text x="26" y="123" text-anchor="end" font-size="8.5" fill="var(--ink-faint)">0%</text>
+</svg><div class="note">Dashed = perfect calibration.</div></div>
+</div></section>
+<section><div class="panel"><div class="pt">Ladder adherence</div><div style="margin:5px 0"><div style="display:flex;justify-content:space-between;font-size:9pt"><span>Entered right rung</span><span>70%</span></div>
+<div style="height:7px;background:var(--rule-soft);border-radius:99px;overflow:hidden"><div style="height:100%;width:70.0%;background:var(--ok)"></div></div></div><div style="margin:5px 0"><div style="display:flex;justify-content:space-between;font-size:9pt"><span>False climb</span><span>15%</span></div>
+<div style="height:7px;background:var(--rule-soft);border-radius:99px;overflow:hidden"><div style="height:100%;width:15.0%;background:var(--warn)"></div></div></div><div style="margin:5px 0"><div style="display:flex;justify-content:space-between;font-size:9pt"><span>Under-investigated</span><span>10%</span></div>
+<div style="height:7px;background:var(--rule-soft);border-radius:99px;overflow:hidden"><div style="height:100%;width:10.0%;background:var(--warn)"></div></div></div><div style="margin:5px 0"><div style="display:flex;justify-content:space-between;font-size:9pt"><span>Under-corroborated</span><span>12%</span></div>
+<div style="height:7px;background:var(--rule-soft);border-radius:99px;overflow:hidden"><div style="height:100%;width:12.0%;background:var(--bad)"></div></div></div></div></section>
+<section><div class="h2">Cases</div><div class="note">No per-case detail file for this run (history-only).</div></section>
+<section><div class="note"><a href="index.html">&#8592; back to trend</a></div></section>
+<div class="footer"><span>ExtraHop Investigation Agent — eval dashboard</span><span>generated from fixtures</span></div>
+</div></body></html>

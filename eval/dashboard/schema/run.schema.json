@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://extrahop.local/eval/run.schema.json",
+  "title": "Eval run case detail",
+  "description": "eval/reports/<run_id>.json — the per-case results of one run. Aggregates in history.jsonl must be derivable from this array.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id", "cases"],
+  "properties": {
+    "run_id": { "type": "string" },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "detection_source", "expected", "predicted", "scores", "status"],
+        "properties": {
+          "id": { "type": "string" },
+          "detection_source": { "type": "string", "enum": ["ids", "behavioral", "ard", "unknown"] },
+          "expected": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["disposition", "min_rung"],
+            "properties": {
+              "disposition": { "type": "string", "enum": ["malicious", "benign", "false-positive", "benign-authorized", "inconclusive"] },
+              "attack": { "type": "array", "items": { "type": "string" } },
+              "min_rung": { "type": "string", "enum": ["metrics", "records", "packets"] }
+            }
+          },
+          "predicted": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["disposition", "highest_rung_used"],
+            "description": "Mirrors the fields the agent writes to evidence/verdict.json.",
+            "properties": {
+              "disposition": { "type": "string", "enum": ["malicious", "benign", "false-positive", "benign-authorized", "inconclusive"] },
+              "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
+              "highest_rung_used": { "type": "string", "enum": ["metrics", "records", "packets"] },
+              "attack": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "scores": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["verdict_correct"],
+            "properties": {
+              "verdict_correct": { "type": "boolean" },
+              "attack_overlap": { "type": "number", "minimum": 0, "maximum": 1 },
+              "grounded": { "type": "boolean" },
+              "false_climb": { "type": "boolean" },
+              "cost_usd": { "type": "number", "minimum": 0 }
+            }
+          },
+          "status": { "type": "string", "enum": ["pass", "fail"] },
+          "regressed_from": { "type": ["string", "null"], "description": "run_id where this case last passed, if it regressed; else null. May be computed by the dashboard instead." },
+          "artifacts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "verdict": { "type": "string" },
+              "ledger": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

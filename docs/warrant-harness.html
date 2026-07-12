@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Warrant — RevealX Investigation Harness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,300;0,400;0,600;0,700;0,900;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --sapphire:#261F63;
+  --plum:#7F2854;
+  --accent:#00AAEF;          /* Cyan — the evidence/record accent */
+  --tangerine:#F05918;
+  --ink:#1A1830;
+  --ink-soft:#55536A;
+  --hair:#E6E5EC;
+  --paper:#FFFFFF;
+  --mist:#F7F7FA;
+  --gradient:linear-gradient(135deg,#261F63,#7F2854);
+  --maxw:1040px;
+}
+*{box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{
+  margin:0;font-family:"Source Sans 3",Arial,sans-serif;color:var(--ink);
+  background:var(--mist);line-height:1.5;-webkit-font-smoothing:antialiased;
+}
+.page{max-width:var(--maxw);margin:0 auto;background:var(--paper);box-shadow:0 1px 40px rgba(38,31,99,.06);}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-soft);}
+
+/* HERO */
+.hero{background:var(--gradient);color:#fff;padding:44px 56px 46px;}
+.hero__top{display:flex;align-items:center;justify-content:space-between;gap:24px;}
+.hero__logo{width:184px;height:auto;display:block;}
+.hero__tag{font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.72);text-align:right;}
+.hero__code{font-size:12px;font-weight:700;letter-spacing:.28em;text-transform:uppercase;color:var(--accent);margin:32px 0 6px;}
+.hero__title{font-weight:900;letter-spacing:-.01em;line-height:1.04;font-size:44px;margin:0 0 16px;}
+.hero__sub{font-size:17.5px;font-weight:400;color:rgba(255,255,255,.85);max-width:64ch;margin:0;}
+.hero__meta{display:flex;flex-wrap:wrap;gap:0;margin-top:32px;border-top:1px solid rgba(255,255,255,.18);padding-top:20px;}
+.hero__meta div{padding-right:34px;margin-right:34px;border-right:1px solid rgba(255,255,255,.18);}
+.hero__meta div:last-child{border-right:0;margin-right:0;padding-right:0;}
+.hero__meta dt{font-size:10.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.6);margin:0 0 4px;}
+.hero__meta dd{margin:0;font-size:15.5px;font-weight:600;}
+.hero__meta dd.pay{color:var(--accent);}
+
+/* SECTION */
+section{padding:44px 56px;}
+section + section{border-top:1px solid var(--hair);}
+.sec-head{display:flex;align-items:baseline;gap:14px;margin:0 0 22px;}
+.sec-head h2{font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--sapphire);margin:0;}
+.sec-head .num{font-size:13px;font-weight:700;color:var(--accent);letter-spacing:.05em;}
+.lead{font-size:18px;font-weight:400;color:var(--ink);max-width:72ch;margin:0 0 20px;}
+.lead strong{font-weight:700;color:var(--sapphire);}
+.loz{display:inline-block;height:6px;width:46px;border-radius:6px;background:var(--gradient);vertical-align:middle;}
+p.body{font-size:15px;color:var(--ink-soft);max-width:74ch;}
+p.body b{color:var(--ink);font-weight:600;}
+
+/* PRINCIPLES GRID */
+.principles{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:6px;}
+.prin{border:1px solid var(--hair);border-radius:14px;padding:22px 22px 20px;background:var(--paper);}
+.prin__k{font-size:11px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);}
+.prin__t{font-size:18px;font-weight:700;color:var(--sapphire);margin:7px 0 7px;line-height:1.2;}
+.prin__d{font-size:14px;color:var(--ink-soft);margin:0;}
+.prin__d b{color:var(--ink);font-weight:600;}
+.prin__src{font-size:11.5px;color:var(--ink-soft);margin:10px 0 0;padding-top:9px;border-top:1px solid var(--hair);font-style:italic;}
+
+/* ARCHITECTURE DIAGRAM */
+.arch{border:1px solid var(--hair);border-radius:16px;overflow:hidden;margin-top:8px;background:var(--mist);padding:32px 30px 34px;}
+.arch__guard{border:1.5px dashed var(--tangerine);border-radius:14px;padding:14px 16px 20px;position:relative;background:rgba(240,89,24,.03);}
+.arch__guardlbl{position:absolute;top:-10px;left:18px;background:var(--paper);padding:0 8px;font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--tangerine);}
+.orch{background:var(--gradient);color:#fff;border-radius:12px;padding:16px 20px;text-align:center;margin:6px auto 0;max-width:520px;}
+.orch__k{font-size:10.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.72);}
+.orch__t{font-size:18px;font-weight:800;margin:2px 0 3px;}
+.orch__d{font-size:12.5px;color:rgba(255,255,255,.82);margin:0;}
+.conn__line{width:2px;height:18px;background:var(--sapphire);opacity:.45;margin:0 auto;}
+.agents{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:2px;}
+.ag{background:#fff;border:1px solid var(--hair);border-radius:11px;padding:13px 13px 12px;}
+.ag__k{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);}
+.ag__t{font-size:14px;font-weight:700;color:var(--sapphire);margin:4px 0 3px;line-height:1.18;}
+.ag__d{font-size:11.5px;color:var(--ink-soft);margin:0;line-height:1.4;}
+.substrate{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;}
+.sub{border-radius:11px;padding:13px 15px;color:#fff;}
+.sub--ladder{background:var(--sapphire);}
+.sub--ledger{background:#0e2d3d;}
+.sub__k{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.6);}
+.sub__t{font-size:14px;font-weight:700;margin:4px 0 3px;}
+.sub__d{font-size:11.5px;color:rgba(255,255,255,.78);margin:0;line-height:1.4;}
+
+/* EVIDENCE LADDER */
+.ladder{margin-top:10px;}
+.rung{display:grid;grid-template-columns:150px 1fr 220px;gap:20px;align-items:start;padding:18px 0;border-bottom:1px solid var(--hair);}
+.rung:last-child{border-bottom:0;}
+.rung__tier{display:flex;flex-direction:column;gap:6px;}
+.rung__badge{display:inline-block;align-self:flex-start;font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#fff;padding:4px 11px;border-radius:20px;}
+.rung__badge.t1{background:var(--sapphire);}
+.rung__badge.t2{background:var(--accent);}
+.rung__badge.t3{background:var(--plum);}
+.rung__q{font-size:15px;font-weight:800;color:var(--sapphire);}
+.rung__q.t2{color:var(--accent);}
+.rung__q.t3{color:var(--plum);}
+.rung__cost{font-size:11.5px;color:var(--ink-soft);}
+.rung__body{font-size:14px;color:var(--ink-soft);margin:0;}
+.rung__body b{color:var(--ink);font-weight:600;}
+.rung__tools{font-size:12px;color:var(--ink-soft);}
+.rung__toolslbl{font-size:10px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:5px;}
+.rung__tools code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;background:var(--mist);border:1px solid var(--hair);border-radius:5px;padding:1px 5px;color:var(--sapphire);display:inline-block;margin:0 3px 4px 0;}
+.det-note{margin-top:22px;background:var(--mist);border-left:3px solid var(--accent);border-radius:0 10px 10px 0;padding:16px 20px;}
+.det-note h4{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--sapphire);margin:0 0 8px;}
+.det-note table{width:100%;border-collapse:collapse;font-size:13px;}
+.det-note td{padding:6px 10px 6px 0;vertical-align:top;border-bottom:1px solid var(--hair);}
+.det-note tr:last-child td{border-bottom:0;}
+.det-note td.src{font-weight:700;color:var(--sapphire);white-space:nowrap;width:120px;}
+.det-note td.b{color:var(--ink-soft);}
+
+/* LOOP */
+.loop{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:6px;}
+.step{border:1px solid var(--hair);border-radius:12px;padding:16px 16px 15px;background:var(--paper);position:relative;}
+.step__n{font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.05em;}
+.step__t{font-size:15.5px;font-weight:700;color:var(--sapphire);margin:5px 0 5px;line-height:1.2;}
+.step__d{font-size:13px;color:var(--ink-soft);margin:0;line-height:1.45;}
+.step__d b{color:var(--ink);font-weight:600;}
+
+/* WHY / ARGUMENT LIST */
+.args{margin-top:4px;border-top:1px solid var(--hair);}
+.arg{display:grid;grid-template-columns:40px 1fr;gap:18px;align-items:start;padding:18px 0;border-bottom:1px solid var(--hair);}
+.arg__n{width:32px;height:32px;border-radius:50%;background:var(--gradient);color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;}
+.arg__t{font-size:16px;font-weight:700;color:var(--sapphire);margin:2px 0 5px;}
+.arg__d{font-size:14px;color:var(--ink-soft);margin:0;}
+.arg__d b{color:var(--ink);font-weight:600;}
+
+/* GAPS */
+.gaps{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px;}
+.gap{border:1px solid var(--hair);border-left:3px solid var(--tangerine);border-radius:0 12px 12px 0;padding:16px 18px;}
+.gap__t{font-size:14.5px;font-weight:700;color:var(--sapphire);margin:0 0 6px;}
+.gap__d{font-size:13px;color:var(--ink-soft);margin:0;line-height:1.45;}
+.gap__d b{color:var(--ink);font-weight:600;}
+
+/* FOOT */
+.foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:20px;border-top:1px solid var(--hair);font-size:12.5px;color:var(--ink-soft);}
+.foot b{color:var(--sapphire);}
+
+@media print{
+  body{background:#fff;}
+  .page{box-shadow:none;max-width:none;}
+  section{page-break-inside:avoid;}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero__top">
+      <svg class="hero__logo" viewBox="0 0 223.8 22.1" xmlns="http://www.w3.org/2000/svg" aria-label="ExtraHop"><path fill="#fff" d="M0,0h15.9v5.1h-10v3.4h8.2v4.8H5.8V17h10.7v5.1H0V0z M26.9,10.8L19.4,0h7.2l3.7,5.7L33.8,0h6.5l-6.8,10.2 L41.8,22h-7.3L30,15.3l-4.3,6.8h-6.4L26.9,10.8z M49.3,5.1h-6.8V0h19.4v5.1h-6.7V22h-5.9V5.1z M66,0h9.1c1.2,0,2.3,0.2,3.2,0.5 c1,0.3,1.8,0.8,2.5,1.4s1.2,1.4,1.6,2.3S83,6.1,83,7.3c0,1.5-0.3,2.7-1,3.8c-0.6,1.1-1.5,1.9-2.5,2.6l4.7,8.5h-6.3l-3.7-7.5h-2.4 v7.5H66V0z M74.5,10c0.8,0,1.4-0.2,1.9-0.7s0.7-1.1,0.7-1.9s-0.2-1.5-0.7-2s-1.1-0.7-1.9-0.7h-2.8V10H74.5z M94.2,0h6.7l7.8,22 h-6.3l-1.4-4.6h-7.4L92.1,22h-6L94.2,0z M99.8,13.2l-2.4-8.1l-2.5,8.1H99.8z M112.7,0h5.8v8.1h13V0h5.8v22h-5.8v-8.6h-13V22h-5.8V0 z M153.2,22c-1.6,0-3-0.3-4.4-0.8c-1.3-0.6-2.5-1.3-3.5-2.3s-1.7-2.1-2.3-3.5c-0.5-1.4-0.8-2.8-0.8-4.4s0.3-3.1,0.8-4.4 c0.5-1.4,1.3-2.5,2.3-3.5s2.1-1.7,3.5-2.3c1.3-0.5,2.8-0.8,4.4-0.8H166c1.6,0,3,0.3,4.4,0.8c1.3,0.6,2.5,1.3,3.5,2.3 s1.7,2.1,2.3,3.5C176.7,8,177,9.4,177,11s-0.3,3.1-0.8,4.4c-0.5,1.4-1.3,2.5-2.3,3.5s-2.1,1.7-3.5,2.3c-1.3,0.5-2.8,0.8-4.4,0.8 C166,22,153.2,22,153.2,22z M166.1,16.8c0.8,0,1.5-0.2,2.2-0.5c0.6-0.3,1.2-0.7,1.6-1.2c0.4-0.5,0.8-1.1,1-1.9 c0.2-0.7,0.3-1.5,0.3-2.3s-0.1-1.5-0.3-2.3c-0.2-0.7-0.6-1.3-1-1.9c-0.4-0.5-1-0.9-1.6-1.2S166.9,5,166.1,5h-12.8 c-0.8,0-1.5,0.2-2.2,0.5c-0.6,0.3-1.2,0.7-1.6,1.2c-0.4,0.5-0.8,1.1-1,1.9c-0.2,0.7-0.3,1.5-0.3,2.3s0.1,1.5,0.3,2.3 c0.2,0.7,0.6,1.3,1,1.9c0.4,0.5,1,0.9,1.6,1.2c0.6,0.3,1.4,0.5,2.2,0.5H166.1z M181.9,0h25.2c1.2,0,2.3,0.2,3.2,0.5 c1,0.3,1.8,0.8,2.5,1.4s1.2,1.4,1.6,2.3c0.4,0.9,0.6,2,0.6,3.2c0,1.1-0.2,2.1-0.6,3.1c-0.4,0.9-0.9,1.7-1.6,2.3 c-0.7,0.7-1.5,1.1-2.4,1.5c-0.9,0.3-2,0.5-3.1,0.5h-19.7v7.3h-5.7V0z M206.7,10.1c0.8,0,1.4-0.3,1.9-0.8s0.7-1.2,0.7-1.9 c0-0.8-0.2-1.5-0.7-2c-0.4-0.5-1.1-0.8-1.9-0.8h-19v5.5H206.7z"/></svg>
+      <div class="hero__tag">Reference Architecture<br>Investigative AI Harness</div>
+    </div>
+    <div class="hero__code">Codename · Warrant</div>
+    <h1 class="hero__title">The RevealX Investigation Harness</h1>
+    <p class="hero__sub">An agentic harness that investigates RevealX detections end to end — resolving the entity, laddering through metrics, records, and packets, and handing back a verdict every conclusion of which is warranted by evidence it can show.</p>
+    <dl class="hero__meta">
+      <div><dt>Class</dt><dd>Defensive · investigative</dd></div>
+      <div><dt>Substrate</dt><dd>RevealX 360 / Enterprise</dd></div>
+      <div><dt>Interface</dt><dd class="pay">ExtraHop REST · MCP</dd></div>
+      <div><dt>Output</dt><dd>Evidence-backed verdict</dd></div>
+    </dl>
+  </div>
+
+  <!-- 01 PRINCIPLES -->
+  <section>
+    <div class="sec-head"><span class="num">01</span><h2>Design Principles</h2></div>
+    <p class="lead">Six principles, each drawn from a practice the strongest investigation harnesses already prove out — reframed around what RevealX uniquely provides. <span class="loz"></span></p>
+    <div class="principles">
+      <div class="prin">
+        <div class="prin__k">Principle 1</div>
+        <div class="prin__t">Entity-centric, not alert-centric</div>
+        <p class="prin__d">Consolidate every signal touching a <b>device or peer group</b> into one case, rather than triaging discrete alerts in isolation. RevealX already reasons in devices and roles; the harness inherits that spine.</p>
+        <p class="prin__src">Pattern: Corelight Agentic Triage, Conifers mesh.</p>
+      </div>
+      <div class="prin">
+        <div class="prin__k">Principle 2</div>
+        <div class="prin__t">Evidence-laddered depth</div>
+        <p class="prin__d">Escalate through <b>metrics → records → packets</b> only as far as the question demands. Cheap breadth first, byte-level proof last. This is the harness's core loop, and it is native to ExtraHop.</p>
+        <p class="prin__src">Pattern: L1→L2 investigation depth (D3, Dropzone).</p>
+      </div>
+      <div class="prin">
+        <div class="prin__k">Principle 3</div>
+        <div class="prin__t">Deterministic evidence, LLM reasoning</div>
+        <p class="prin__d">The model <b>plans, hypothesizes, and narrates</b>; ExtraHop's deterministic queries produce the facts. Conclusions are grounded in what was queried, not in model priors — which is what keeps hallucination out of a verdict.</p>
+        <p class="prin__src">Pattern: Intezer's dual-model, audit-ready evidence.</p>
+      </div>
+      <div class="prin">
+        <div class="prin__k">Principle 4</div>
+        <div class="prin__t">Glass-box by construction</div>
+        <p class="prin__d">Every query, pivot, and decision lands in an <b>immutable case ledger</b>. A reviewer can replay the whole chain from trigger to verdict. Defensibility is a property of the design, not a report bolted on at the end.</p>
+        <p class="prin__src">Pattern: D3 reasoning-chain criterion; rising regulatory bar.</p>
+      </div>
+      <div class="prin">
+        <div class="prin__k">Principle 5</div>
+        <div class="prin__t">Human-in-the-loop, confidence-gated</div>
+        <p class="prin__d">Autonomy is <b>configurable per action class</b> — read freely, escalate depth freely, but gate any write (tuning, containment) behind a confidence threshold and a human. Interruptible at any step.</p>
+        <p class="prin__src">Pattern: CAI HITL core; Torq autonomy modes.</p>
+      </div>
+      <div class="prin">
+        <div class="prin__k">Principle 6</div>
+        <div class="prin__t">Telemetry is untrusted input</div>
+        <p class="prin__d">Hostnames, URIs, user-agents, and certificate fields are <b>attacker-controllable</b>. They enter as data to be analyzed, never as instructions. Input guardrails sit between the wire and the model.</p>
+        <p class="prin__src">Pattern: CAI prompt-injection guardrails, adapted for defense.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 ARCHITECTURE -->
+  <section>
+    <div class="sec-head"><span class="num">02</span><h2>Architecture</h2></div>
+    <p class="lead">An <strong>orchestrator</strong> runs the case and dispatches short-lived <strong>specialist agents</strong>, all seated on a shared evidence engine and audit ledger, wrapped by a guardrail boundary.</p>
+
+    <div class="arch">
+      <div class="arch__guard">
+        <span class="arch__guardlbl">Guardrail Boundary · input + output</span>
+
+        <div class="orch">
+          <div class="orch__k">Orchestrator · "Case Lead"</div>
+          <div class="orch__t">Plans, dispatches, adjudicates</div>
+          <p class="orch__d">Holds the hypothesis, decides how far to climb the evidence ladder, and writes the verdict when confidence is met.</p>
+        </div>
+        <div class="conn__line"></div>
+
+        <div class="agents">
+          <div class="ag">
+            <div class="ag__k">Specialist</div>
+            <div class="ag__t">Entity Resolver</div>
+            <p class="ag__d">Builds the device/peer-group case object; dedups across sensor contexts.</p>
+          </div>
+          <div class="ag">
+            <div class="ag__k">Specialist</div>
+            <div class="ag__t">Timeline &amp; Scope</div>
+            <p class="ag__d">Metric sweeps to bound when it started and who else is involved.</p>
+          </div>
+          <div class="ag">
+            <div class="ag__k">Specialist</div>
+            <div class="ag__t">Transaction Analyst</div>
+            <p class="ag__d">Record queries to reconstruct what actually happened on the wire.</p>
+          </div>
+          <div class="ag">
+            <div class="ag__k">Specialist</div>
+            <div class="ag__t">Packet Prover</div>
+            <p class="ag__d">Pulls PCAP only when payload-level proof is the deciding factor.</p>
+          </div>
+        </div>
+
+        <div class="substrate">
+          <div class="sub sub--ladder">
+            <div class="sub__k">Shared engine</div>
+            <div class="sub__t">Evidence Ladder</div>
+            <p class="sub__d">The escalation policy every agent obeys — metrics, then records, then packets. Enforces cost discipline and ATT&amp;CK mapping.</p>
+          </div>
+          <div class="sub sub--ledger">
+            <div class="sub__k">Shared state</div>
+            <div class="sub__t">Case Ledger + Memory</div>
+            <p class="sub__d">Immutable log of every step; carries prior-case context and environment knowledge across investigations.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="body" style="margin-top:16px;">Specialist agents are <b>single-mission and short-lived</b> — spawned for one job, retired when done — so a wrong turn in one line of inquiry does not bias the rest of the case. The orchestrator is the only long-lived reasoner, and it only ever sees evidence the ladder actually returned.</p>
+  </section>
+
+  <!-- 03 EVIDENCE LADDER -->
+  <section>
+    <div class="sec-head"><span class="num">03</span><h2>The Evidence Ladder</h2></div>
+    <p class="lead">The heart of the design. ExtraHop's own cost hierarchy — <strong>metrics are broad and cheap, records are deep, packets are proof</strong> — is exactly the discipline a good analyst uses. The harness makes it a rule.</p>
+
+    <div class="ladder">
+      <div class="rung">
+        <div class="rung__tier">
+          <span class="rung__badge t1">Tier 1</span>
+          <span class="rung__q">Metrics</span>
+          <span class="rung__cost">Broad · cheap · always first</span>
+        </div>
+        <p class="rung__body"><b>Where and when.</b> Orient the case: bound the timeline, surface top talkers and anomalous volume, and generate the candidate blast radius. Most benign alerts should be closed here without ever touching a record.</p>
+        <div class="rung__tools">
+          <span class="rung__toolslbl">RevealX interface</span>
+          <code>execute_metric_query</code><code>search_metric_catalog</code><code>search_devices</code>
+        </div>
+      </div>
+      <div class="rung">
+        <div class="rung__tier">
+          <span class="rung__badge t2">Tier 2</span>
+          <span class="rung__q t2">Records</span>
+          <span class="rung__cost">Deep · bounded · on hypothesis</span>
+        </div>
+        <p class="rung__body"><b>What happened.</b> Once metrics point at a place and time, reconstruct the transaction: the specific connections, TLS handshakes, HTTP/DNS exchanges, and pivots between entities that confirm or kill the hypothesis. Always bounded by time window and filter.</p>
+        <div class="rung__tools">
+          <span class="rung__toolslbl">RevealX interface</span>
+          <code>search_records</code><code>search_detectionactivity</code><code>get_detectiontypemetadata</code>
+        </div>
+      </div>
+      <div class="rung">
+        <div class="rung__tier">
+          <span class="rung__badge t3">Tier 3</span>
+          <span class="rung__q t3">Packets</span>
+          <span class="rung__cost">Byte-level · proof only</span>
+        </div>
+        <p class="rung__body"><b>Prove it.</b> Reserved for the deciding question — exact payload, a protocol edge case, or legal-grade evidence. Packets are never used to score or triage; they are pulled to remove the last doubt from a verdict that is otherwise already made.</p>
+        <div class="rung__tools">
+          <span class="rung__toolslbl">RevealX interface</span>
+          <code>download_pcap</code>
+        </div>
+      </div>
+    </div>
+
+    <div class="det-note">
+      <h4>Detection-source awareness — the harness never trusts a trigger blindly</h4>
+      <table>
+        <tr><td class="src">Rule-based</td><td class="b">On-box, real-time. Reliable that it fired; the harness still validates scope against metrics and records.</td></tr>
+        <tr><td class="src">ML behavioral</td><td class="b">Cloud-scored and opaque. Cannot be fully explained on-box, so it <b>must</b> be corroborated with records before it enters a verdict.</td></tr>
+        <tr><td class="src">ARD</td><td class="b">Retrospective record scan — already record-backed, so the case starts a rung up the ladder.</td></tr>
+        <tr><td class="src">IDS signature</td><td class="b">A match, not a story. Carries no transaction context alone; the harness pulls records or packets to establish what the signature actually caught.</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- 04 LOOP -->
+  <section>
+    <div class="sec-head"><span class="num">04</span><h2>The Investigation Loop</h2></div>
+    <p class="lead">A detection enters; a warranted verdict leaves. Every step is logged to the case ledger.</p>
+    <div class="loop">
+      <div class="step"><div class="step__n">Step 1</div><div class="step__t">Trigger + Resolve</div><p class="step__d">A detection fires. The Entity Resolver builds the case around the <b>device or peer group</b>, not the alert, and pulls related detections and threat-briefing context.</p></div>
+      <div class="step"><div class="step__n">Step 2</div><div class="step__t">Hypothesize</div><p class="step__d">The orchestrator states an explicit hypothesis and its disconfirming test — <b>what evidence would prove this benign</b> — before any deep query runs.</p></div>
+      <div class="step"><div class="step__n">Step 3</div><div class="step__t">Climb the ladder</div><p class="step__d">Metrics to orient, records to reconstruct, packets only if the deciding question demands proof. Each rung must justify the next.</p></div>
+      <div class="step"><div class="step__n">Step 4</div><div class="step__t">Map to ATT&amp;CK</div><p class="step__d">Confirmed activity is mapped to technique, so the verdict speaks the language the SOC already reports in.</p></div>
+      <div class="step"><div class="step__n">Step 5</div><div class="step__t">Verdict + confidence</div><p class="step__d">A disposition with a confidence score and the <b>full evidence chain attached</b> — a conclusion, not another ticket.</p></div>
+      <div class="step"><div class="step__n">Step 6</div><div class="step__t">Gate + feedback</div><p class="step__d">Below threshold or write-class action → human. Outcomes feed tuning proposals back — <b>gated, never auto-applied</b> — so noise shrinks over time.</p></div>
+    </div>
+  </section>
+
+  <!-- 05 WHY -->
+  <section>
+    <div class="sec-head"><span class="num">05</span><h2>Why This Design Wins</h2></div>
+    <p class="lead">The claim is architectural, not benchmarked (see §06). On design merits, four things set it apart — and three of them are things only RevealX makes native.</p>
+    <div class="args">
+      <div class="arg"><div class="arg__n">1</div><div><div class="arg__t">Verdicts are packet-backed on one platform</div><p class="arg__d">The strongest commercial harnesses fight hallucination by bolting deterministic forensics onto LLM reasoning. RevealX already <b>owns the ground truth</b>: the same platform that raised the signal holds the records and the packets that prove it. The harness can climb from a behavioral anomaly all the way to the deciding byte without leaving the evidence source — audit-ready by construction, not by integration.</p></div></div>
+      <div class="arg"><div class="arg__n">2</div><div><div class="arg__t">The evidence ladder is cost discipline and analyst-mimicry at once</div><p class="arg__d">Making metrics→records→packets a hard escalation rule means the harness spends cheap breadth on the many benign alerts and expensive depth only on the few that earn it. That is also <b>exactly how a strong analyst works</b> — so the reasoning chain reads as sound to the human reviewing it, not as a machine brute-forcing every query.</p></div></div>
+      <div class="arg"><div class="arg__n">3</div><div><div class="arg__t">Glass-box meets the regulatory moment</div><p class="arg__d">As security decisions face growing legal and audit scrutiny, a verdict a reviewer can <b>replay step by step</b> is worth more than a faster black box. For regulated environments — healthcare, credit, public sector, critical infrastructure under MTSA and TSA directives — the immutable ledger is the difference between a finding that survives review and one that doesn't.</p></div></div>
+      <div class="arg"><div class="arg__n">4</div><div><div class="arg__t">Detection-source awareness prevents the classic failure</div><p class="arg__d">The common mistake is trusting a signature match or an ML score as if it were a conclusion. By forcing corroboration for opaque ML detections and treating an IDS hit as a lead rather than a story, the harness <b>refuses to close a case on a trigger alone</b> — the single most reliable source of false verdicts in autonomous triage.</p></div></div>
+    </div>
+    <p class="body" style="margin-top:18px;"><b>Contrast worth noting.</b> Where an agentic layer is added on top of a detection engine after the fact, investigation tends to inherit the engine's alert-at-a-time shape and reaches for whatever evidence the layer was wired to. Building the harness around the evidence ladder from the start makes depth a first-class decision rather than a fixed lookup — and gives every verdict somewhere deeper to go when the answer isn't yet certain.</p>
+  </section>
+
+  <!-- 06 GAPS -->
+  <section>
+    <div class="sec-head"><span class="num">06</span><h2>Areas for Improvement</h2></div>
+    <p class="lead">Where this design is honestly still weak. Naming these is part of the argument — a harness whose limits are known is safer than one whose limits are discovered in production.</p>
+    <div class="gaps">
+      <div class="gap"><div class="gap__t">Cross-sensor entity resolution</div><p class="gap__d">Devices are <b>local to a sensor's discovery context</b>. An entity-centric case can fragment or double-count the same host seen by two sensors. The Entity Resolver needs a real federation/dedup layer, and this is non-trivial — get it wrong and blast-radius scoping is wrong.</p></div>
+      <div class="gap"><div class="gap__t">ML detections stay partly opaque</div><p class="gap__d">Cloud ML scoring can be corroborated but not fully <b>explained</b> on-box. The glass-box is honest about metrics, records, and packets; for the ML trigger itself the ledger can show corroboration, not the original scoring logic.</p></div>
+      <div class="gap"><div class="gap__t">Prompt injection from the wire</div><p class="gap__d">Adversary-controlled fields flow into model context. Principle 6 sets the intent, but robust input guardrails against injection embedded in <b>hostnames, URIs, and certificate CNs</b> are still an open engineering problem, not a solved one.</p></div>
+      <div class="gap"><div class="gap__t">Packets may not be there</div><p class="gap__d">Tier 3 depends on a packetstore feed and retention window. For older activity the deciding bytes may be gone, or retrieval adds latency. Verdict confidence has to <b>degrade gracefully</b> when proof is unavailable, not stall.</p></div>
+      <div class="gap"><div class="gap__t">No benchmark yet</div><p class="gap__d">"Best" here is a reasoned design claim. It needs an <b>evaluation harness</b> — labeled investigations, precision/recall on verdicts, and a tracked false-close rate — before the claim is defensible. This is the honest caveat on §05.</p></div>
+      <div class="gap"><div class="gap__t">Air-gapped degradation</div><p class="gap__d">ML detections, threat intel, and briefings are cloud-fed. In air-gapped deployments the harness loses its accelerators and must lean harder on rule-based detections and records — a materially different, and weaker, operating mode.</p></div>
+      <div class="gap"><div class="gap__t">Feedback loop can suppress real risk</div><p class="gap__d">Auto-tuning from verdicts is powerful and dangerous: a wrong verdict that writes a suppression hides a real threat. Tuning proposals must stay <b>gated behind a human</b> until verdict accuracy is independently trusted.</p></div>
+      <div class="gap"><div class="gap__t">Analyst skill atrophy</div><p class="gap__d">A harness that closes most cases invites the team to stop looking. The HITL gates should be tuned to keep humans <b>meaningfully engaged</b> on the hard cases, not just rubber-stamping — a design responsibility, not only a config setting.</p></div>
+    </div>
+    <div class="foot">
+      <span><b>ExtraHop RevealX</b> — Warrant · Investigative AI Harness Reference Architecture</span>
+      <span>Design draft · v0.1</span>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

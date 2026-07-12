@@ -1,0 +1,14 @@
+node_modules
+.venv
+workspaces
+.env
+config.json
+*.log
+app.pid
+.DS_Store
+dist
+bin/excli
+bin/backups
+smoke
+# NOTE: vendor/excli/ is intentionally NOT ignored — the Dockerfile extracts
+# the platform-matched excli binary from it at build time.

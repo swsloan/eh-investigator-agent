@@ -1,0 +1,1 @@
+{"disposition":"malicious","confidence":"high","highest_rung_used":"records","detection_source":"behavioral","attack_techniques":["T1021.002"],"evidence_chain":[],"residual_uncertainty":""}

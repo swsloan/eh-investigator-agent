@@ -1,0 +1,22 @@
+# Dependencies / build artifacts
+node_modules/
+.venv/
+dist/
+bin/excli
+bin/backups/
+
+# Runtime / local state (never commit)
+.env
+config.json
+secrets.json
+*.log
+app.pid
+workspaces/
+data/
+eval/reports/
+.claude/
+.DS_Store
+
+# NOTE: vendor/excli/ archives ARE committed — the Dockerfile extracts the
+# platform-matched excli binary from them at build time. .env.example is the
+# template (no secrets) and IS committed.

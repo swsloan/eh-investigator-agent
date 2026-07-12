@@ -1,0 +1,30 @@
+# Eval profile overlay. Runs a SEPARATE, read-only app instance for eval runs so
+# the production stack (project eh-investigator, port 3100) is never touched.
+#   - project name eh-eval, published on 127.0.0.1:3101
+#   - EH_BROKER_READONLY=1 -> the broker rejects write-class excli tools
+#   - memory off + its own isolated workspaces/pi_home volumes
+# Bring up via scripts/run-eval-live.sh (which also clones the prod creds volume
+# so this instance can authenticate). Manual:
+#   docker compose -p eh-eval -f docker-compose.yml -f docker-compose.eval.yml up -d eh-investigator
+name: eh-eval
+
+services:
+  eh-investigator:
+    depends_on: !override []
+    ports: !override
+      - "127.0.0.1:3101:3100"
+    environment:
+      EH_BROKER_READONLY: "1"
+      MEMORY_ENABLED: "0"
+      EH_MEMORY_GROUP_ID: "evallab"
+      EH_TAINT_DEBUG: ${EH_TAINT_DEBUG:-}
+
+volumes:
+  # Override the production external volumes with fresh project-local ones so eval
+  # runs never write into real investigation workspaces or the Pi login store.
+  workspaces:
+    external: false
+    name: eh-eval_workspaces
+  pi_home:
+    external: false
+    name: eh-eval_pi_home

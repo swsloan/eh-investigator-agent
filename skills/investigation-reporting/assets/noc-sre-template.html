@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  ============================================================================
+  NOC INCIDENT / INVESTIGATION REPORT — TEMPLATE (worked example)
+  ----------------------------------------------------------------------------
+  This file is a populated EXAMPLE. Copy it to the report location and edit in
+  place. Replace ALL example content with the incident's facts. The hosts,
+  services, and IDs here are invented (app-03.web.prod.example, lb01,
+  shop.example.com, INC-20418) — never ship them in a real report.
+
+  Design intent (shares the investigation-reporting design system):
+    - ExtraHop brand: Sapphire→Plum gradient quarantined to the masthead;
+      white canvas; Source Sans 3; color below the masthead carries MEANING only
+      (severity, status, confidence, observed-vs-assessed, role, bucket, urgency).
+    - Status banner overlaps the masthead so status/root-cause/severity is the
+      first thing read. Keep it above the fold.
+    - US Letter / print-to-PDF friendly. Page breaks planned via break-inside.
+    - Each finding opens with a bold one-line answer (.answer) so the report is
+      scannable from Q-lines and answer-lines alone.
+    - Every follow-up action carries an owner (.who line).
+
+  STATUS TOKENS (drive all status color through these — never invent colors):
+    Severity accent (SEV1..SEV4/INFO) .. data-sev="critical|high|medium|low|info"
+    Incident status .................... data-status="ongoing|mitigated|monitoring|resolved|false-alarm"
+    Root-cause confidence .............. data-conf="high|moderate|low"
+    Evidence tag ....................... <span class="tag obs">Observed</span>
+                                         <span class="tag ass">Assessed</span>
+    Causal factor (RCA section) ........ <span class="tag cause">Root Cause</span>
+                                         <span class="tag trigger">Trigger</span>
+                                         <span class="tag contrib">Contributing</span>
+    System role ........................ data-role="culprit|affected|dependency|infra|external"
+    Limits bucket ...................... data-kind="clean|unknown|blind"
+    Follow-up urgency .................. data-urgency="now|soon|prevent"
+  ============================================================================
+-->
+<title>Incident Report — Checkout Degradation from Failing Pool Member app-03</title>
+<link rel="stylesheet" href="/vendor/source-sans-3/source-sans-3.css">
+<style>
+:root{
+  --sapphire:#261F63; --plum:#7F2854; --accent:#00AAEF;
+  --gradient:linear-gradient(135deg,#261F63,#7F2854);
+  --ink:#1A1A22; --ink-soft:#54555F; --ink-faint:#85868F;
+  --rule:#D9D8E0; --rule-soft:#ECEBF1; --paper:#FFFFFF; --panel:#FAFAFC;
+  --card:#FFFFFF; --canvas:#E9E9EE; --code-ink:#2C2C38; --sheet-shadow:0 2px 30px rgba(20,18,40,.14); --lift-shadow:0 10px 28px rgba(20,18,40,.16);
+  --sapphire-chip:#ECEBF6;
+  --critical:#9E1B1B; --high:#C0531C; --medium:#A36F0B; --low:#3F7A4F; --info:#586173;
+  --critical-bg:#FBEDED; --high-bg:#FCF0E8; --medium-bg:#FBF4E2; --low-bg:#ECF5EE; --info-bg:#EEF0F3;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --maxw:7.5in;
+}
+html[data-report-theme="dark"]{
+  color-scheme:dark;
+  --sapphire:#B3A8F2; --plum:#D171A0; --accent:#37C0F5;
+  --ink:#ECECF2; --ink-soft:#C4C3CF; --ink-faint:#9B9BA6;
+  --rule:#3A3947; --rule-soft:#2E2D3A; --paper:#15141C; --panel:#1F1E28;
+  --card:#232230; --canvas:#0F0E14; --code-ink:#D7D6E4; --sheet-shadow:0 2px 30px rgba(0,0,0,.45); --lift-shadow:0 10px 28px rgba(0,0,0,.38);
+  --sapphire-chip:#2A2740;
+  --critical:#FF8585; --high:#FF9A5C; --medium:#F2C356; --low:#67D391; --info:#A6A6B4;
+  --critical-bg:#3A1D22; --high-bg:#392616; --medium-bg:#342B16; --low-bg:#183427; --info-bg:#2A2A35;
+}
+@media screen and (prefers-color-scheme:dark){
+  html:not([data-report-theme="light"]){
+    color-scheme:dark;
+    --sapphire:#B3A8F2; --plum:#D171A0; --accent:#37C0F5;
+    --ink:#ECECF2; --ink-soft:#C4C3CF; --ink-faint:#9B9BA6;
+    --rule:#3A3947; --rule-soft:#2E2D3A; --paper:#15141C; --panel:#1F1E28;
+    --card:#232230; --canvas:#0F0E14; --code-ink:#D7D6E4; --sheet-shadow:0 2px 30px rgba(0,0,0,.45); --lift-shadow:0 10px 28px rgba(0,0,0,.38);
+    --sapphire-chip:#2A2740;
+    --critical:#FF8585; --high:#FF9A5C; --medium:#F2C356; --low:#67D391; --info:#A6A6B4;
+    --critical-bg:#3A1D22; --high-bg:#392616; --medium-bg:#342B16; --low-bg:#183427; --info-bg:#2A2A35;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{font-family:"Source Sans 3",Arial,Helvetica,sans-serif;color:var(--ink);background:var(--canvas);margin:0;font-size:10.5pt;line-height:1.5;-webkit-font-smoothing:antialiased}
+.sheet{background:var(--paper);max-width:var(--maxw);margin:28px auto;padding:0 0 .42in;box-shadow:var(--sheet-shadow)}
+p{margin:0 0 .55em}
+a{color:var(--accent);text-decoration:none}
+strong,b{font-weight:700}
+code,.mono{font-family:var(--mono);font-size:.84em}
+code{background:var(--rule-soft);padding:.06em .35em;border-radius:3px;color:var(--code-ink)}
+ul{margin:.2em 0 .4em;padding-left:1.15em}
+li{margin:0 0 .25em}
+.small{font-size:9pt;color:var(--ink-soft)}
+
+/* ---------- Masthead (the one gradient moment) ---------- */
+.masthead{background:var(--gradient);color:#fff;padding:.4in .62in .58in}
+.brandbar{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.brandbar .logo{width:142px;height:auto;display:block}
+.classif{font-size:7.5pt;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#fff;border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.10);padding:3px 10px;border-radius:99px;white-space:nowrap}
+.doc-kind{font-size:8.5pt;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.66);margin:.32in 0 7px}
+h1.report-title{font-size:23pt;line-height:1.1;font-weight:900;letter-spacing:-.012em;color:#fff;margin:0 0 .18em}
+.subtitle{font-size:12pt;font-weight:300;color:rgba(255,255,255,.85);margin:0;max-width:6.2in}
+.meta-row{display:flex;flex-wrap:wrap;gap:5px 26px;margin-top:18px;padding-top:12px;border-top:1px solid rgba(255,255,255,.22);font-size:8.7pt;color:rgba(255,255,255,.62)}
+.meta-row b{color:#fff;font-weight:600}
+
+/* ---------- Status banner (overlaps masthead) ---------- */
+.verdict{margin:-.36in .62in 0;background:var(--card);border:1px solid var(--rule);border-radius:10px;box-shadow:var(--lift-shadow);overflow:hidden;display:grid;grid-template-columns:7px 1fr;break-inside:avoid;position:relative}
+.verdict .accent{background:var(--info)}
+.verdict[data-sev="critical"] .accent{background:var(--critical)}
+.verdict[data-sev="high"] .accent{background:var(--high)}
+.verdict[data-sev="medium"] .accent{background:var(--medium)}
+.verdict[data-sev="low"] .accent{background:var(--low)}
+.verdict-grid{display:grid;grid-template-columns:1.15fr 1.15fr 1fr}
+.vcell{padding:15px 18px 13px;border-right:1px solid var(--rule-soft)}
+.vcell:last-child{border-right:0}
+.vlabel{font-size:7.8pt;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:6px}
+.vvalue{font-size:15pt;font-weight:800;line-height:1.05;color:var(--ink)}
+.vnote{font-size:8.5pt;color:var(--ink-faint);margin-top:5px;line-height:1.35}
+.status-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;background:var(--info)}
+.vcell[data-status="ongoing"] .status-dot{background:var(--critical)}
+.vcell[data-status="mitigated"] .status-dot{background:var(--medium)}
+.vcell[data-status="monitoring"] .status-dot{background:var(--info)}
+.vcell[data-status="resolved"] .status-dot{background:var(--low)}
+.vcell[data-status="false-alarm"] .status-dot{background:var(--info)}
+.sev-pill{display:inline-block;font-size:11.5pt;font-weight:800;padding:1px 11px;border-radius:99px}
+.verdict[data-sev="critical"] .sev-pill{color:var(--critical);background:var(--critical-bg)}
+.verdict[data-sev="high"] .sev-pill{color:var(--high);background:var(--high-bg)}
+.verdict[data-sev="medium"] .sev-pill{color:var(--medium);background:var(--medium-bg)}
+.verdict[data-sev="low"] .sev-pill{color:var(--low);background:var(--low-bg)}
+.verdict[data-sev="info"] .sev-pill{color:var(--info);background:var(--info-bg)}
+.confmeter{display:inline-flex;gap:3px;margin-top:8px}
+.confmeter span{width:24px;height:6px;border-radius:99px;background:var(--rule)}
+.vcell[data-conf="low"] .confmeter span:nth-child(-n+1),
+.vcell[data-conf="moderate"] .confmeter span:nth-child(-n+2),
+.vcell[data-conf="high"] .confmeter span:nth-child(-n+3){background:var(--sapphire)}
+
+/* ---------- Evidence-ladder strip (depth reached) ---------- */
+.ladder-strip{margin:.16in .62in 0;display:flex;flex-wrap:wrap;gap:9px 28px;align-items:center;padding:9px 15px;border:1px solid var(--rule);border-radius:8px;background:var(--panel);break-inside:avoid}
+.ls-group{display:flex;align-items:center;gap:9px}
+.ls-label{font-size:7.6pt;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-faint)}
+.rung{position:relative;font-size:8.6pt;font-weight:700;color:var(--ink-faint);background:var(--card);border:1px solid var(--rule);border-radius:99px;padding:2px 11px}
+.rung:not(:last-child){margin-right:15px}
+.rung:not(:last-child)::after{content:"\203A";position:absolute;right:-13px;top:50%;transform:translateY(-50%);color:var(--ink-faint);font-weight:800}
+.rung.reached{color:#fff;background:var(--sapphire);border-color:var(--sapphire)}
+.src-pill{font-size:8.6pt;font-weight:700;color:var(--sapphire);background:var(--sapphire-chip);border-radius:99px;padding:2px 11px}
+
+/* ---------- Sections ---------- */
+section{padding:.18in .62in 0}
+.sec-head{display:flex;align-items:center;gap:11px;margin:.65em 0 .55em;break-after:avoid}
+.sec-head::after{content:"";flex:1;height:1px;background:var(--rule-soft)}
+.sec-num{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:21px;padding:0 10px;border-radius:99px;background:var(--sapphire);color:#fff;font-size:8.5pt;font-weight:700;letter-spacing:.04em}
+.sec-head h2{font-size:13.5pt;font-weight:800;color:var(--sapphire);margin:0;letter-spacing:-.005em;white-space:nowrap}
+.sec-sub{font-size:9.3pt;color:var(--ink-faint);margin:-.15em 0 .8em 41px;break-after:avoid}
+
+/* ---------- Executive summary ---------- */
+.summary{margin-top:.3em;border:1px solid var(--rule);border-left:4px solid var(--sapphire);background:var(--panel);padding:14px 18px;border-radius:0 8px 8px 0;font-size:10.8pt;line-height:1.58;break-inside:avoid}
+
+/* ---------- Impact / key numbers ---------- */
+.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:.45em 0 .2em}
+.metric{border:1px solid var(--rule);border-top:3px solid var(--sapphire);border-radius:7px;padding:10px 11px 9px;background:var(--card);break-inside:avoid}
+.metric .mval{font-size:17pt;font-weight:900;color:var(--sapphire);line-height:1;letter-spacing:-.01em}
+.metric .mlabel{font-size:7.8pt;color:var(--ink-faint);text-transform:uppercase;font-weight:800;letter-spacing:.09em;margin-top:5px}
+.metric .mnote{font-size:8.5pt;color:var(--ink-soft);margin-top:2px;line-height:1.35}
+
+/* ---------- Affected systems ---------- */
+.entity-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.entity{border:1px solid var(--rule);border-left:4px solid var(--info);border-radius:0 8px 8px 0;padding:11px 14px;background:var(--card);break-inside:avoid}
+.entity[data-role="culprit"]{border-left-color:var(--critical)}
+.entity[data-role="affected"]{border-left-color:var(--sapphire)}
+.entity[data-role="dependency"]{border-left-color:var(--medium)}
+.entity[data-role="infra"]{border-left-color:var(--high)}
+.entity[data-role="external"]{border-left-color:var(--info)}
+.ename{font-weight:700;font-size:10.5pt;line-height:1.2}
+.eip{font-family:var(--mono);font-size:8.3pt;color:var(--ink-soft);margin-top:2px}
+.erole{font-size:9pt;color:var(--ink-soft);margin-top:5px;line-height:1.4}
+.ecrit{display:inline-block;margin-top:7px;font-size:7.5pt;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:2px 8px;border-radius:99px;background:var(--rule-soft);color:var(--ink-soft)}
+.entity[data-role="culprit"] .ecrit{background:var(--critical-bg);color:var(--critical)}
+.entity[data-role="affected"] .ecrit{background:var(--sapphire-chip);color:var(--sapphire)}
+.entity[data-role="infra"] .ecrit{background:var(--high-bg);color:var(--high)}
+.entity[data-role="dependency"] .ecrit{background:var(--medium-bg);color:var(--medium)}
+
+/* ---------- Failure-chain flow ---------- */
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;align-items:stretch;margin:.25em 0 .85em}
+.flow-node{border:1px solid var(--rule);border-radius:8px;padding:9px 10px;background:var(--panel);position:relative;break-inside:avoid}
+.flow-node:not(:last-child)::after{content:"›";position:absolute;right:-9px;top:50%;transform:translateY(-50%);color:var(--ink-faint);font-weight:800;font-size:12pt;line-height:1}
+.flow-node .stage{font-size:7.3pt;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-faint)}
+.flow-node .name{font-weight:800;font-size:9.6pt;line-height:1.15;margin-top:3px}
+.flow-node .state{font-size:8.3pt;color:var(--ink-soft);margin-top:5px;line-height:1.35}
+.flow-node[data-sev="critical"]{border-color:var(--critical);background:var(--critical-bg)}
+.flow-node[data-sev="high"]{border-color:var(--high);background:var(--high-bg)}
+.flow-node[data-sev="medium"]{border-color:var(--medium);background:var(--medium-bg)}
+.flow-node[data-sev="low"]{border-color:var(--low);background:var(--low-bg)}
+
+/* ---------- Timeline ---------- */
+.timeline{margin-top:.2em}
+.tl-item{display:grid;grid-template-columns:118px 28px 1fr;padding:0 0 15px;break-inside:avoid}
+.tl-item:last-child{padding-bottom:2px}
+.tl-time{font-family:var(--mono);font-size:8.3pt;color:var(--ink-soft);text-align:right;padding-right:14px;padding-top:1px;line-height:1.4}
+.tl-time .d{color:var(--ink-faint)}
+.tl-rail{position:relative;display:flex;justify-content:center}
+.tl-rail::before{content:"";position:absolute;top:4px;bottom:-15px;width:2px;background:var(--rule-soft)}
+.tl-item:last-child .tl-rail::before{display:none}
+.tl-dot{position:relative;z-index:1;width:13px;height:13px;border-radius:50%;background:var(--card);border:3.5px solid var(--info);margin-top:2px}
+.tl-item[data-sev="critical"] .tl-dot{border-color:var(--critical)}
+.tl-item[data-sev="high"] .tl-dot{border-color:var(--high)}
+.tl-item[data-sev="medium"] .tl-dot{border-color:var(--medium)}
+.tl-item[data-sev="low"] .tl-dot{border-color:var(--low)}
+.tl-body{padding-left:7px}
+.tl-head{font-weight:700;font-size:10pt}
+.tl-id{font-family:var(--mono);font-size:7.6pt;font-weight:600;color:var(--sapphire);background:var(--sapphire-chip);padding:1px 6px;border-radius:4px;margin-left:5px;vertical-align:1px}
+.tl-body p{font-size:9.4pt;color:var(--ink-soft);margin:.2em 0 0;line-height:1.45}
+
+/* ---------- Findings ---------- */
+.finding{border:1px solid var(--rule);border-left:4px solid var(--sapphire);border-radius:0 8px 8px 0;padding:12px 15px;margin:11px 0;break-inside:avoid;background:var(--card)}
+.finding .q{font-weight:800;color:var(--sapphire);font-size:11.3pt;line-height:1.3;margin-bottom:2px}
+.finding .answer{font-weight:700;font-size:10.3pt;color:var(--ink);margin:0 0 .35em}
+.finding .why{font-size:8.8pt;color:var(--ink-faint);margin-bottom:9px}
+.finding p{font-size:9.7pt;line-height:1.5}
+.tag{display:inline-block;font-size:7.4pt;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:99px;margin-right:6px;vertical-align:1px}
+.tag.obs{background:var(--sapphire-chip);color:var(--sapphire)}
+.tag.ass{border:1px solid var(--medium);color:var(--medium);background:var(--card)}
+.tag.cause{background:var(--critical-bg);color:var(--critical)}
+.tag.trigger{border:1px solid var(--info);color:var(--info);background:var(--card)}
+.tag.contrib{border:1px solid var(--medium);color:var(--medium);background:var(--card)}
+.evref{font-family:var(--mono);font-size:8.4pt;font-weight:600}
+.fmeta{margin-top:9px;padding-top:8px;border-top:1px solid var(--rule-soft);font-size:8.6pt;color:var(--ink-faint)}
+.fmeta b{color:var(--ink-soft)}
+
+/* ---------- Evidence table ---------- */
+table{width:100%;border-collapse:collapse;font-size:8.8pt}
+th{background:var(--sapphire);color:#fff;text-align:left;padding:7px 9px;font-weight:700;font-size:8.2pt;letter-spacing:.05em;text-transform:uppercase}
+td{border-bottom:1px solid var(--rule-soft);padding:7px 9px;vertical-align:top;overflow-wrap:anywhere}
+tr:nth-child(even) td{background:var(--panel)}
+td.mono,td .mono{word-break:break-word}
+.eid{display:inline-block;font-family:var(--mono);font-size:8pt;font-weight:700;color:var(--sapphire);background:var(--sapphire-chip);padding:1px 7px;border-radius:4px}
+
+/* ---------- Limits buckets ---------- */
+.bucket{border:1px solid var(--rule);border-left-width:4px;border-radius:0 8px 8px 0;padding:10px 14px;margin:9px 0;break-inside:avoid;background:var(--card)}
+.bucket h3{font-size:10.3pt;margin:0 0 5px;color:var(--ink);display:flex;align-items:center;gap:8px}
+.bucket h3::before{content:"";flex:none;width:9px;height:9px;border-radius:50%;background:var(--info)}
+.bucket[data-kind="clean"]{border-left-color:var(--low)}
+.bucket[data-kind="clean"] h3::before{background:var(--low)}
+.bucket[data-kind="unknown"]{border-left-color:var(--medium)}
+.bucket[data-kind="unknown"] h3::before{background:var(--medium)}
+.bucket[data-kind="blind"]{border-left-color:var(--info)}
+.bucket ul{margin:.1em 0 .2em}
+.bucket li{font-size:9.5pt;color:var(--ink-soft)}
+
+/* ---------- Follow-up actions ---------- */
+.step{display:grid;grid-template-columns:auto 1fr;gap:12px;border:1px solid var(--rule);border-radius:8px;padding:11px 13px;margin:9px 0;break-inside:avoid;align-items:start;background:var(--card)}
+.step .upill{font-size:7.4pt;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:3px 9px;border-radius:99px;white-space:nowrap;margin-top:2px;text-align:center;align-self:start}
+.step[data-urgency="now"] .upill{background:var(--critical-bg);color:var(--critical)}
+.step[data-urgency="soon"] .upill{background:var(--medium-bg);color:var(--medium)}
+.step[data-urgency="prevent"] .upill{background:var(--info-bg);color:var(--info)}
+.step .body{font-size:9.5pt;line-height:1.5}
+.step .body b{font-size:10pt}
+.step .who{margin-top:5px;font-size:8.4pt;color:var(--ink-faint)}
+.step .who b{color:var(--ink-soft);font-weight:600}
+
+/* ---------- Footer ---------- */
+.report-footer{margin:.45in .62in 0}
+.report-footer .gradient-rule{height:2px;border-radius:99px;background:var(--gradient);margin-bottom:10px}
+.report-footer .cols{display:flex;justify-content:space-between;font-size:8pt;color:var(--ink-faint)}
+
+/* ---------- Print ---------- */
+@page{size:letter;margin:.4in}
+@media print{
+  html{
+    color-scheme:light;
+    --sapphire:#261F63; --plum:#7F2854; --accent:#00AAEF;
+    --ink:#1A1A22; --ink-soft:#54555F; --ink-faint:#85868F;
+    --rule:#D9D8E0; --rule-soft:#ECEBF1; --paper:#FFFFFF; --panel:#FAFAFC;
+    --card:#FFFFFF; --canvas:#FFFFFF; --code-ink:#2C2C38; --sheet-shadow:none; --lift-shadow:none;
+    --sapphire-chip:#ECEBF6;
+    --critical:#9E1B1B; --high:#C0531C; --medium:#A36F0B; --low:#3F7A4F; --info:#586173;
+    --critical-bg:#FBEDED; --high-bg:#FCF0E8; --medium-bg:#FBF4E2; --low-bg:#ECF5EE; --info-bg:#EEF0F3;
+  }
+  body{background:#fff}
+  .sheet{box-shadow:none;margin:0;max-width:none}
+  .verdict{box-shadow:none}
+}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<!-- 1. TITLE / HEADER -->
+<header class="masthead">
+  <div class="brandbar">
+    <svg class="logo" role="img" aria-label="ExtraHop" viewBox="0 0 223.8 22.1" xmlns="http://www.w3.org/2000/svg"><g fill="#FFFFFF"><path d="M0,0h15.9v5.1h-10v3.4h8.2v4.8H5.8V17h10.7v5.1H0V0z M26.9,10.8L19.4,0h7.2l3.7,5.7L33.8,0h6.5l-6.8,10.2 L41.8,22h-7.3L30,15.3l-4.3,6.8h-6.4L26.9,10.8z M49.3,5.1h-6.8V0h19.4v5.1h-6.7V22h-5.9V5.1z M66,0h9.1c1.2,0,2.3,0.2,3.2,0.5 c1,0.3,1.8,0.8,2.5,1.4s1.2,1.4,1.6,2.3S83,6.1,83,7.3c0,1.5-0.3,2.7-1,3.8c-0.6,1.1-1.5,1.9-2.5,2.6l4.7,8.5h-6.3l-3.7-7.5h-2.4 v7.5H66V0z M74.5,10c0.8,0,1.4-0.2,1.9-0.7s0.7-1.1,0.7-1.9s-0.2-1.5-0.7-2s-1.1-0.7-1.9-0.7h-2.8V10H74.5z M94.2,0h6.7l7.8,22 h-6.3l-1.4-4.6h-7.4L92.1,22h-6L94.2,0z M99.8,13.2l-2.4-8.1l-2.5,8.1H99.8z M112.7,0h5.8v8.1h13V0h5.8v22h-5.8v-8.6h-13V22h-5.8V0 z M153.2,22c-1.6,0-3-0.3-4.4-0.8c-1.3-0.6-2.5-1.3-3.5-2.3s-1.7-2.1-2.3-3.5c-0.5-1.4-0.8-2.8-0.8-4.4s0.3-3.1,0.8-4.4 c0.5-1.4,1.3-2.5,2.3-3.5s2.1-1.7,3.5-2.3c1.3-0.5,2.8-0.8,4.4-0.8H166c1.6,0,3,0.3,4.4,0.8c1.3,0.6,2.5,1.3,3.5,2.3 s1.7,2.1,2.3,3.5C176.7,8,177,9.4,177,11s-0.3,3.1-0.8,4.4c-0.5,1.4-1.3,2.5-2.3,3.5s-2.1,1.7-3.5,2.3c-1.3,0.5-2.8,0.8-4.4,0.8 C166,22,153.2,22,153.2,22z M166.1,16.8c0.8,0,1.5-0.2,2.2-0.5c0.6-0.3,1.2-0.7,1.6-1.2c0.4-0.5,0.8-1.1,1-1.9 c0.2-0.7,0.3-1.5,0.3-2.3s-0.1-1.5-0.3-2.3c-0.2-0.7-0.6-1.3-1-1.9c-0.4-0.5-1-0.9-1.6-1.2S166.9,5,166.1,5h-12.8 c-0.8,0-1.5,0.2-2.2,0.5c-0.6,0.3-1.2,0.7-1.6,1.2c-0.4,0.5-0.8,1.1-1,1.9c-0.2,0.7-0.3,1.5-0.3,2.3s0.1,1.5,0.3,2.3 c0.2,0.7,0.6,1.3,1,1.9c0.4,0.5,1,0.9,1.6,1.2c0.6,0.3,1.4,0.5,2.2,0.5H166.1z M181.9,0h25.2c1.2,0,2.3,0.2,3.2,0.5 c1,0.3,1.8,0.8,2.5,1.4s1.2,1.4,1.6,2.3c0.4,0.9,0.6,2,0.6,3.2c0,1.1-0.2,2.1-0.6,3.1c-0.4,0.9-0.9,1.7-1.6,2.3 c-0.7,0.7-1.5,1.1-2.4,1.5c-0.9,0.3-2,0.5-3.1,0.5h-19.7v7.3h-5.7V0z M206.7,10.1c0.8,0,1.4-0.3,1.9-0.8s0.7-1.2,0.7-1.9 c0-0.8-0.2-1.5-0.7-2c-0.4-0.5-1.1-0.8-1.9-0.8h-19v5.5H206.7z"/><path d="M222,3.8c-0.3,0-0.6-0.1-0.9-0.2c-0.3-0.2-0.5-0.4-0.7-0.7s-0.2-0.6-0.2-1s0.1-0.7,0.2-1c0.2-0.3,0.4-0.5,0.7-0.7 S221.7,0,222,0c0.3,0,0.6,0.1,0.9,0.2c0.3,0.2,0.5,0.4,0.7,0.7s0.2,0.6,0.2,1s-0.1,0.7-0.2,1c-0.2,0.3-0.4,0.5-0.7,0.7 C222.6,3.8,222.3,3.8,222,3.8z M222,3.5c0.3,0,0.5-0.1,0.7-0.2c0.2-0.1,0.4-0.3,0.5-0.6c0.1-0.2,0.2-0.5,0.2-0.8s-0.1-0.6-0.2-0.8 c-0.1-0.2-0.3-0.4-0.5-0.6c-0.2-0.1-0.5-0.2-0.7-0.2c-0.3,0-0.5,0.1-0.7,0.2s-0.4,0.3-0.5,0.6c-0.1,0.2-0.2,0.5-0.2,0.8 s0.1,0.6,0.2,0.8c0.1,0.2,0.3,0.4,0.5,0.6C221.5,3.4,221.7,3.5,222,3.5z M221.3,2.9v-2h0.7c0.2,0,0.4,0,0.5,0.1s0.2,0.3,0.2,0.5 c0,0.1,0,0.2-0.1,0.3S222.4,2,222.3,2l0.4,0.8h-0.4L222,2.1h-0.4v0.7L221.3,2.9L221.3,2.9z M221.7,1.9h0.3c0.1,0,0.2,0,0.3-0.1 s0.1-0.1,0.1-0.2s0-0.2-0.1-0.2c-0.1-0.1-0.2-0.1-0.3-0.1h-0.3V1.9z"/></g></svg>
+    <div class="classif">Internal · Operations</div>
+  </div>
+  <div class="doc-kind">NOC Incident Report · INC-20418 · Service Degradation</div>
+  <h1 class="report-title">Checkout Degradation from Failing Pool Member app-03</h1>
+  <p class="subtitle">Intermittent 502s and 17× p95 latency on shop.example.com traced to one slow upstream behind lb01</p>
+  <div class="meta-row">
+    <span><b>Collected:</b> 2026-06-09T11:32:08Z</span>
+    <span><b>Window:</b> 2026-06-09T06:00:00Z–11:00:00Z</span>
+    <span><b>Prepared by:</b> ExtraHop Investigation Agent</span>
+    <span><b>Data sources:</b> ExtraHop RevealX (records, metrics) · lb01 admin API · ServiceNow</span>
+  </div>
+</header>
+
+<!-- 2. STATUS BANNER -->
+<div class="verdict" data-sev="high">
+  <div class="accent"></div>
+  <div class="verdict-grid">
+    <div class="vcell" data-status="mitigated">
+      <div class="vlabel">Status</div>
+      <div class="vvalue"><span class="status-dot"></span>Mitigated</div>
+      <div class="vnote">app-03 drained from the pool at 09:58Z; hardware fix pending</div>
+    </div>
+    <div class="vcell" data-conf="high">
+      <div class="vlabel">Root Cause</div>
+      <div class="vvalue">Identified</div>
+      <div class="confmeter"><span></span><span></span><span></span></div>
+      <div class="vnote">Failing SSD on app-03; latency-blind health checks kept it in rotation</div>
+    </div>
+    <div class="vcell">
+      <div class="vlabel">Severity</div>
+      <div class="vvalue"><span class="sev-pill">SEV2</span></div>
+      <div class="vnote">18% of checkout requests degraded for 47 minutes</div>
+    </div>
+  </div>
+</div>
+
+<!-- LADDER STRIP — evidence depth reached (mirror evidence/verdict.json).
+     Mark the rungs you actually climbed with class "reached"; leave the rest muted. -->
+<div class="ladder-strip">
+  <div class="ls-group">
+    <span class="ls-label">Evidence depth</span>
+    <span class="rung reached">Metrics</span>
+    <span class="rung reached">Records</span>
+    <span class="rung">Packets</span>
+  </div>
+</div>
+
+<!-- 3. EXECUTIVE SUMMARY -->
+<section>
+  <div class="sec-head"><span class="sec-num">1</span><h2>Executive Summary</h2></div>
+  <div class="summary">
+    From <b>09:11Z to 09:58Z</b>, roughly <b>18% of requests to shop.example.com</b> failed with 502s
+    or took seconds instead of milliseconds — about <b>12,400 degraded checkout requests</b>. The cause
+    was a single web-pool member, <b>app-03</b>, whose failing SSD made it progressively slower while
+    lb01's connectivity-only health checks kept reporting it healthy and routing it traffic. The NOC was
+    paged 3 minutes after onset; the fault was isolated to app-03 by 09:38Z and impact ended when the
+    member was drained at 09:58Z. Service has run at baseline since. The SSD is being replaced; the
+    durable fix is latency-aware health checking so a slow-but-alive member can never linger in the
+    pool again.
+  </div>
+</section>
+
+<!-- 4. IMPACT / KEY NUMBERS (optional; delete if not useful) -->
+<section>
+  <div class="metric-grid">
+    <div class="metric"><div class="mval">47 min</div><div class="mlabel">Impact Duration</div><div class="mnote">09:11–09:58Z, ended by drain</div></div>
+    <div class="metric"><div class="mval">18%</div><div class="mlabel">Requests Degraded</div><div class="mnote">≈12.4k checkout requests; 502 or &gt;3s</div></div>
+    <div class="metric"><div class="mval">3.8s</div><div class="mlabel">Service p95</div><div class="mnote">vs. 220 ms baseline (17×)</div></div>
+    <div class="metric"><div class="mval">3 / 44</div><div class="mlabel">MTTD / MTTR (min)</div><div class="mnote">paged 09:14Z; mitigated 09:58Z</div></div>
+  </div>
+</section>
+
+<!-- 5. AFFECTED SYSTEMS -->
+<section>
+  <div class="sec-head"><span class="sec-num">2</span><h2>Affected Systems</h2></div>
+  <div class="entity-grid">
+    <div class="entity" data-role="culprit">
+      <div>
+        <div class="ename">app-03.web.prod.example</div>
+        <div class="eip">10.30.2.13 · web pool member 3 of 4</div>
+        <div class="erole">Source of the slow responses and 502-producing timeouts; failing SSD confirmed on-host.</div>
+        <div class="ecrit">Culprit · Drained</div>
+      </div>
+    </div>
+    <div class="entity" data-role="infra">
+      <div>
+        <div class="ename">lb01</div>
+        <div class="eip">10.30.0.5 · VIP shop.example.com</div>
+        <div class="erole">Kept routing to app-03 — health checks test connectivity, not latency. Contributing factor, not faulty.</div>
+        <div class="ecrit">Load Balancer · Single Ingress</div>
+      </div>
+    </div>
+    <div class="entity" data-role="affected">
+      <div>
+        <div class="ename">shop.example.com checkout</div>
+        <div class="eip">VIP 203.0.113.10 · revenue path</div>
+        <div class="erole">User-facing service that absorbed the 502s and latency.</div>
+        <div class="ecrit">Revenue Path · Crown Jewel</div>
+      </div>
+    </div>
+    <div class="entity" data-role="dependency">
+      <div>
+        <div class="ename">app-01 / 02 / 04</div>
+        <div class="eip">10.30.2.11–.14 · remaining pool members</div>
+        <div class="erole">Healthy throughout; absorbed drained traffic with ~12% headroom remaining at peak.</div>
+        <div class="ecrit">Capacity Risk · n−1</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6. SCOPE AND TIMELINE -->
+<section>
+  <div class="sec-head"><span class="sec-num">3</span><h2>Scope and Timeline</h2></div>
+  <p class="sec-sub">Examined: HTTP, TCP, and database records for the web and DB tiers over the 5-hour window; lb01 health-check history; change calendar. All times UTC.</p>
+
+  <div class="flow">
+    <div class="flow-node" data-sev="medium">
+      <div class="stage">Trigger</div><div class="name">SSD degradation, app-03</div>
+      <div class="state">~09:11Z onset · pre-fail since 06:40Z</div>
+    </div>
+    <div class="flow-node" data-sev="high">
+      <div class="stage">Fault</div><div class="name">Slow responses, zero-window</div>
+      <div class="state">app-03 p95 → 9.6s</div>
+    </div>
+    <div class="flow-node" data-sev="medium">
+      <div class="stage">Propagation</div><div class="name">LB retries; checks still pass</div>
+      <div class="state">app-03 stays in rotation</div>
+    </div>
+    <div class="flow-node" data-sev="high">
+      <div class="stage">Impact</div><div class="name">502s + 17× p95</div>
+      <div class="state">18% of checkout requests</div>
+    </div>
+    <div class="flow-node" data-sev="low">
+      <div class="stage">Recovery</div><div class="name">app-03 drained</div>
+      <div class="state">09:58:13Z · baseline in 90s</div>
+    </div>
+  </div>
+
+  <div class="timeline">
+    <div class="tl-item" data-sev="medium">
+      <div class="tl-time">09:11:42<br><span class="d">Jun 09</span></div>
+      <div class="tl-rail"><div class="tl-dot"></div></div>
+      <div class="tl-body"><div class="tl-head">First symptom — app-03 backpressure <span class="tl-id">E4</span></div>
+      <p>app-03 begins advertising TCP zero-window to lb01; server-side processing time climbs from 180 ms toward seconds.</p></div>
+    </div>
+    <div class="tl-item" data-sev="high">
+      <div class="tl-time">09:14:21<br><span class="d">Jun 09</span></div>
+      <div class="tl-rail"><div class="tl-dot"></div></div>
+      <div class="tl-body"><div class="tl-head">Alert fires — NOC paged <span class="tl-id">E1</span></div>
+      <p>HTTP 5xx ratio on shop.example.com crosses the 2% threshold. MTTD 3 minutes from first symptom.</p></div>
+    </div>
+    <div class="tl-item" data-sev="medium">
+      <div class="tl-time">09:37:50<br><span class="d">Jun 09</span></div>
+      <div class="tl-rail"><div class="tl-dot"></div></div>
+      <div class="tl-body"><div class="tl-head">Fault isolated to app-03 <span class="tl-id">E2</span> <span class="tl-id">E3</span></div>
+      <p>Per-member breakdown: app-03 p95 9.6s vs 230–310 ms for siblings; 96% of 502s trace to lb01 timeouts against app-03. DB tier flat.</p></div>
+    </div>
+    <div class="tl-item" data-sev="low">
+      <div class="tl-time">09:58:13<br><span class="d">Jun 09</span></div>
+      <div class="tl-rail"><div class="tl-dot"></div></div>
+      <div class="tl-body"><div class="tl-head">Mitigation — app-03 drained from pool <span class="tl-id">E6</span></div>
+      <p>Error ratio back under 0.1% within 90 seconds; p95 returns to 220 ms.</p></div>
+    </div>
+    <div class="tl-item" data-sev="low">
+      <div class="tl-time">10:00–11:00<br><span class="d">Jun 09</span></div>
+      <div class="tl-rail"><div class="tl-dot"></div></div>
+      <div class="tl-body"><div class="tl-head">Recovery verified; cause confirmed <span class="tl-id">E7</span> <span class="tl-id">E8</span></div>
+      <p>One-hour clean monitoring window; remaining members hold load with ~12% headroom. On-host diagnostics at 10:40Z find SMART pre-fail on app-03's data SSD.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 7. DIAGNOSTIC QUESTIONS AND FINDINGS -->
+<section>
+  <div class="sec-head"><span class="sec-num">4</span><h2>Diagnostic Questions and Findings</h2></div>
+
+  <div class="finding">
+    <div class="q">Q1 — Where is the latency introduced: network, app tier, or database?</div>
+    <p class="answer">At app-03 itself. The network path and database tier are clean.</p>
+    <div class="why">Why it mattered: each answer drives a different escalation — netops, platform, or DBA.</div>
+    <p><span class="tag obs">Observed</span>Per-member HTTP records put app-03's p95 at 9.6s against 230–310 ms for app-01/02/04; 96% of 502s are lb01 timeouts against app-03 (<a class="evref" href="#E2">E2</a>).</p>
+    <p><span class="tag obs">Observed</span>app-03 advertised TCP zero-window from 09:11:42Z — receive-side backpressure, the host not keeping up (<a class="evref" href="#E4">E4</a>). Uplink retransmission and loss stayed at baseline pool-wide (<a class="evref" href="#E7">E7</a>).</p>
+    <p><span class="tag obs">Observed</span>Database-tier query latency was flat at baseline through the entire window, including queries issued by app-03 (<a class="evref" href="#E3">E3</a>).</p>
+    <p><span class="tag ass">Assessed</span>The latency originates on the host, not in transit and not downstream.</p>
+    <div class="fmeta"><b>Confidence:</b> High</div>
+  </div>
+
+  <div class="finding">
+    <div class="q">Q2 — What changed at 09:11?</div>
+    <p class="answer">Nothing was deployed — onset matches a hardware fault on app-03, confirmed as a failing SSD.</p>
+    <div class="why">Why it mattered: "what changed" separates regression (roll back) from component failure (replace).</div>
+    <p><span class="tag obs">Observed</span>No deploys, config pushes, or change-calendar entries for the web tier in the window; a change freeze was in effect (<a class="evref" href="#E9">E9</a>).</p>
+    <p><span class="tag obs">Observed</span>On-host diagnostics at 10:40Z found SMART pre-fail on app-03's data SSD, with error counters rising since 06:40Z (<a class="evref" href="#E8">E8</a>).</p>
+    <p><span class="tag ass">Assessed</span>SSD degradation drove I/O stalls, which backed up request handling — consistent with the zero-window signature and gradual onset.</p>
+    <div class="fmeta"><b>Confidence:</b> High</div>
+  </div>
+
+  <div class="finding">
+    <div class="q">Q3 — Why didn't lb01 eject the slow member?</div>
+    <p class="answer">Health checks measure connectivity, not latency — app-03 kept passing while serving 9-second responses.</p>
+    <div class="why">Why it mattered: the answer determines whether this recurs with the next slow-but-alive host.</div>
+    <p><span class="tag obs">Observed</span>100% of lb01 health checks against app-03 returned healthy during the incident. The check is TCP-connect plus a static-page fetch with a 10s timeout (<a class="evref" href="#E5">E5</a>).</p>
+    <p><span class="tag ass">Assessed</span>Latency-blind health checking is the systemic gap: any member that degrades without fully dying will reproduce this incident. Drives the prevention items in §9.</p>
+    <div class="fmeta"><b>Confidence:</b> High</div>
+  </div>
+</section>
+
+<!-- 8. ROOT CAUSE AND CONTRIBUTING FACTORS -->
+<section>
+  <div class="sec-head"><span class="sec-num">5</span><h2>Root Cause and Contributing Factors</h2></div>
+  <p><span class="tag cause">Root Cause</span><b>Failing SSD on app-03.</b> Storage I/O stalls slowed request handling until responses took seconds or timed out, producing the 502s and latency users saw (E2, E4, E8).</p>
+  <p><span class="tag trigger">Trigger</span><b>SSD error rate crossed the stall threshold at ~09:11Z.</b> SMART counters had been rising since 06:40Z — the failure announced itself 2.5 hours before impact, but those alerts route to the storage team's queue, not the NOC (E8).</p>
+  <p><span class="tag contrib">Contributing</span><b>Latency-blind health checks.</b> lb01's connectivity-only check kept a member serving 9-second responses in rotation for the full 47 minutes. This is what turned a single-host fault into a service incident (E5).</p>
+  <p><span class="tag contrib">Contributing</span><b>No per-member latency visibility on the service dashboard.</b> Isolation took 24 minutes largely because the on-call had to assemble a per-member breakdown by hand (timeline, 09:14→09:38).</p>
+</section>
+
+<!-- 9. HYPOTHESES CONSIDERED -->
+<section>
+  <div class="sec-head"><span class="sec-num">6</span><h2>Hypotheses Considered</h2></div>
+  <p><b>Bad deploy or config regression.</b> The usual first suspect for sudden latency. Ruled out: change freeze in effect, no deploy or config-push traffic to the web tier in the window (E9).</p>
+  <p><b>Traffic surge or abusive client.</b> Would explain pool-wide strain. Ruled out: request volume flat within ±4% of the 7-day baseline; no client concentration anomaly (E7).</p>
+  <p><b>Network congestion or packet loss.</b> Would explain latency without host fault. Ruled out: retransmission and loss at baseline on all uplinks; the zero-window signal was localized to app-03, which indicates host backpressure rather than path trouble (E4, E7).</p>
+  <p><b>Database slowdown.</b> Would degrade all members equally. Ruled out: DB-tier latency flat, and app-03's own queries ran at normal speed once requests reached the data layer (E3).</p>
+</section>
+
+<!-- 10. EVIDENCE SUMMARY -->
+<section>
+  <div class="sec-head"><span class="sec-num">7</span><h2>Evidence Summary</h2></div>
+  <p class="sec-sub">Every item reproducible from the workspace evidence files. excli-interface queries are exact invocations.</p>
+  <table>
+    <tr><th style="width:42px">ID</th><th style="width:115px">Source</th><th>Query / tool call</th><th style="width:78px">Collected (UTC)</th><th style="width:32%">Result</th></tr>
+    <tr id="E1"><td><span class="eid">E1</span></td><td>PagerDuty</td><td class="mono">GET /incidents/PD-84412 (rule: http-5xx-ratio &gt; 2%)</td><td class="mono">11:02:11</td><td>Paged 09:14:21Z · <code>evidence/alerts/pd-84412.json</code></td></tr>
+    <tr id="E2"><td><span class="eid">E2</span></td><td>HTTP records</td><td class="mono">./excli-interface search_records -json '{"types":["~http"],"filter":{...server in 10.30.2.11-14, statusCode&gt;=500 OR procTime&gt;3000...},"from":-18000000}'</td><td class="mono">11:05:38</td><td>p95 by member; 96% of 502s ↦ app-03 · <code>evidence/records/http-by-member.json</code></td></tr>
+    <tr id="E3"><td><span class="eid">E3</span></td><td>DB records</td><td class="mono">./excli-interface search_records -json '{"types":["~db"],"filter":{...client in web pool...}}'</td><td class="mono">11:08:02</td><td>Query latency flat vs baseline · <code>evidence/records/db-tier-latency.json</code></td></tr>
+    <tr id="E4"><td><span class="eid">E4</span></td><td>TCP metrics</td><td class="mono">./excli-interface execute_metric_query -json '{...tcp zero_wnd + rto for device 10.30.2.13, 1m buckets...}'</td><td class="mono">11:10:46</td><td>Zero-window from 09:11:42Z, app-03 only · <code>evidence/metrics/tcp-zerownd-app03.json</code></td></tr>
+    <tr id="E5"><td><span class="eid">E5</span></td><td>lb01 admin API</td><td class="mono">GET /mgmt/pools/web-pool/members/app-03/health?from=09:00&amp;to=10:00</td><td class="mono">11:14:19</td><td>0 failed checks; TCP-connect + static fetch, 10s timeout · <code>evidence/lb/healthchecks-app03.json</code></td></tr>
+    <tr id="E6"><td><span class="eid">E6</span></td><td>HTTP records</td><td class="mono">./excli-interface search_records -json '{"types":["~http"],"filter":{...vip 203.0.113.10...},"from":"09:55","until":"10:15"}'</td><td class="mono">11:17:55</td><td>Error ratio &lt;0.1% within 90s of drain · <code>evidence/records/http-post-drain.json</code></td></tr>
+    <tr id="E7"><td><span class="eid">E7</span></td><td>Network metrics</td><td class="mono">./excli-interface execute_metric_query -json '{...bytes, retrans, loss for web-tier uplinks + request volume for vip, 5m buckets, -7d baseline...}'</td><td class="mono">11:21:30</td><td>Volume ±4% of baseline; retrans/loss normal · <code>evidence/metrics/netbase-window.json</code></td></tr>
+    <tr id="E8"><td><span class="eid">E8</span></td><td>ServiceNow</td><td class="mono">INC-20418 work note 10:42Z (on-host SMART dump, app-03)</td><td class="mono">11:24:08</td><td>SSD pre-fail; error counters rising since 06:40Z · <code>evidence/tickets/inc-20418-smart.txt</code></td></tr>
+    <tr id="E9"><td><span class="eid">E9</span></td><td>Change mgmt</td><td class="mono">CAB calendar query, scope web tier, 2026-06-09 06:00–11:00Z</td><td class="mono">11:26:51</td><td>0 changes; freeze in effect · <code>evidence/changes/cab-window.json</code></td></tr>
+  </table>
+</section>
+
+<!-- 11. LIMITS AND OPEN QUESTIONS -->
+<section>
+  <div class="sec-head"><span class="sec-num">8</span><h2>Limits and Open Questions</h2></div>
+  <div class="bucket" data-kind="clean">
+    <h3>Checked and clean</h3>
+    <ul>
+      <li>Uplink retransmission, loss, and traffic volume at baseline pool-wide (E7).</li>
+      <li>Database tier flat through the window, including app-03's own queries (E3).</li>
+      <li>app-01/02/04 healthy throughout; post-drain capacity holds with ~12% headroom at peak (E6, E7).</li>
+    </ul>
+  </div>
+  <div class="bucket" data-kind="unknown">
+    <h3>Could not determine</h3>
+    <ul>
+      <li>How many of the 12.4k degraded requests were user-visible failures vs. silently retried by clients — needs application/client logs.</li>
+      <li>Abandoned-checkout and revenue impact — needs order analytics reconciliation (action item, §9).</li>
+    </ul>
+  </div>
+  <div class="bucket" data-kind="blind">
+    <h3>What ExtraHop can't see</h3>
+    <ul>
+      <li>On-host disk health, I/O queues, and process state — host-telemetry territory; the SSD confirmation came from on-host diagnostics (E8).</li>
+      <li>Client-side retries that never reached lb01, and anything not crossing a monitored sensor.</li>
+      <li>Encrypted payload content; conclusions rest on protocol metadata, timing, and volume.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 12. FOLLOW-UP ACTIONS -->
+<section>
+  <div class="sec-head"><span class="sec-num">9</span><h2>Follow-up Actions</h2></div>
+  <div class="step" data-urgency="now"><span class="upill">Stabilize</span>
+    <div class="body"><b>Keep app-03 drained; replace the SSD and burn-in before re-pooling</b> — validate its p95 against siblings under synthetic load first. Confirm n−1 capacity holds through the next traffic peak.
+      <div class="who"><b>Owner:</b> @dc-ops · <b>Due:</b> 2026-06-13</div>
+    </div>
+  </div>
+  <div class="step" data-urgency="soon"><span class="upill">Verify / Investigate</span>
+    <div class="body"><b>Reconcile the 12.4k degraded requests against order analytics</b> to quantify lost checkouts; confirm why SMART pre-fail alerts route only to the storage queue and add a NOC notification path.
+      <div class="who"><b>Owner:</b> @platform-eng · <b>Due:</b> 2026-06-16</div>
+    </div>
+  </div>
+  <div class="step" data-urgency="prevent"><span class="upill">Prevent</span>
+    <div class="body"><b>Make lb01 health checks latency-aware</b> (eject a member at p95 &gt; 1s sustained 60s); alert on app-tier TCP zero-window; add a per-member p95 panel to the service dashboard so isolation never requires manual breakdown again.
+      <div class="who"><b>Owner:</b> @sre · <b>Due:</b> 2026-06-30</div>
+    </div>
+  </div>
+</section>
+
+<div class="report-footer">
+  <div class="gradient-rule"></div>
+  <div class="cols">
+    <span>Generated by the ExtraHop Investigation Agent</span>
+    <span>INC-20418 · 2026-06-09</span>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

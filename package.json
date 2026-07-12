@@ -1,0 +1,28 @@
+{
+  "name": "extrahop-demo-agent",
+  "version": "1.0.0",
+  "description": "Web chat interface for an ExtraHop investigation agent, backed by the Pi coding agent or Claude Code",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bootstrap": "bash scripts/bootstrap.sh",
+    "check": "bash scripts/check-syntax.sh",
+    "package:dist": "bash scripts/package.sh",
+    "smoke": "playwright test smoke/spa-smoke.spec.js --reporter=line",
+    "test": "node --test",
+    "start": "node server.js",
+    "setup:python": "python3 -m venv .venv && .venv/bin/python -m pip install --upgrade pip setuptools wheel && .venv/bin/python -m pip install -r requirements.txt",
+    "setup:weasyprint": "(/opt/homebrew/bin/brew install weasyprint || /usr/local/bin/brew install weasyprint || brew install weasyprint) && npm run setup:python"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.198",
+    "@highlightjs/cdn-assets": "^11.10.0",
+    "dompurify": "^3.2.0",
+    "express": "^4.21.0",
+    "marked": "^15.0.0",
+    "multer": "^2.2.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
+  }
+}

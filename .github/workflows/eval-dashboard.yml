@@ -1,0 +1,34 @@
+# Sample CI workflow for the investigation eval dashboard (M4).
+# Activates if this repo is pushed to GitHub. Builds the dashboard, fails the
+# job when the latest run's autonomy gate fails, and publishes the HTML as a
+# downloadable artifact.
+name: eval-dashboard
+on:
+  push:
+    paths: ["eval/**", "skills/evidence-ladder/**"]
+  pull_request:
+    paths: ["eval/**", "skills/evidence-ladder/**"]
+  workflow_dispatch: {}
+jobs:
+  eval-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Build dashboard and check the autonomy gate
+        run: bash eval/dashboard/ci.sh
+        # For real harness output instead of fixtures, set:
+        #   env:
+        #     DATA: eval/reports
+        #     FAIL_ON_REGRESSION: "1"
+      - name: Publish dashboard HTML
+        if: always() # upload even when the gate fails, so reviewers can inspect it
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-dashboard
+          path: eval/dashboard/out

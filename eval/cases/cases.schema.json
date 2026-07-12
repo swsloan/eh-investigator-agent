@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://extrahop.local/eval/case.schema.json",
+  "title": "Labeled eval case (ground truth)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "prompt", "expected"],
+  "properties": {
+    "id": { "type": "string" },
+    "prompt": { "type": "string", "description": "What the agent is asked to investigate (e.g. a detection id + host)." },
+    "group_id": { "type": "string", "description": "Memory namespace for the run; use an isolated evallab namespace." },
+    "notes": { "type": "string" },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disposition", "min_rung"],
+      "properties": {
+        "disposition": { "type": "string", "enum": ["malicious", "benign", "false-positive", "benign-authorized", "inconclusive"] },
+        "attack": { "type": "array", "items": { "type": "string" } },
+        "min_rung": { "type": "string", "enum": ["metrics", "records", "packets"], "description": "Deepest evidence rung genuinely required to settle this case." }
+      }
+    }
+  }
+}

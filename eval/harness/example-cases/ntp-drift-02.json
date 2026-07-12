@@ -1,0 +1,1 @@
+{ "id": "ntp-drift-02", "prompt": "Investigate detection 48002 on 10.0.10.7 (unusual outbound to time servers).", "group_id": "evallab", "expected": { "disposition": "benign", "attack": [], "min_rung": "metrics" } }

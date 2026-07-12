@@ -1,0 +1,1 @@
+{ "id": "ids-eicar-09", "prompt": "Investigate IDS detection 48009 (EICAR test-file signature).", "group_id": "evallab", "expected": { "disposition": "false-positive", "attack": [], "min_rung": "records" } }

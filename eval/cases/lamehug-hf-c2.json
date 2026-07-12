@@ -1,0 +1,11 @@
+{
+  "id": "lamehug-hf-c2",
+  "prompt": "Investigate IDS detection 4294968249 (ET ATTACK_RESPONSE PowerShell NoProfile Command Received In Powershell Stagers) on 172.16.206.50.",
+  "group_id": "evallab",
+  "notes": "Real adjudicated case from the acmelegal.lab environment (2026-07). IDS signature (SID 2026988) fired on HTTP responses to huggingface.co. Records reveal the true offender is 172.16.204.153 (behind proxy 172.16.206.50) polling the HF Qwen2.5-Coder inference API with User-Agent 'LameHug-Sim/1.0' and receiving application/x-powershell payloads — an LLM-as-C2 channel (LameHug family). Malicious, NOT the huggingface false-positive a naive IDS triage would assume. Requires the record tier to distinguish.",
+  "expected": {
+    "disposition": "malicious",
+    "attack": ["T1071.001", "T1059.001"],
+    "min_rung": "records"
+  }
+}
