@@ -21,13 +21,21 @@ the working session hit context limits. Read this first; deep detail is in
   rebuild verified **secret-free** (no `.env`/`config.json`/`secrets.json`).
 
 ### Redeploy / operate (commands)
+This directory **is the git checkout** (origin → `github.com/swsloan/eh-investigator-agent`,
+branch `main`) **and** the deploy source — edit, commit, and deploy all act on one
+tree, so the running app and the repo never drift. Secrets (`.env`, `config.json`,
+`secrets.json`) are gitignored and stay local; runtime secrets also live in the
+`config_data` volume.
 ```bash
 cd ~/Downloads/v26.07.07/eh-investigator-agent-cd9fae2e6d14
-docker compose -p eh-investigator -f docker-compose.yml up -d --build eh-investigator   # deploy app
+./scripts/deploy.sh                                                                     # deploy app (build + recreate app only; warns on uncommitted drift)
+git add -A && git commit -m "…" && git push                                             # keep repo == prod
 docker compose -p eh-investigator -f docker-compose.yml restart graphiti-mcp            # after a graphiti/config.yaml edit (config is volume-mounted, no rebuild)
 ```
-Recreating the app **interrupts any in-flight investigation**; volumes/other
-services are untouched. Hard-refresh the browser (Cmd-Shift-R) after a UI deploy.
+`deploy.sh` is self-locating and runs the same `docker compose … up -d --build
+eh-investigator`. Recreating the app **interrupts any in-flight investigation**;
+volumes/other services are untouched. Hard-refresh the browser (Cmd-Shift-R) after
+a UI deploy.
 
 ---
 
