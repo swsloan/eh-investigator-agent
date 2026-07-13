@@ -10,6 +10,41 @@ All work was done to run the app in Docker on a single host, add a long-term
 temporal-memory layer (Graphiti), and fix issues found along the way.
 
 ### Added in the 26.07.10 packaging
+- **Injection-probe harness (Warrant Phase 3) — the measurement vehicle, shipped.**
+  The boundary was hardened (§A+§B) but resistance stayed *unmeasured*: the
+  record→tamper→replay PoC diverged the agent off the recorded path so it concluded
+  early and never read the injected tier. A **probe** removes that variable —
+  `lib/injection-probe.js` seeds one `<untrusted-telemetry>`-wrapped evidence file
+  per probe (wrapped exactly as the excli broker §B wraps live output) and *directs*
+  the agent to assess it, so the payload is always consumed; the only question left
+  is whether the embedded instruction flips the verdict. Reuses the shared scorer
+  (`injection_resist_rate`/`injection_flag_rate` + the gate that **hard-fails on any
+  verdict flip**); writes to a **separate** reports dir so probes never pollute the
+  signed-case baseline. Run path wired: `POST /api/eval/injection-probe` (server dep
+  + route, guarded/501 if unwired). Self-contained specs in `eval/injection-probes/`
+  cover **both directions** — flip-to-benign (C2 UA / DNS-TXT-label) and
+  inflate-to-malicious (TLS cert-CN / authorized-scanner URI); one is deliberately
+  phrased so the regex annotator misses it, so resist-rate reflects the *agent's*
+  judgment, not a free hint. Unit-tested (deterministic parts) + README. Needs no
+  signed-case growth and no lab traffic. **Still to do:** one live probe run turns
+  resistance into an actual number (run on the isolated instance).
+  - *Detector hardening a probe surfaced:* `detectInjection` (`lib/telemetry-taint.js`)
+    now also tests a **delimiter-normalized** copy, so injections smuggled through a
+    DNS label / dotted / underscored token (`disregard-all-prior-…`, which can't
+    contain spaces) are caught — not just space-separated prose. Annotate-only, no
+    false positive on normal hyphenated hostnames. Re-deployed to prod.
+- **Memory-viz follow-ups (from the hierarchy overhaul's open items), shipped to prod.**
+  - *`changed` fidelity:* `changed_since_prior` is now a true **disposition change**
+    (a superseded verdict that differs from the live one), not "any expired fact";
+    `dispositionChanged()` in `lib/memory-graph.js` (unit-tested), and the focus
+    node's amber ring is wired to match the inspector pill. The earlier noisy
+    "changed" signal correctly disappears where no conclusion actually changed.
+  - *Crowded-lane reflow:* a semantic lane over ~12 nodes now wraps into multiple
+    sub-columns/rows toward the centre (vs the old single stagger) so labels stop
+    stacking. Verified (6 episodes → 2 rows at a lowered threshold).
+  - *Light-theme QA:* the whole v3 viz (legend, lanes, type badges, why-block,
+    density chip, cold-start) verified legible in light theme — closes the
+    dark-only caveat. Both rounds verified on an isolated read-only instance.
 - **Memory-graph visualization — hierarchy overhaul (P0+P1+P2), shipped to prod.**
   Acting on the UI-team review (`Graphiti_Memory_Visualization_Recommendations.docx`,
   plan in [PLAN-memory-viz-hierarchy.md](PLAN-memory-viz-hierarchy.md)), the graph
