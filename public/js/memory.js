@@ -321,6 +321,10 @@ async function focusEntity(uuid) {
   const svg = $('mem-svg');
   try {
     const data = await getJSON(`/api/memory/graph/neighbors${qs({ uuid })}`);
+    // Reflect the "why this matters" signal on the focus node itself: it's a known
+    // memory entity, and it wears the amber "changed" ring iff its conclusion
+    // changed since a prior run — so the ring and the inspector pill agree.
+    if (data.focus) { data.focus.known = true; data.focus.changed = data.insights?.changed_since_prior === true; }
     lastGraph = data;
     capOverride = null; // new ego-network → start capped again
     $('mem-empty').classList.add('hidden');
@@ -384,20 +388,34 @@ function renderGraph(data) {
   const colBot = H - padY - 76;
   const rowL = padX + 104;
   const rowR = W - padX - 104;
-  const placeCol = (arr, x) => {            // vertical lane — vary y at fixed x
+  const PER = 12;    // nodes per sub-column/row before a lane reflows
+  const SUBGAP = 66; // spacing between sub-columns / sub-rows
+  // Vertical lane — vary y at fixed x. When crowded, reflow into multiple sub-
+  // columns growing toward the centre so labels stop stacking (vs the old single
+  // stagger). Right lane grows left, left lane grows right — neither runs off-canvas.
+  const placeCol = (arr, xBase) => {
     const n = arr.length;
+    const cols = Math.max(1, Math.ceil(n / PER));
+    const perCol = Math.ceil(n / cols);
+    const dir = xBase < cx ? 1 : -1;
     arr.forEach((p, i) => {
-      const t = n <= 1 ? 0.5 : i / (n - 1);
-      const dx = n > 8 ? (i % 2 ? 26 : -26) : 0;   // stagger crowded lanes so labels clear
-      pos.set(p.uuid, { x: x + dx, y: colTop + (colBot - colTop) * t });
+      const col = Math.floor(i / perCol);
+      const m = Math.min(perCol, n - col * perCol);       // nodes in this sub-column
+      const t = m <= 1 ? 0.5 : (i % perCol) / (m - 1);
+      pos.set(p.uuid, { x: xBase + dir * col * SUBGAP, y: colTop + (colBot - colTop) * t });
     });
   };
-  const placeRow = (arr, y) => {            // horizontal lane — vary x at fixed y
+  // Horizontal lane — vary x at fixed y; reflow into sub-rows toward the centre.
+  const placeRow = (arr, yBase) => {
     const n = arr.length;
+    const rows = Math.max(1, Math.ceil(n / PER));
+    const perRow = Math.ceil(n / rows);
+    const dir = yBase < cy ? 1 : -1;
     arr.forEach((p, i) => {
-      const t = n <= 1 ? 0.5 : i / (n - 1);
-      const dy = n > 8 ? (i % 2 ? 20 : -20) : 0;
-      pos.set(p.uuid, { x: rowL + (rowR - rowL) * t, y: y + dy });
+      const row = Math.floor(i / perRow);
+      const m = Math.min(perRow, n - row * perRow);
+      const t = m <= 1 ? 0.5 : (i % perRow) / (m - 1);
+      pos.set(p.uuid, { x: rowL + (rowR - rowL) * t, y: yBase + dir * row * SUBGAP });
     });
   };
   placeCol(lanes.left, padX);

@@ -18,7 +18,7 @@ const RUNGS = ['metrics', 'records', 'packets'];
  *   PUT  /api/eval/cases/:id  { expected?, notes?, signed_off? }
  *   GET  /api/eval/dashboard                   -> build + redirect to the HTML
  */
-export function evalRouter({ startEval, reportsDir, casesDir, overridesPath, buildDashboard, getSession, redact = (v) => v }) {
+export function evalRouter({ startEval, startInjectionProbe, reportsDir, casesDir, overridesPath, buildDashboard, getSession, redact = (v) => v }) {
   const router = express.Router();
   const state = {
     status: 'idle', runId: null, index: 0, total: 0, currentCase: null,
@@ -48,6 +48,44 @@ export function evalRouter({ startEval, reportsDir, casesDir, overridesPath, bui
       runId, backendId, gateTarget, costCeiling, accuracyFloor, caseIds, maxParallel, mode, timestamp: new Date().toISOString(),
       onProgress: (p) => {
         if (typeof p.completed === 'number') state.index = p.completed; // completed count
+        if (typeof p.total === 'number') state.total = p.total;
+        if (p.id) state.currentCase = p.id;
+      },
+    })
+      .then(({ record }) => Object.assign(state, {
+        status: 'done', finishedAt: new Date().toISOString(), gate: record.gate, aggregates: record.aggregates,
+      }))
+      .catch((err) => Object.assign(state, {
+        status: 'error', finishedAt: new Date().toISOString(), error: redact(err?.message || String(err)),
+      }));
+  });
+
+  // Warrant Phase 3: run the dedicated injection-probe harness (separate reports
+  // dir; shares this status object). Each probe hands the agent one wrapped
+  // telemetry file + asks for a verdict — measures resistance without the
+  // record→tamper→replay divergence. Body: { backend?, probeIds?, maxParallel? }.
+  router.post('/injection-probe', (req, res) => {
+    if (typeof startInjectionProbe !== 'function') {
+      return res.status(501).json({ error: 'Injection-probe harness is not wired in this build.' });
+    }
+    if (state.status === 'running') {
+      return res.status(409).json({ error: 'A run is already in progress.' });
+    }
+    const b = req.body || {};
+    const backendId = typeof b.backend === 'string' ? b.backend : 'claude';
+    const probeIds = Array.isArray(b.probeIds) && b.probeIds.length ? b.probeIds.map(String) : null;
+    const maxParallel = Number.isFinite(b.maxParallel) && b.maxParallel > 0 ? Math.min(Math.floor(b.maxParallel), 8) : 3;
+    const runId = `probe-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+    Object.assign(state, {
+      status: 'running', runId, index: 0, total: probeIds?.length || 0, currentCase: null, maxParallel, mode: 'probe',
+      startedAt: new Date().toISOString(), finishedAt: null, gate: null, aggregates: null, error: null,
+    });
+    res.json({ ok: true, runId });
+
+    startInjectionProbe({
+      runId, backendId, probeIds, maxParallel, timestamp: new Date().toISOString(),
+      onProgress: (p) => {
+        if (typeof p.completed === 'number') state.index = p.completed;
         if (typeof p.total === 'number') state.total = p.total;
         if (p.id) state.currentCase = p.id;
       },

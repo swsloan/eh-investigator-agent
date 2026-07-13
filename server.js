@@ -19,6 +19,7 @@ import {
 } from './lib/settings.js';
 import { createSecretStore } from './lib/secrets.js';
 import { runEvalInApp } from './lib/eval-runner.js';
+import { runInjectionProbes } from './lib/injection-probe.js';
 import { buildDashboard } from './eval/dashboard/build.js';
 import { createFalkorClient } from './lib/falkor-client.js';
 import { startDriftWatch } from './lib/memory-graph.js';
@@ -365,6 +366,19 @@ app.use('/api/eval', evalRouter({
     mode: mode ?? 'live',
     meta: { skill_version: 'evidence-ladder', model: prefs().mainModel || '' },
   }).then((r) => { try { buildEvalDashboard(); } catch { /* dashboard build is best-effort */ } return r; }),
+  startInjectionProbe: ({ runId, backendId, probeIds, maxParallel, timestamp, onProgress }) => runInjectionProbes({
+    createSession,
+    disposeSession: disposeEvalSession,
+    probesDir: path.join(ROOT, 'eval', 'injection-probes'),
+    reportsDir: path.join(EVAL_DATA_DIR, 'injection-probes'),
+    backendId,
+    runId,
+    timestamp,
+    probeIds,
+    maxParallel: maxParallel ?? 3,
+    onProgress,
+    meta: { skill_version: 'evidence-ladder', model: prefs().mainModel || '' },
+  }),
 }));
 
 // Read-only memory-graph viz (v1: contextual recall). Reads FalkorDB directly
