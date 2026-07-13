@@ -33,6 +33,26 @@ const TYPE_COLOR = {
 };
 const colorFor = (t) => TYPE_COLOR[t] || TYPE_COLOR.Entity;
 
+// Macro-lane per ontology type for the semantic layout (doc §3.2): originators &
+// assets on the left, threat objects on the right, conclusions up top, prior
+// episodes along the bottom. The focus entity holds the centre.
+const LANE = {
+  Identity: 'left', Analyst: 'left', Group: 'left', Device: 'left', NetworkSegment: 'left',
+  Detection: 'right', IOC: 'right', Service: 'right', Endpoint: 'right', DetectionType: 'right',
+  MitreTechnique: 'top', Disposition: 'top',
+  Investigation: 'bottom', Episode: 'bottom',
+};
+
+// Short type badge drawn inside each node — a secondary, colour-independent type
+// cue (doc §3.3/§5) so the analyst doesn't have to memorise 13 hues and the graph
+// stays legible in greyscale.
+const TYPE_BADGE = {
+  Device: 'DV', Identity: 'ID', Endpoint: 'EP', NetworkSegment: 'NET', DetectionType: 'DT',
+  Detection: 'DET', Investigation: 'INV', Analyst: 'AN', Disposition: 'DIS',
+  MitreTechnique: 'ATT', IOC: 'IOC', Service: 'SVC', Group: 'GRP',
+};
+const badgeFor = (t) => TYPE_BADGE[t] || '';
+
 let currentGroup = null;
 let searchDebounce = null;
 
@@ -74,7 +94,12 @@ function validIp(t) {
 }
 // DOMAIN\user identities (very distinctive; low false-positive) and large
 // numeric detection ids (only pulled from detection-related tool calls).
-const IDENT = /\b[A-Za-z][\w.-]*\\[A-Za-z][\w.-]*\b/g;
+// Require ≥2 chars on BOTH sides of the separator: a real NetBIOS identity always
+// has a multi-char domain and account (ACMELEGAL\ian.lindsay), whereas literal
+// escape sequences that leak from tool output — external\n, r\n, ID\n, json\r,
+// n\nRule — always have a single char on one side, so this drops them without
+// touching genuine identities (residual multi-char artifacts fall to curation).
+const IDENT = /\b[A-Za-z][\w.-]+\\[A-Za-z][\w.-]+\b/g;
 const DETID = /\b\d{7,}\b/g;
 
 function guessType(t) {
@@ -144,12 +169,30 @@ async function loadOverview() {
   try {
     const ov = await getJSON(`/api/memory/graph/overview${qs()}`);
     renderDrift(ov.untyped);
+    // Cold start: memory reachable but empty (e.g. first-ever investigation).
+    if (!ov.entities) {
+      box.innerHTML = `<div class="mem-coldstart">
+        <div class="mem-coldstart-title">No memory yet in <b>${esc(currentGroup || 'this namespace')}</b></div>
+        <p class="panel-sub">Memory is written when an investigation <em>closes</em>. Run one and its
+        devices, identities, detections, and conclusions will land here as the first episode —
+        future investigations start already knowing them.</p></div>`;
+      return;
+    }
     const chips = ov.byType.map((t) =>
       `<button type="button" class="mem-type-chip" data-type="${esc(t.type)}"><i style="background:${colorFor(t.type)}"></i>${esc(t.type)} <b>${t.count}</b></button>`).join('');
-    box.innerHTML = `<div class="mem-overview-counts"><b>${ov.entities}</b> entities · <b>${ov.episodes}</b> investigations</div>
+    const chip = (e) => `<button type="button" class="mem-ov-item" data-uuid="${esc(e.uuid)}"><i style="background:${colorFor(e.type)}"></i><span>${esc(e.name || e.uuid)}</span>${e.mentions ? `<b>${e.mentions}</b>` : ''}</button>`;
+    const section = (title, items) => items && items.length
+      ? `<div class="mem-ov-sec"><h5>${title}</h5>${items.map(chip).join('')}</div>` : '';
+    const fresh = ov.freshness ? relDays(ov.freshness) : null;
+    box.innerHTML = `<div class="mem-overview-counts"><b>${ov.entities}</b> entities · <b>${ov.episodes}</b> investigations${fresh ? ` · <span class="panel-sub">freshest ${esc(fresh)}</span>` : ''}</div>
       <div class="panel-sub">Click a type to drill in, or search above.</div>
-      <div class="mem-type-legend">${chips}</div>`;
+      <div class="mem-type-legend">${chips}</div>
+      <div class="mem-ov-dash">
+        ${section('Recently learned', ov.recentEntities)}
+        ${section('Most investigated', ov.topInvestigated)}
+      </div>`;
     box.querySelectorAll('.mem-type-chip').forEach((c) => c.addEventListener('click', () => browseType(c.dataset.type)));
+    box.querySelectorAll('.mem-ov-item').forEach((c) => c.addEventListener('click', () => focusEntity(c.dataset.uuid)));
   } catch (e) {
     box.innerHTML = `<div class="panel-sub">${e.message === 'Memory is disabled. Enable it in Settings → Memory.'
       ? 'Memory is disabled. Enable it in Settings → Memory.'
@@ -263,14 +306,23 @@ function wireSearch() {
   });
 }
 
-// ---------- ego-network render (SVG, radial) ----------
+// ---------- ego-network render (SVG, semantic lanes) ----------
 let lastGraph = null;
+let selectedUuid = null;   // node currently spotlighted (dims non-adjacent)
+// Track what was on screen last render so only genuinely-new nodes/edges animate
+// in (doc §4.2/§4.6) — a resize or no-op re-render must NOT replay the bloom.
+let prevNodeUuids = new Set();
+let prevEdgeKeys = new Set();
+const edgeKey = (e) => `${e.source}»${e.target}`;
+const GRAPH_CAP = 40;      // bounded-SVG budget; above this we keep the top-N + "+N more"
+let capOverride = null;    // set by "+N more" to reveal the rest for the current graph
 
 async function focusEntity(uuid) {
   const svg = $('mem-svg');
   try {
     const data = await getJSON(`/api/memory/graph/neighbors${qs({ uuid })}`);
     lastGraph = data;
+    capOverride = null; // new ego-network → start capped again
     $('mem-empty').classList.add('hidden');
     $('mem-timeline').classList.add('hidden');
     svg.classList.remove('hidden');
@@ -290,37 +342,102 @@ function renderGraph(data) {
   svg.innerHTML = '';
 
   // Peripheral items: neighbor entities first, then episodes (grouped visually).
-  const peers = data.nodes.map((n) => ({ kind: 'entity', ...n }))
+  let peers = data.nodes.map((n) => ({ kind: 'entity', ...n }))
     .concat(data.episodes.map((ep) => ({ kind: 'episode', uuid: ep.uuid, name: ep.name, type: 'Episode', created_at: ep.created_at, source: ep.source })));
+  // Density cap (bounded-SVG budget): above GRAPH_CAP we keep the most-connected
+  // entities (known-first, entities over episodes) and surface a "+N more" chip —
+  // never a silent truncation. "+N more" sets capOverride to reveal the rest.
+  const totalPeers = peers.length;
+  const cap = capOverride || GRAPH_CAP;
+  let hiddenPeers = 0;
+  if (peers.length > cap) {
+    const degree = new Map();
+    for (const e of data.edges) { degree.set(e.source, (degree.get(e.source) || 0) + 1); degree.set(e.target, (degree.get(e.target) || 0) + 1); }
+    const rank = (p) => (p.kind === 'episode' ? 0 : 100) + (p.known === true ? 20 : 0) + (degree.get(p.uuid) || 0);
+    peers = peers.slice().sort((a, b) => rank(b) - rank(a)).slice(0, cap);
+    hiddenPeers = totalPeers - peers.length;
+  }
   const cx = W / 2;
   const cy = H / 2;
-  const R = Math.max(120, Math.min(W, H) / 2 - 90);
 
   // defs: arrowhead
   const defs = document.createElementNS(NS, 'defs');
   defs.innerHTML = `<marker id="mem-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--gray)"/></marker>`;
   svg.appendChild(defs);
 
+  // Semantic lanes (doc §3.2): sort peers into left/right/top/bottom by macro-
+  // category so the layout reads as a security story (originator → focus → threat)
+  // instead of an equal-weight radial scatter.
   const pos = new Map();
   pos.set(data.focus.uuid, { x: cx, y: cy });
-  peers.forEach((p, i) => {
-    const a = (i / Math.max(peers.length, 1)) * Math.PI * 2 - Math.PI / 2;
-    pos.set(p.uuid, { x: cx + R * Math.cos(a), y: cy + R * Math.sin(a) });
-  });
+  const lanes = { left: [], right: [], top: [], bottom: [] };
+  for (const p of peers) {
+    const lane = p.kind === 'episode' ? 'bottom' : (LANE[p.type] || 'right');
+    lanes[lane].push(p);
+  }
+  const padX = 96;
+  const padY = 64;
+  // Inset the vertical lanes clear of the top/bottom rows (and rows clear of the
+  // columns) so the corners aren't shared — otherwise a left-lane's top node and a
+  // top-row's left node collide at (padX, padY).
+  const colTop = padY + 76;
+  const colBot = H - padY - 76;
+  const rowL = padX + 104;
+  const rowR = W - padX - 104;
+  const placeCol = (arr, x) => {            // vertical lane — vary y at fixed x
+    const n = arr.length;
+    arr.forEach((p, i) => {
+      const t = n <= 1 ? 0.5 : i / (n - 1);
+      const dx = n > 8 ? (i % 2 ? 26 : -26) : 0;   // stagger crowded lanes so labels clear
+      pos.set(p.uuid, { x: x + dx, y: colTop + (colBot - colTop) * t });
+    });
+  };
+  const placeRow = (arr, y) => {            // horizontal lane — vary x at fixed y
+    const n = arr.length;
+    arr.forEach((p, i) => {
+      const t = n <= 1 ? 0.5 : i / (n - 1);
+      const dy = n > 8 ? (i % 2 ? 20 : -20) : 0;
+      pos.set(p.uuid, { x: rowL + (rowR - rowL) * t, y: y + dy });
+    });
+  };
+  placeCol(lanes.left, padX);
+  placeCol(lanes.right, W - padX);
+  placeRow(lanes.top, padY);
+  placeRow(lanes.bottom, H - padY);
 
-  // edges: entity facts (solid, directed) + episode mentions (dashed)
+  // edges: entity facts (solid, directed) + episode mentions (dashed). Each edge
+  // carries data-source/target so the spotlight can dim non-adjacent ones, and a
+  // wide transparent hit line so the thin visible stroke is still clickable.
   const edgesLayer = document.createElementNS(NS, 'g');
+  const liveRun = mode === 'investigation' && !!state.running;
   for (const e of data.edges) {
     const a = pos.get(e.source);
     const b = pos.get(e.target);
     if (!a || !b) continue;
+    const isNewEdge = !prevEdgeKeys.has(edgeKey(e));
     const line = document.createElementNS(NS, 'line');
     line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
     line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
-    line.setAttribute('class', `mem-edge${e.expired ? ' expired' : ''}`);
+    // New relationships draw on once (§4.6); if the run is live they briefly march
+    // (§4.1) then settle — motion only communicates a state change, never idles.
+    const live = isNewEdge && liveRun && !e.expired;
+    line.setAttribute('class', `mem-edge${e.expired ? ' expired' : ''}${isNewEdge && !e.expired ? ' entering' : ''}${live ? ' live' : ''}`);
+    if (isNewEdge && !e.expired) line.style.setProperty('--edge-length', Math.round(Math.hypot(b.x - a.x, b.y - a.y)));
     line.setAttribute('marker-end', 'url(#mem-arrow)');
+    line.dataset.source = e.source; line.dataset.target = e.target;
     line.appendChild(titleEl(`${e.rel}${e.expired ? ' (expired)' : ''}: ${e.fact || ''}`));
     edgesLayer.appendChild(line);
+    if (live) setTimeout(() => line.classList.remove('live'), 2600); // stop after the transition
+
+    if (e.rel || e.fact) {
+      const hit = document.createElementNS(NS, 'line');
+      hit.setAttribute('x1', a.x); hit.setAttribute('y1', a.y);
+      hit.setAttribute('x2', b.x); hit.setAttribute('y2', b.y);
+      hit.setAttribute('class', 'mem-edge-hit');
+      hit.dataset.source = e.source; hit.dataset.target = e.target;
+      hit.addEventListener('click', (ev) => { ev.stopPropagation(); spotlight(e.source); renderEdgeInspector(e, data); });
+      edgesLayer.appendChild(hit);
+    }
     // rel label at midpoint
     const t = document.createElementNS(NS, 'text');
     t.setAttribute('x', (a.x + b.x) / 2); t.setAttribute('y', (a.y + b.y) / 2 - 3);
@@ -335,15 +452,110 @@ function renderGraph(data) {
     line.setAttribute('x1', cx); line.setAttribute('y1', cy);
     line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
     line.setAttribute('class', 'mem-edge mentions');
+    line.dataset.source = data.focus.uuid; line.dataset.target = ep.uuid;
     edgesLayer.appendChild(line);
   }
   svg.appendChild(edgesLayer);
 
-  // nodes
+  // nodes — only nodes not present last render animate in (no bloom on resize)
   const nodesLayer = document.createElementNS(NS, 'g');
-  nodesLayer.appendChild(nodeEl(data.focus, pos.get(data.focus.uuid), true));
-  for (const p of peers) nodesLayer.appendChild(nodeEl(p, pos.get(p.uuid), false));
+  nodesLayer.appendChild(nodeEl(data.focus, pos.get(data.focus.uuid), true, !prevNodeUuids.has(data.focus.uuid)));
+  for (const p of peers) nodesLayer.appendChild(nodeEl(p, pos.get(p.uuid), false, !prevNodeUuids.has(p.uuid)));
   svg.appendChild(nodesLayer);
+  // remember this render's nodes/edges so the next one only animates the delta
+  prevNodeUuids = new Set([data.focus.uuid, ...peers.map((p) => p.uuid)]);
+  prevEdgeKeys = new Set(data.edges.map(edgeKey));
+  // fresh render starts un-spotlighted; clicking empty canvas clears any spotlight
+  svg.classList.remove('has-selection');
+  selectedUuid = null;
+  svg.onclick = () => clearSpotlight();
+  showLegend(true);
+  showMore(hiddenPeers, totalPeers);
+}
+
+// "+N more" affordance when the density cap hides peers — never silent (doc note).
+// Clicking reveals the rest for this graph by lifting the cap and re-rendering.
+function showMore(hidden, total) {
+  const canvas = $('mem-canvas');
+  if (!canvas) return;
+  let el = $('mem-more');
+  if (!hidden) { if (el) el.classList.add('hidden'); return; }
+  if (!el) {
+    el = document.createElement('button');
+    el.id = 'mem-more';
+    el.type = 'button';
+    el.className = 'mem-more';
+    canvas.appendChild(el);
+    el.addEventListener('click', () => { capOverride = total; if (lastGraph) renderGraph(lastGraph); });
+  }
+  el.textContent = `+${hidden} more — showing top ${total - hidden} of ${total}`;
+  el.classList.remove('hidden');
+}
+
+// Spotlight the selected node's one-hop neighborhood (doc §3.4): dim every node
+// and edge not adjacent to it so the local structure reads clearly. Recentering
+// stays a separate explicit action, preserving spatial orientation.
+function spotlight(uuid) {
+  const svg = $('mem-svg');
+  if (!svg) return;
+  selectedUuid = uuid;
+  const adj = new Set([uuid]);
+  for (const e of (lastGraph?.edges || [])) {
+    if (e.source === uuid) adj.add(e.target);
+    if (e.target === uuid) adj.add(e.source);
+  }
+  for (const ep of (lastGraph?.episodes || [])) {
+    if (uuid === lastGraph.focus.uuid) adj.add(ep.uuid);   // focus connects to all episodes
+  }
+  svg.classList.add('has-selection');
+  svg.querySelectorAll('.mem-node').forEach((g) => g.classList.toggle('mem-dim', !adj.has(g.dataset.uuid)));
+  svg.querySelectorAll('.mem-edge, .mem-edge-hit').forEach((l) => {
+    const on = l.dataset.source === uuid || l.dataset.target === uuid;
+    l.classList.toggle('mem-dim', !on);
+  });
+}
+
+function clearSpotlight() {
+  const svg = $('mem-svg');
+  if (!svg) return;
+  selectedUuid = null;
+  svg.classList.remove('has-selection');
+  svg.querySelectorAll('.mem-dim').forEach((el) => el.classList.remove('mem-dim'));
+}
+
+// Pinned relationship callout for a clicked edge (doc §3.4): the full fact,
+// direction, and endpoints — no hover-only tooltip.
+function renderEdgeInspector(e, data) {
+  const src = data.nodes.find((n) => n.uuid === e.source) || data.focus;
+  const tgt = data.nodes.find((n) => n.uuid === e.target) || data.focus;
+  inspector(`
+    <div class="mem-insp-head"><h3>Relationship</h3></div>
+    <div class="mem-edge-callout">
+      <div class="mem-edge-ends">${badge(src.type)} <b>${esc(src.name)}</b>
+        <span class="mem-edge-arrow">${e.rel ? esc(e.rel) : 'relates to'} →</span>
+        ${badge(tgt.type)} <b>${esc(tgt.name)}</b></div>
+      ${e.fact ? `<p class="mem-edge-fact">${esc(e.fact)}</p>` : '<p class="panel-sub">No stored fact for this relationship.</p>'}
+      ${e.expired ? '<p class="panel-sub">⚠ This relationship is expired (superseded by a later fact).</p>' : ''}
+    </div>`);
+}
+
+// Persistent in-canvas legend for the known/new/changed encoding (doc §3.1).
+// Lives in .mem-canvas (not the SVG) so it survives svg.innerHTML reflows.
+function showLegend(on) {
+  const canvas = $('mem-canvas');
+  if (!canvas) return;
+  let el = $('mem-legend');
+  if (!on) { if (el) el.classList.add('hidden'); $('mem-more')?.classList.add('hidden'); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'mem-legend';
+    el.className = 'mem-legend';
+    el.innerHTML = '<span class="mem-lg"><i class="mem-lg-known"></i>Known previously</span>'
+      + '<span class="mem-lg"><i class="mem-lg-new"></i>New this run</span>'
+      + '<span class="mem-lg"><i class="mem-lg-changed"></i>Changed this run</span>';
+    canvas.appendChild(el);
+  }
+  el.classList.remove('hidden');
 }
 
 function titleEl(text) {
@@ -352,10 +564,24 @@ function titleEl(text) {
   return t;
 }
 
-function nodeEl(node, p, isFocus) {
+function nodeEl(node, p, isFocus, entering) {
   const g = document.createElementNS(NS, 'g');
-  g.setAttribute('class', `mem-node${isFocus ? ' focus' : ''}${node.kind === 'episode' ? ' episode' : ''}`);
+  // Headline signal (doc §3.1): prior memory reads as a quiet backdrop (known),
+  // this run's discoveries arrive bright (isnew), and a known entity this run
+  // re-classified stands out with an attention ring (changed). Not colour-only —
+  // opacity/halo/ring back it up, mirrored in the in-canvas legend.
+  const memState = node.known === true ? (node.changed ? 'changed' : 'known')
+    : node.known === false ? 'isnew' : '';
+  // A live investigation's hub pulses while the run is still resolving (doc §4.4);
+  // the static focus halo stands on its own once it settles.
+  const active = isFocus && node.uuid === INV_HUB && !!state.running;
+  g.setAttribute('class', `mem-node${isFocus ? ' focus' : ''}${node.kind === 'episode' ? ' episode' : ''}${memState ? ' ' + memState : ''}${entering ? ' entering' : ''}${active ? ' active' : ''}`);
+  g.dataset.uuid = node.uuid;
+  // Position transform lives on the outer <g>; the visual transforms (entry scale)
+  // live on the inner group so layout and animation never fight (doc §4.2).
   g.setAttribute('transform', `translate(${p.x},${p.y})`);
+  const visual = document.createElementNS(NS, 'g');
+  visual.setAttribute('class', 'mem-node-visual');
   const r = isFocus ? 26 : node.kind === 'episode' ? 12 : 18;
   const shape = node.kind === 'episode' ? document.createElementNS(NS, 'rect') : document.createElementNS(NS, 'circle');
   if (node.kind === 'episode') {
@@ -365,31 +591,78 @@ function nodeEl(node, p, isFocus) {
     shape.setAttribute('r', r);
   }
   shape.setAttribute('fill', colorFor(node.type));
-  // In investigation mode, entities not found in memory ("new this run") are
-  // drawn dashed + muted so known-vs-discovered reads at a glance.
-  const isNew = node.known === false;
-  shape.setAttribute('class', `mem-node-shape${isNew ? ' new' : ''}`);
-  g.appendChild(shape);
-  g.appendChild(titleEl(`${node.name || node.uuid} · ${node.type}${node.known === false ? ' · new this run' : node.known === true ? ' · known to memory' : ''}`));
+  // known / new / changed styling is driven by the state class on the parent <g>
+  // (see memState above) so shape, label, and halo move together.
+  shape.setAttribute('class', 'mem-node-shape');
+  visual.appendChild(shape);
+  visual.appendChild(titleEl(`${node.name || node.uuid} · ${node.type}${node.known === false ? ' · new this run' : node.known === true ? ' · known to memory' : ''}`));
+
+  // Type badge inside the shape — colour-independent type cue (episodes are already
+  // a distinct diamond, so they don't need one).
+  const code = node.kind === 'episode' ? '' : badgeFor(node.type);
+  if (code) {
+    const badge = document.createElementNS(NS, 'text');
+    badge.setAttribute('class', 'mem-node-badge');
+    badge.setAttribute('y', 0);
+    badge.style.fontSize = `${Math.max(8, Math.round(r * 0.52))}px`;
+    badge.textContent = code;
+    visual.appendChild(badge);
+  }
 
   const label = document.createElementNS(NS, 'text');
   label.setAttribute('class', 'mem-node-label');
   label.setAttribute('y', r + 14);
   label.textContent = truncate(node.name || node.type, isFocus ? 40 : 22);
-  g.appendChild(label);
+  visual.appendChild(label);
+  g.appendChild(visual);
 
+  // Single click inspects + spotlights (doc §3.4). Recentering on a peer is a
+  // separate explicit action (double-click, or the button in the peer inspector)
+  // so the layout doesn't shift out from under the analyst on every click.
   g.addEventListener('click', (ev) => {
     ev.stopPropagation();
+    spotlight(node.uuid);
     if (node.kind === 'episode') { renderEpisodeInspector(node); return; }
     if (node.uuid === INV_HUB) { renderInvestigationInspector(); return; }
     if (node.known === false) { renderNewInspector(node); return; } // new this run → no ego-network to open
     if (isFocus && mode !== 'investigation') { renderFocusInspector(lastGraph); return; }
-    focusEntity(node.uuid); // re-center on the clicked entity (its memory ego-network)
+    renderPeerInspector(node); // known peer: fact + summary + explicit recenter
   });
+  const recenterable = !isFocus && node.kind !== 'episode' && node.uuid !== INV_HUB && node.known !== false;
+  if (recenterable) g.addEventListener('dblclick', (ev) => { ev.stopPropagation(); focusEntity(node.uuid); });
   return g;
 }
 
+// Lightweight inspector for a clicked neighbour: its type, the relationship fact
+// linking it to the focus, its summary, and an explicit recenter action.
+function renderPeerInspector(node) {
+  const edges = lastGraph?.edges || [];
+  const focusUuid = lastGraph?.focus?.uuid;
+  const edge = edges.find((e) => (e.source === node.uuid && e.target === focusUuid)
+    || (e.target === node.uuid && e.source === focusUuid));
+  const summary = (node.summary || '').split('\n').filter(Boolean);
+  inspector(`
+    <div class="mem-insp-head">${badge(node.type)}<h3>${esc(node.name)}</h3></div>
+    ${edge && (edge.rel || edge.fact) ? `<p class="mem-edge-fact"><span class="mem-rel">${esc(edge.rel || 'related')}</span> ${esc(edge.fact || '')}</p>` : ''}
+    ${summary.length ? `<ul class="mem-summary">${summary.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
+    <button type="button" class="mem-recenter btn-primary slim">Recenter on this entity →</button>
+  `);
+  const btn = $('mem-inspector').querySelector('.mem-recenter');
+  if (btn) btn.addEventListener('click', () => focusEntity(node.uuid));
+}
+
 const truncate = (s, n) => (String(s).length > n ? `${String(s).slice(0, n - 1)}…` : String(s));
+
+// Compact relative age for the freshness readout (browser Date is fine here).
+const relDays = (iso) => {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const days = Math.floor((Date.now() - t) / 86400000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days}d ago`;
+  return new Date(t).toISOString().slice(0, 10);
+};
 
 // ---------- inspector ----------
 function inspector(html) { $('mem-inspector').innerHTML = html; }
@@ -406,13 +679,32 @@ function renderFocusInspector(data) {
   }).join('');
   const eps = data.episodes.map((ep) =>
     `<li><code>${esc((ep.created_at || '').slice(0, 10))}</code> ${esc(ep.name || ep.uuid)}</li>`).join('');
+  const ins = data.insights || {};
+  const when = (ins.last_observed || '').slice(0, 10);
+  const why = ins.highest_risk_rel;
+  // Lead with the decision (doc §3.5): the single highest-risk relationship, then
+  // at-a-glance provenance — not a raw fact dump followed by admin controls.
+  const whyBlock = `
+    <div class="mem-why">
+      <div class="mem-why-head">Why this matters</div>
+      ${why
+    ? `<p class="mem-why-lead"><span class="mem-rel">${esc(why.rel || 'related')}</span> ${esc(why.fact || (why.neighbor ? `${why.neighbor}${why.neighbor_type ? ` (${why.neighbor_type})` : ''}` : ''))}</p>`
+    : '<p class="panel-sub">No high-risk relationship on record — routine background context.</p>'}
+      <div class="mem-why-meta">
+        ${when ? `<span title="Most recent investigation to mention it">last seen <b>${esc(when)}</b></span>` : ''}
+        <span title="Prior investigations that mention it"><b>${ins.prior_investigations || 0}</b> prior</span>
+        <span title="Independent live facts attesting to it"><b>${ins.corroboration || 0}</b> facts</span>
+        ${ins.changed_since_prior ? '<span class="mem-why-changed" title="A prior fact was superseded this or a later run">⟳ changed since prior</span>' : ''}
+      </div>
+    </div>`;
   inspector(`
     ${mode === 'investigation' ? '<button type="button" class="mem-crumb">← Back to investigation</button>' : ''}
     <div class="mem-insp-head">${badge(f.type)}<h3>${esc(f.name)}</h3></div>
-    ${summary.length ? `<ul class="mem-summary">${summary.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
-    <h4>Facts <span class="panel-sub">(${data.edges.length})</span></h4>
+    ${whyBlock}
+    ${summary.length ? `<h4>Summary</h4><ul class="mem-summary">${summary.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
+    <h4>Relationships <span class="panel-sub">(${data.edges.length})</span></h4>
     <ul class="mem-fact-list">${facts || '<li class="panel-sub">No facts.</li>'}</ul>
-    <h4>Investigations <span class="panel-sub">(${data.episodes.length})</span></h4>
+    <h4>History <span class="panel-sub">(${data.episodes.length})</span></h4>
     <ul class="mem-ep-list">${eps || '<li class="panel-sub">None recorded.</li>'}</ul>
     <button class="mem-investigate btn-primary slim" data-name="${esc(f.name)}">Ask the agent about this →</button>
     <details class="mem-fix"><summary>Fix classification</summary>
@@ -601,6 +893,7 @@ function showInvEmpty() {
   $('mem-svg').classList.add('hidden');
   $('mem-timeline').classList.add('hidden');
   $('mem-empty').classList.remove('hidden');
+  showLegend(false);
   $('mem-overview').innerHTML = '<div class="panel-sub">No entities observed yet. Start or continue an investigation — the devices, identities, and endpoints the agent queries appear here as it works, tagged by whether memory has seen them before.</div>';
   inspector('<div class="mem-inspector-empty panel-sub">Waiting for the investigation to touch its first entity…</div>');
 }
@@ -632,6 +925,7 @@ async function renderInvestigation() {
 async function renderTimeline() {
   const box = $('mem-timeline');
   $('mem-svg').classList.add('hidden');
+  showLegend(false);
   // If the run is already finished (viewing a completed investigation), try to
   // load its forensic timeline before rendering — agent_end won't fire on open.
   if (!forensicTimeline && !forensicAttempted && !state.running) await loadForensicTimeline();
@@ -724,6 +1018,7 @@ function applyState() {
     $('mem-svg').classList.add('hidden');
     $('mem-timeline').classList.add('hidden');
     $('mem-empty').classList.remove('hidden');
+    showLegend(false);
     inspector('<div class="mem-inspector-empty panel-sub">Search for an entity, or pick one below.</div>');
     loadOverview();
   }

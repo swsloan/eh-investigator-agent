@@ -171,13 +171,43 @@ The viz *surfaces* quality problems; fixing them is memory-layer work:
 
 ## 12. Visual encoding
 
-- **Node color = ontology type** (13-type palette), **shape/icon reinforces
-  category** (via sigma node programs), **size = degree**.
-- **Known-vs-discovered** — memory priors muted, live-discovered highlighted
-  (the real-time signal).
-- **Edges** — labeled by relationship type; **dashed = expired/invalidated**
-  fact (temporal validity); thickness = corroboration (episode count).
-- **Episodes** — a distinct node style; anchor the timeline.
+Shipped state (the v3 hierarchy overhaul, SVG) — driven by the UI-team review
+(`Graphiti_Memory_Visualization_Recommendations.docx`), plan in
+[PLAN-memory-viz-hierarchy.md](PLAN-memory-viz-hierarchy.md):
+
+- **Known / new / changed is the headline signal.** Prior memory reads as a quiet
+  backdrop (muted, ~50% opacity); this run's discoveries arrive bright with a cyan
+  halo; a known entity re-classified this run gets an amber attention ring. Encoded
+  by opacity + halo + ring (never colour-alone) and mirrored in a persistent
+  in-canvas legend. `changed` is sourced from `changed_since_prior` (a superseded /
+  expired fact), computed in `neighbors()`.
+- **Semantic lanes, not radial.** Peers sort into lanes by macro-category —
+  identities/assets **left**, MITRE/disposition **top**, detections/IOCs/services
+  **right**, prior episodes **bottom**, focus **centre** — so the layout reads as a
+  security story (originator → focus → threat). Lane ranges reserve the corners so
+  columns and rows don't collide.
+- **Node color = ontology type** (13-type palette) as a *secondary* cue, backed by a
+  short **type badge** inside each node (DV/ID/IOC/ATT/DET…) — colour-independent,
+  the greyscale/colour-blind fallback. Focus node carries a static cyan halo.
+- **Edges** — labeled by relationship type; **dashed = expired/invalidated** fact;
+  clickable (wide hit-line) → pinned relationship-fact callout. New relationships
+  draw on once; edges created during a *live* run briefly march then stop (motion
+  only ever communicates a state change — nothing idles).
+- **Episodes** — a distinct rotated-diamond style (no badge); anchor the timeline.
+- **Motion discipline** — node-entry + edge-draw animate only genuinely-new
+  elements (diffed against the prior render, so a resize replays nothing); position
+  vs visual transforms are split across nested `<g>` groups; all under
+  `prefers-reduced-motion`.
+- **Inspector = decision first.** Leads with a **"Why this matters"** block
+  (highest-risk relationship + last-seen / prior-investigations / corroboration /
+  changed-since-prior, from the `insights` rollup), then Summary → Relationships →
+  History, with curation controls last.
+- **Density + cold-start** — capped at ~40 peers (most-connected, known-first) with
+  a non-silent **"+N more"** chip; an explicit cold-start panel when a namespace is
+  empty; an overview **dashboard** (recently-learned, most-investigated, freshness).
+
+Future (sigma target): shape/icon via node programs, size = degree, edge thickness
+= corroboration count.
 
 ## 13. Phasing
 
@@ -185,6 +215,7 @@ The viz *surfaces* quality problems; fixing them is memory-layer work:
 |-------|-------|----------|
 | **v1 — contextual recall** ✅ built | "What do we know?" ego-network from memory priors, standalone (header button + entity search); click-to-recenter; node inspector (summary/facts/episodes); namespace selector; untyped-drift badge; read-only `GRAPH.RO_QUERY` neighborhood API | **SVG (dependency-free)** |
 | **v2 — real-time investigation view** ✅ core built | *This-investigation* mode: entities the current run touches, derived live from the tool-call stream (`tool_execution_*` args/results → IPs/hostnames), each resolved against memory as **known** (canonical type/name + click-to-open its ego-network = entity+episode drill-down) or **new this run** (dashed). Updates live; mode toggle vs Browse. **Still deferred to a later v2/future pass:** the time-axis (timeline) layout, a single merged two-source canvas with memory-backdrop edges, and the sigma/WebGL renderer (SVG still suffices at this scale). | SVG (dependency-free) |
+| **v3 — hierarchy overhaul** ✅ built + shipped to prod | Information-design pass over the SVG renderer (not a new renderer): known/new/**changed** encoding + legend; **semantic lanes**; type badges; selected-neighborhood spotlight + edge inspection; meaningful (then-static) motion; static focus halo; **"Why this matters"** inspector backed by an `insights` rollup in `neighbors()`; overview dashboard + freshness; density cap + "+N more"; cold-start; escape-token noise filter. Plan: [PLAN-memory-viz-hierarchy.md](PLAN-memory-viz-hierarchy.md). | SVG (dependency-free) |
 | **future — option A explorer at scale** | browse-everything, level-of-detail, + **curation** to fix memory quality | sigma WebGL |
 | **parallel — extraction quality** | ontology/prompt/model tuning + dedup (§11) | — |
 
@@ -201,3 +232,13 @@ Each stage is independently useful and earns the next; v1 is bounded and small.
    higher-risk; humans adjudicate, never auto-change from a run.
 4. **Sequencing vs the eval work** — this is a separate track from the
    analyst/eval loop; prioritize accordingly.
+5. **Light-theme + pixel QA** — the v3 overhaul was verified via DOM/computed-style
+   + dark-theme screenshots on an isolated instance and on prod; a light-theme pass
+   and a designer eyeball are still owed.
+6. **`changed` fidelity** — `changed_since_prior` currently keys off a superseded
+   (expired) fact, a good proxy but not a true before/after verdict diff; a richer
+   signal (compare this run's `verdict.json` disposition to prior memory in the
+   forensic close pass) is the intended follow-up.
+7. **Crowded lanes at the cap edge** — a single lane with many peers (e.g. ~15
+   devices) still stacks tightly in the docked width; the stagger + density cap
+   mitigate but a within-lane multi-column reflow is a future refinement.

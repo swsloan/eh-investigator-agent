@@ -2271,7 +2271,107 @@ html, body {
 .mem-mode-btn { border: none; background: none; color: var(--gray); font-size: 12.5px; font-weight: 500; padding: 5px 11px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
 .mem-mode-btn:hover { color: var(--ink); }
 .mem-mode-btn.active { background: var(--raised); color: var(--ink); box-shadow: var(--shadow-soft); }
-.mem-node-shape.new { opacity: 0.5; stroke-dasharray: 4 3; }
+/* known / new / changed — the headline signal (doc §3.1). Prior memory is a quiet
+   backdrop; this run's discoveries are bright with a halo; a re-classified known
+   entity gets the amber attention ring. Encoded by opacity + halo + ring (not
+   colour alone), and mirrored in the in-canvas legend. */
+.mem-node.known .mem-node-shape { opacity: 0.5; }
+.mem-node.known .mem-node-label { opacity: 0.65; }
+.mem-node.isnew .mem-node-shape { filter: drop-shadow(0 0 5px var(--cyan)) drop-shadow(0 0 2px var(--cyan)); }
+.mem-node.changed .mem-node-shape { stroke: var(--warn); stroke-width: 3.5; filter: drop-shadow(0 0 6px var(--warn)); }
+.mem-node.changed .mem-node-label { fill: var(--warn); font-weight: 600; }
+
+/* in-canvas legend for the encoding above */
+.mem-legend {
+  position: absolute; left: 12px; bottom: 12px; z-index: 3;
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 9px 11px; border-radius: 9px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border: 1px solid var(--hairline); backdrop-filter: blur(3px);
+  font-size: 11.5px; color: var(--text-2); pointer-events: none;
+}
+.mem-legend.hidden { display: none; }
+.mem-legend .mem-lg { display: flex; align-items: center; gap: 7px; }
+.mem-legend i { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; background: var(--gray); }
+.mem-legend .mem-lg-known { opacity: 0.5; }
+.mem-legend .mem-lg-new { box-shadow: 0 0 5px var(--cyan), 0 0 2px var(--cyan); }
+.mem-legend .mem-lg-changed { background: transparent; border: 2.5px solid var(--warn); box-shadow: 0 0 5px var(--warn); }
+
+/* selected-neighborhood spotlight (doc §3.4): dim everything not adjacent to the
+   selected node so its one-hop structure reads clearly. */
+.mem-node, .mem-edge, .mem-edge-label { transition: opacity 0.16s ease; }
+.mem-svg.has-selection .mem-node.mem-dim { opacity: 0.13; }
+.mem-svg.has-selection .mem-edge.mem-dim { opacity: 0.06; }
+/* wide invisible click target so thin edges are selectable */
+.mem-edge-hit { stroke: transparent; stroke-width: 12; cursor: pointer; fill: none; }
+/* pinned relationship callout */
+.mem-edge-callout { margin-top: 6px; }
+.mem-edge-ends { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); }
+.mem-edge-arrow { color: var(--cyan); font-size: 11px; font-weight: 600; }
+.mem-edge-fact { margin: 10px 0 0; font-size: 13px; color: var(--text-2); line-height: 1.5; }
+.mem-recenter { margin-top: 16px; width: 100%; }
+
+/* "Why this matters" lead block (doc §3.5) — decision first, provenance at a glance */
+.mem-why { margin: 4px 0 8px; padding: 11px 12px; border-radius: 10px; background: var(--track); border: 1px solid var(--hairline); }
+.mem-why-head { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gray); margin-bottom: 5px; }
+.mem-why-lead { margin: 0; font-size: 13.5px; color: var(--ink); line-height: 1.5; }
+.mem-why-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 9px; font-size: 12px; color: var(--text-2); }
+.mem-why-meta b { color: var(--ink); }
+.mem-why-changed { color: var(--warn); font-weight: 600; }
+
+/* "+N more" density-cap affordance (never a silent truncation) */
+.mem-more {
+  position: absolute; top: 12px; right: 12px; z-index: 3;
+  padding: 6px 11px; border-radius: 999px; cursor: pointer;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border: 1px solid var(--border-strong); color: var(--text-2); font: inherit; font-size: 12px;
+  backdrop-filter: blur(3px);
+}
+.mem-more:hover { color: var(--ink); border-color: var(--cyan); }
+.mem-more.hidden { display: none; }
+
+/* cold-start (memory enabled but empty) */
+.mem-coldstart { padding: 22px 4px; max-width: 460px; }
+.mem-coldstart-title { font-size: 15px; color: var(--ink); margin-bottom: 8px; }
+
+/* overview dashboard rollups */
+.mem-ov-dash { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; width: 100%; max-width: 560px; }
+.mem-ov-sec h5 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gray); }
+.mem-ov-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: none; background: none; border-radius: 7px; cursor: pointer; color: var(--text-2); font: inherit; font-size: 13px; text-align: left; }
+.mem-ov-item:hover { background: var(--surface-hover); color: var(--ink); }
+.mem-ov-item i { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.mem-ov-item span { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mem-ov-item b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ---- meaningful motion (doc §4): entry/draw animate a state change, then stop ---- */
+/* separate visual transform (scale) from the position transform on the outer <g> */
+.mem-node-visual { transform-box: fill-box; transform-origin: center; }
+/* colour-independent type badge inside each node; dark outline keeps it legible on
+   any fill (incl. the lighter hues), and it's the greyscale fallback for type */
+.mem-node-badge { fill: #fff; stroke: rgba(0, 0, 0, 0.4); stroke-width: 0.6px; paint-order: stroke fill; font-weight: 700; text-anchor: middle; dominant-baseline: central; letter-spacing: 0.02em; pointer-events: none; }
+.mem-node.entering .mem-node-visual { animation: mem-node-enter 520ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes mem-node-enter { from { opacity: 0; transform: scale(0.65); } to { opacity: 1; transform: scale(1); } }
+/* new relationships draw on once, then rest (no permanent motion) */
+.mem-edge.entering { stroke-dasharray: var(--edge-length); stroke-dashoffset: var(--edge-length); animation: mem-edge-draw 640ms ease-out forwards; }
+@keyframes mem-edge-draw { to { stroke-dashoffset: 0; } }
+/* live edges (created during a running investigation) briefly march, then a timer
+   removes .live — motion never idles */
+.mem-edge.live { stroke: var(--cyan); stroke-dasharray: 6 4; animation: mem-edge-flow 900ms linear infinite; }
+@keyframes mem-edge-flow { to { stroke-dashoffset: -20; } }
+/* static focus halo; pulse ONLY while the hub is actively resolving, capped at 2 */
+.mem-node.focus .mem-node-shape { filter: drop-shadow(0 0 5px var(--cyan)); }
+.mem-node.focus.active .mem-node-shape { animation: mem-focus-pulse 1.5s ease-out 2; }
+@keyframes mem-focus-pulse {
+  0% { filter: drop-shadow(0 0 4px var(--cyan)); }
+  50% { filter: drop-shadow(0 0 11px var(--cyan)); }
+  100% { filter: drop-shadow(0 0 5px var(--cyan)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mem-node.entering .mem-node-visual,
+  .mem-node.focus.active .mem-node-shape,
+  .mem-edge.live { animation: none; }
+  .mem-edge.entering { animation: none; stroke-dashoffset: 0; }
+}
 
 /* ===== Memory as the right-panel tab (docked) + view toggle + timeline ===== */
 /* When Memory is the active right panel it becomes the sole right column: the

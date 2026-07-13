@@ -10,6 +10,43 @@ All work was done to run the app in Docker on a single host, add a long-term
 temporal-memory layer (Graphiti), and fix issues found along the way.
 
 ### Added in the 26.07.10 packaging
+- **Memory-graph visualization — hierarchy overhaul (P0+P1+P2), shipped to prod.**
+  Acting on the UI-team review (`Graphiti_Memory_Visualization_Recommendations.docx`,
+  plan in [PLAN-memory-viz-hierarchy.md](PLAN-memory-viz-hierarchy.md)), the graph
+  went from an equal-weight radial scatter to a readable security story. Front-end
+  only (`public/js/memory.js`, `public/styles.css`) plus two backend functions in
+  `lib/memory-graph.js`; SVG stays dependency-free. **P0:** (a) tightened the
+  `DOMAIN\user` identity regex so literal escape sequences from tool output
+  (`external\n`, `r\n`, `ID\n`, `json\r`) stop registering as entities — the live
+  "Detections Fired Last 24 Hours" graph dropped from **44 → 37 real nodes**;
+  (b) known / new / **changed** encoding (muted backdrop / cyan-halo / amber ring)
+  with a persistent in-canvas legend, not colour-alone; (c) **semantic lanes**
+  (identities+assets left, MITRE/disposition top, detections/IOCs/services right,
+  prior episodes bottom, focus centre) replacing the radial layout, with corner-
+  reserved ranges so lanes don't collide; (d) selected-neighborhood **spotlight**
+  (dims non-adjacent) + clickable **edge inspection** (pinned relationship fact),
+  recentering demoted to an explicit action. **P1:** node-entry + one-time edge-
+  draw animation via nested position/visual `<g>` groups (only genuinely-new
+  nodes animate — no bloom on resize), a static focus halo that pulses *only*
+  while a live hub is resolving, live-only marching edges that stop after the
+  transition, all under `prefers-reduced-motion`; and a decision-first inspector —
+  `neighbors()` now returns an `insights` rollup (`highest_risk_rel`,
+  `last_observed`, `prior_investigations`, `corroboration`, `changed_since_prior`,
+  computed from the already-fetched neighborhood, no extra round-trips) rendered as
+  a **"Why this matters"** lead, then Summary → Relationships → History, with
+  curation controls moved last (6 unit tests in `lib/memory-graph.test.js`). **P2:**
+  colour-independent **type badges** inside nodes (greyscale fallback); an overview
+  **dashboard** (`overview()` extended with recently-learned, most-investigated,
+  recent-episodes, freshness) with clickable drill-in; a **density cap** at 40
+  peers that keeps the most-connected (known-first) and surfaces a
+  **"+N more — showing top X of Y"** chip (never a silent truncation); and a
+  **cold-start** state for an empty namespace. Verified end-to-end on an isolated
+  read-only instance (bind-mounted `public/`+`lib/`, joined to prod's FalkorDB) and
+  after deploy on prod (3100): served JS carries all markers, `insights` live,
+  126 entities intact, other stack containers + volumes untouched. `changed_since_
+  prior` fires on any superseded (expired) fact, so the amber "⟳ changed since prior"
+  signal is live (e.g. the C2 Beaconing detection). Not yet visually confirmed under
+  a light theme; sigma.js migration still deferred (SVG suffices < ~40 nodes).
 - **Warrant Phase 3 (first slice) — telemetry-injection boundary, structural + excli.**
   Wire-derived tool output is attacker-controllable; this stops it being read as
   *instructions*. (1) `lib/telemetry-taint.js` (pure, unit-tested): an
