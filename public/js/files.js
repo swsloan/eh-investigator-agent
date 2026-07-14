@@ -1,5 +1,6 @@
 import { getEvidenceSummary, listFiles, openPcapInWireshark, sessionFileUrl } from './api.js';
 import { renderMarkdown, highlightCode } from './markdown.js';
+import { linkWorkspaceFileReferences } from './workspace-file-links.js';
 import { themeReportHtml } from './theme.js';
 import { dom, $ } from './dom.js';
 import { state } from './state.js';
@@ -8,6 +9,24 @@ import { csvDownloadName, downloadName, fmtBytes, fmtTime, pdfDownloadName, trig
 const ICON_FILE = '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>';
 const ICON_UPLOAD = '<path d="M12 17V7M7 11l5-5 5 5"/><path d="M4 21h16"/>';
 const ICON_FOLDER = '<path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>';
+const FILE_ICONS = {
+  report: '<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v5h5M9 17v-3m3 3v-6m3 6v-4"/>',
+  detection: '<path d="M12 3l8 4v5c0 5-3.4 8-8 9-4.6-1-8-4-8-9V7z"/><path d="M12 8v5m0 3h.01"/>',
+  metrics: '<path d="M4 19V5M4 19h16"/><path d="M7 15l4-4 3 2 5-7"/>',
+  entity: '<circle cx="12" cy="7" r="3"/><circle cx="6" cy="17" r="2"/><circle cx="18" cy="17" r="2"/><path d="M10 9l-3 6m7-6l3 6M8 17h8"/>',
+  device: '<rect x="4" y="4" width="16" height="12" rx="2"/><path d="M8 20h8M12 16v4M8 8h.01M11 8h5M8 11h.01M11 11h5"/>',
+  activity: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  catalog: '<path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"/><path d="M8 4v16M11 8h5M11 12h5"/>',
+  error: '<path d="M12 3L2.5 20h19z"/><path d="M12 9v4m0 3h.01"/>',
+  packets: '<rect x="4" y="5" width="16" height="5" rx="1"/><rect x="4" y="14" width="16" height="5" rx="1"/><path d="M8 10v4m8-4v4"/>',
+  records: '<rect x="4" y="5" width="16" height="14" rx="1"/><path d="M4 10h16M9 5v14"/>',
+  'web-search': '<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L20 20M7 10h6M10 7v6"/>',
+  markdown: '<path d="M4 5h16v14H4z"/><path d="M7 15V9l3 3 3-3v6m2-3h3m-1.5-1.5L18 12l-1.5 1.5"/>',
+  html: '<path d="M8 8l-4 4 4 4m8-8l4 4-4 4m-3-10l-2 12"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M4 17l5-5 4 4 2-2 5 4"/>',
+  code: '<path d="M8 8l-4 4 4 4m8-8l4 4-4 4"/>',
+  text: ICON_FILE,
+};
 
 const TEXT_EXTS = new Set(['txt', 'log', 'csv', 'tsv', 'yaml', 'yml', 'xml', 'ini', 'conf', 'sh', 'py', 'js', 'mjs', 'ts', 'sql', 'css', 'toml', 'env', 'jsonl', 'ndjson']);
 const IMG_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico']);
@@ -17,7 +36,6 @@ const HIGHLIGHT_LANG_BY_EXT = new Map([
   ['py', 'python'],
 ]);
 const SOURCE_PREVIEW_LIMIT = 400_000;
-const SUMMARY_DIR_RE = /^evidence\/(?:records|metrics|detections|entities)\//;
 const SUMMARY_LAYOUTS = new Set(['source', 'split', 'summary']);
 const SUMMARY_BACKFILL_RETRY_MS = [1_000, 2_000, 4_000, 8_000];
 
@@ -26,19 +44,15 @@ function fileUrl(relPath, options = {}) {
 }
 
 function isReportFile(file) {
+  if (file?.kind) return file.kind === 'report';
   const name = file.path.split('/').pop().toLowerCase();
   return name.startsWith('report-') && (name.endsWith('.html') || name.endsWith('.htm'));
-}
-
-function isArtifactFile(file) {
-  return isReportFile(file);
 }
 
 function isSummarizableEvidenceJson(file) {
   return Boolean(file?.path)
     && file.path.toLowerCase().endsWith('.json')
-    && SUMMARY_DIR_RE.test(file.path)
-    && !file.path.startsWith('evidence/packets/');
+    && file.summarizable === true;
 }
 
 function isPacketCapture(file) {
@@ -63,31 +77,44 @@ function markReportSeen(file) {
   try { localStorage.setItem(reportSeenKey(file), '1'); } catch { /* ignore private-mode quota errors */ }
 }
 
-function makeFileRow(file, isNew) {
+function fileIconMarkup(file, { muted = false } = {}) {
+  if (muted) {
+    return `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_FILE}</svg>`;
+  }
+  if (file.icon === 'reversinglabs') {
+    return '<img class="file-brand-icon" src="/vendor/reversinglabs/square_logo.jpeg" alt="">';
+  }
+  const paths = FILE_ICONS[file.icon] || ICON_FILE;
+  return `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+}
+
+function makeFileRow(file, isNew, { secondary = false } = {}) {
   const isUpload = file.path.startsWith('uploads/');
   const isReport = isReportFile(file);
-  const isArtifact = isReport;
-  const reportUnseen = isArtifact && !isReportSeen(file);
+  const reportUnseen = Boolean(file.primaryReport) && !isReportSeen(file);
+  const showNew = Boolean(isNew && file.reveal && !isReport);
+  const safeTag = /^[A-Z0-9 ]{1,24}$/.test(file.tag || '') ? file.tag : '';
+  const kindToken = String(file.kind || 'file').toLowerCase().replace(/[^a-z0-9-]/g, '') || 'file';
   const row = document.createElement('div');
-  row.className = 'file-row' + (isUpload ? ' upload' : '') + (reportUnseen ? ' report-unseen' : '') + (file.path === state.viewingPath ? ' viewing' : '');
+  row.className = 'file-row' + (isUpload ? ' upload' : '') + (secondary ? ' secondary-file' : '') + (file.empty ? ' empty-file' : '') + (reportUnseen ? ' report-unseen' : '') + (file.path === state.viewingPath ? ' viewing' : '');
   row.innerHTML = `
-    <div class="file-icon">
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${isUpload ? ICON_UPLOAD : ICON_FILE}</svg>
-    </div>
+    <div class="file-icon icon-${secondary ? 'secondary' : (file.icon || 'text')}">${isUpload ? `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_UPLOAD}</svg>` : fileIconMarkup(file, { muted: secondary })}</div>
     <div class="file-meta">
       <div class="file-name"></div>
-      <div class="file-sub"></div>
+      <div class="file-detail-row">
+        <div class="file-sub"></div>
+        ${safeTag ? `<span class="file-tag file-tag-${kindToken}">${safeTag}</span>` : ''}
+        ${showNew ? '<span class="file-new">NEW</span>' : ''}
+      </div>
     </div>
-    ${isReport ? '<span class="file-report">REPORT</span>' : ''}
-    ${isNew ? '<span class="file-new">NEW</span>' : ''}
     <button class="file-dl" title="Download">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v10M7 11l5 5 5-5"/><path d="M4 21h16"/></svg>
     </button>`;
   row.querySelector('.file-name').textContent = file.path.split('/').pop();
   row.querySelector('.file-name').title = file.path;
-  row.querySelector('.file-sub').textContent = `${fmtBytes(file.size)} · ${fmtTime(file.mtime)}`;
+  row.querySelector('.file-sub').textContent = `${file.empty ? 'Empty' : fmtBytes(file.size)} · ${fmtTime(file.mtime)}`;
   row.addEventListener('click', () => {
-    if (isArtifact) {
+    if (file.primaryReport) {
       markReportSeen(file);
       row.classList.remove('report-unseen');
     }
@@ -119,14 +146,24 @@ function renderTree(files, newPaths) {
   }
 
   const renderNode = (node, container, prefix) => {
-    for (const file of node.files) container.appendChild(makeFileRow(file, newPaths.has(file.path)));
+    const sortedFiles = [...node.files].sort((a, b) => {
+      if (a.primaryReport !== b.primaryReport) return a.primaryReport ? -1 : 1;
+      const priorityA = Number.isFinite(a.sortPriority) ? a.sortPriority : 50;
+      const priorityB = Number.isFinite(b.sortPriority) ? b.sortPriority : 50;
+      if (priorityA !== priorityB) return priorityA - priorityB;
+      return b.mtime - a.mtime || a.path.localeCompare(b.path);
+    });
+    const visibleFiles = sortedFiles.filter((file) => file.reveal);
+    const hiddenFiles = sortedFiles.filter((file) => !file.reveal);
+    for (const file of visibleFiles) container.appendChild(makeFileRow(file, newPaths.has(file.path)));
     const dirNames = [...node.dirs.keys()].sort();
     for (const name of dirNames) {
       const child = node.dirs.get(name);
       const dirPath = prefix ? `${prefix}/${name}` : name;
       const count = countFiles(child);
-      const hasNew = [...newPaths].some((path) => path.startsWith(dirPath + '/'));
-      if (hasNew) state.openDirs.add(dirPath);
+      const hasNew = files.some((file) => file.reveal && newPaths.has(file.path) && file.path.startsWith(dirPath + '/'));
+      const isScratch = dirPath.toLowerCase() === 'scratch' || dirPath.toLowerCase().startsWith('scratch/');
+      if (hasNew && !isScratch) state.openDirs.add(dirPath);
 
       const group = document.createElement('div');
       group.className = 'dir-group' + (state.openDirs.has(dirPath) ? ' open' : '');
@@ -134,9 +171,7 @@ function renderTree(files, newPaths) {
       row.className = 'dir-row';
       row.innerHTML = `
         <svg class="dir-chevron" viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3l5 5-5 5"/></svg>
-        <div class="file-icon">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_FOLDER}</svg>
-        </div>
+        <div class="file-icon">${dirPath.toLowerCase() === 'reversinglabs' ? '<img class="file-brand-icon" src="/vendor/reversinglabs/square_logo.jpeg" alt="">' : `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_FOLDER}</svg>`}</div>
         <div class="file-meta"><div class="file-name"></div></div>
         ${hasNew ? '<span class="file-new">NEW</span>' : ''}
         <span class="file-count"></span>`;
@@ -154,6 +189,25 @@ function renderTree(files, newPaths) {
       group.appendChild(children);
       container.appendChild(group);
     }
+    if (hiddenFiles.length) {
+      const hiddenContainer = document.createElement('div');
+      hiddenContainer.className = 'secondary-files';
+      const key = prefix || '/';
+      if (state.expandedHiddenDirs.has(key)) {
+        for (const file of hiddenFiles) hiddenContainer.appendChild(makeFileRow(file, false, { secondary: true }));
+      } else {
+        const showMore = document.createElement('button');
+        showMore.type = 'button';
+        showMore.className = 'files-show-more';
+        showMore.textContent = `Show ${hiddenFiles.length} more…`;
+        showMore.addEventListener('click', () => {
+          state.expandedHiddenDirs.add(key);
+          renderTree(files, newPaths);
+        });
+        hiddenContainer.appendChild(showMore);
+      }
+      container.appendChild(hiddenContainer);
+    }
   };
 
   dom.filesList.innerHTML = '';
@@ -166,18 +220,36 @@ export async function refreshFiles() {
   if (!data) return;
   const { files } = data;
   const firstLoad = state.knownFiles === null;
-  if (firstLoad) state.knownFiles = new Set(files.map((file) => file.path));
+  const previousFiles = state.knownFiles || new Map();
+  const currentFiles = new Map();
 
   if (!files.length) {
+    state.knownFiles = currentFiles;
+    state.workspaceFiles = new Map();
     dom.filesList.innerHTML = '<div class="files-empty">No files yet. Upload evidence or ask the agent to produce a report.</div>';
     return;
   }
   const newPaths = new Set();
   for (const file of files) {
-    if (!firstLoad && !state.knownFiles.has(file.path)) newPaths.add(file.path);
-    state.knownFiles.add(file.path);
+    const fingerprint = `${file.size}:${Math.round(file.mtime)}`;
+    if (!firstLoad && previousFiles.get(file.path) !== fingerprint) newPaths.add(file.path);
+    currentFiles.set(file.path, fingerprint);
   }
+  state.knownFiles = currentFiles;
+  state.workspaceFiles = new Map(files.map((file) => [file.path, file]));
   renderTree(files, newPaths);
+  dom.chatEl.querySelectorAll('.msg-agent .md').forEach((element) => {
+    linkWorkspaceFileReferences(element, files);
+  });
+}
+
+export async function openWorkspacePath(relPath) {
+  let file = state.workspaceFiles.get(relPath);
+  if (!file) {
+    await refreshFiles();
+    file = state.workspaceFiles.get(relPath);
+  }
+  if (file) openViewer(file);
 }
 
 function setViewerStatus(text, kind = '') {
@@ -495,6 +567,12 @@ export function refreshThemedReportPreview() {
 }
 
 export function initFileViewer() {
+  dom.chatEl.addEventListener('click', (event) => {
+    const link = event.target.closest('a[data-workspace-path]');
+    if (!link || !dom.chatEl.contains(link)) return;
+    event.preventDefault();
+    openWorkspacePath(link.dataset.workspacePath);
+  });
   dom.viewerDownloadBtn.addEventListener('click', (event) => {
     event.stopPropagation();
     if (!state.viewingPath) return;
