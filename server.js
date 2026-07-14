@@ -9,13 +9,14 @@ import { BACKENDS, detectBackends, getBackend, resolveBackendId } from './lib/ba
 import { createChallengerCoordinator } from './lib/challenger-coordinator.js';
 import { createMemoryCoordinator } from './lib/memory-coordinator.js';
 import { ExcliBroker } from './lib/excli-broker.js';
+import { ReversingLabsBroker } from './lib/reversinglabs-broker.js';
 import { localOriginGuard } from './lib/local-origin.js';
 import { redactText, redactValue } from './lib/redaction.js';
 import { securityHeaders } from './lib/security-headers.js';
 import { restoreSessionsFromWorkspaces } from './lib/session-store.js';
 import {
   activateEnvSecrets, buildAgentEnv, credentialsConfigured,
-  loadConfig, loadDotEnv, resolveConfig, saveConfig,
+  loadConfig, loadDotEnv, resolveConfig, reversingLabsEnabled, saveConfig,
 } from './lib/settings.js';
 import { createSecretStore } from './lib/secrets.js';
 import { runEvalInApp } from './lib/eval-runner.js';
@@ -44,7 +45,11 @@ const envSecrets = loadDotEnv(envFile);
 
 fs.mkdirSync(WORKSPACES, { recursive: true });
 
-let config = loadConfig(undefined, { envConfig: envSecrets.extrahop, secretStore });
+let config = loadConfig(undefined, {
+  envConfig: envSecrets.extrahop,
+  integrationConfig: envSecrets.integrations,
+  secretStore,
+});
 activateEnvSecrets(secretStore, envSecrets.secrets, 'env');
 
 // Memory (Graphiti) is opt-in and can be toggled via env for headless/container
@@ -93,6 +98,16 @@ const excliBroker = new ExcliBroker({
   secretStore,
 });
 excliBroker.start();
+// ReversingLabs Spectra Analyze enrichment. Same brokered-CLI pattern as excli:
+// the broker holds the API token and serves the local `reversinglabs-interface`
+// over a per-run unix socket; the token never enters the agent's env.
+const reversingLabsBroker = new ReversingLabsBroker({
+  root: ROOT,
+  sessions,
+  getConfig: () => config,
+  secretStore,
+});
+reversingLabsBroker.start();
 const challenger = createChallengerCoordinator({
   getConfig: prefs,
   getBackend: activeBackend,
@@ -122,7 +137,11 @@ function broadcast(sessionId, event) {
  * (re)builds session env — createSession AND onConfigChanged — stays consistent.
  */
 function buildSessionEnv(settings, backendId) {
-  const env = buildAgentEnv(settings, { brokerSocketPath: excliBroker.socketPath });
+  const env = buildAgentEnv(settings, {
+    brokerSocketPath: excliBroker.socketPath,
+    reversingLabsBrokerSocketPath: reversingLabsBroker.socketPath,
+    reversingLabsEnabled: reversingLabsEnabled(settings, secretStore),
+  });
   const secrets = secretStore.get?.() || {};
   const claudeSubscription = backendId === 'claude' && settings.claudeAuth === 'subscription';
   if (secrets.anthropicApiKey && !claudeSubscription) env.ANTHROPIC_API_KEY = secrets.anthropicApiKey;
@@ -321,6 +340,7 @@ app.use('/api', healthRouter({
   getModelCatalog: catalogFor,
   secretStore,
   excliBroker,
+  reversingLabsBroker,
 }));
 
 // In-app eval: run the labeled cases through the app's own session machinery
@@ -444,6 +464,7 @@ listen(BASE_PORT, PORT_ATTEMPTS);
 function shutdown() {
   for (const s of sessions.values()) s.dispose();
   excliBroker.stop();
+  reversingLabsBroker.stop();
   server?.close();
   process.exit(0);
 }

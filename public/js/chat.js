@@ -1,4 +1,5 @@
 import { postChallenge } from './api.js';
+import { integrationForToolCall } from './integration-badges.js';
 import { dom, $ } from './dom.js';
 import { renderMarkdown } from './markdown.js';
 import { modelLabel } from './model-utils.js';
@@ -316,8 +317,28 @@ export function addToolCard(ev) {
       <div class="label">Input</div><pre class="tool-args"></pre>
       <div class="label out-label hidden">Output</div><pre class="tool-out hidden"></pre>
     </div>`;
-  card.querySelector('.tool-name').textContent = ev.toolName;
-  card.querySelector('.tool-summary').textContent = toolSummary(ev.toolName, ev.args);
+  // When the command is a brokered integration call (excli / ReversingLabs),
+  // show the integration's logo + friendly action ("ReversingLabs - Check
+  // Reputation") in place of the raw "bash" name. Falls back to the raw tool
+  // name/summary for everything else.
+  const integration = integrationForToolCall(ev);
+  const nameEl = card.querySelector('.tool-name');
+  if (integration) {
+    card.classList.add('tool-card-integration');
+    if (integration.logo) {
+      const logo = document.createElement('img');
+      logo.className = 'tool-integration-logo';
+      logo.src = integration.logo;
+      logo.alt = '';
+      logo.width = 14;
+      logo.height = 14;
+      card.querySelector('.tool-head').prepend(logo);
+    }
+    nameEl.textContent = integration.label;
+  } else {
+    nameEl.textContent = ev.toolName;
+    card.querySelector('.tool-summary').textContent = toolSummary(ev.toolName, ev.args);
+  }
   card.querySelector('.tool-args').textContent = JSON.stringify(ev.args, null, 2);
   card.querySelector('.tool-head').addEventListener('click', () => card.classList.toggle('open'));
   agentBody().appendChild(card);

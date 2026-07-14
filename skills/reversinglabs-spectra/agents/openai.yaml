@@ -1,0 +1,7 @@
+interface:
+  display_name: "ReversingLabs Spectra Analyze"
+  short_description: "Enrich investigations with Spectra Analyze"
+  icon_small: "./assets/square_logo.jpeg"
+  icon_large: "./assets/logo-ReversingLabs.webp"
+  brand_color: "#F6133E"
+  default_prompt: "Use $reversinglabs-spectra to enrich this investigation with configured ReversingLabs intelligence and correlate the results with ExtraHop evidence."

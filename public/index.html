@@ -171,6 +171,7 @@
             <button type="button" class="settings-nav-btn" data-panel="agent" role="tab" aria-selected="false">Agent &amp; models</button>
             <button type="button" class="settings-nav-btn" data-panel="challenger" role="tab" aria-selected="false">Challenger</button>
             <button type="button" class="settings-nav-btn" data-panel="memory" role="tab" aria-selected="false">Memory</button>
+            <button type="button" class="settings-nav-btn" data-panel="integrations" role="tab" aria-selected="false">Integrations</button>
             <button type="button" class="settings-nav-btn" data-panel="connection" role="tab" aria-selected="false">Connection</button>
             <button type="button" class="settings-nav-btn" data-panel="eval" role="tab" aria-selected="false">Eval</button>
           </nav>
@@ -298,6 +299,41 @@
                 <input id="set-anthropic-key" type="password" placeholder="leave blank to keep current" autocomplete="off">
               </label>
               <div class="modal-note">Powers the Claude Code backend and memory extraction. A change here applies to new sessions immediately; the memory extraction sidecar picks up a new key on its next restart.</div>
+            </section>
+
+            <section class="settings-panel hidden" data-panel="integrations" role="tabpanel">
+              <div class="panel-title">Integrations</div>
+              <div class="panel-sub">Third-party enrichment the agent can call during an investigation.</div>
+              <div class="integration-card">
+                <div class="integration-head">
+                  <img class="integration-logo" src="/vendor/reversinglabs/square_logo.jpeg" alt="ReversingLabs" width="28" height="28">
+                  <div class="integration-title">
+                    <strong>ReversingLabs Spectra Analyze</strong>
+                    <span class="panel-sub">File reputation, analysis, and threat intelligence for observed hashes.</span>
+                  </div>
+                </div>
+                <label class="check">
+                  <input id="set-rl-enabled" type="checkbox">
+                  <span>Enable ReversingLabs <em>— the agent checks hashes it finds against Spectra Analyze</em></span>
+                </label>
+                <label class="field">
+                  <span>Spectra Analyze host <em>— HTTPS origin, e.g. https://spectra.example.com</em></span>
+                  <input id="set-rl-host" type="text" placeholder="https://spectra.example.com" autocomplete="off">
+                </label>
+                <label class="field">
+                  <span>API token <em id="hint-rl-token"></em></span>
+                  <input id="set-rl-token" type="password" placeholder="leave blank to keep current" autocomplete="off">
+                </label>
+                <label class="check">
+                  <input id="set-rl-allow-cloud" type="checkbox">
+                  <span>Allow Spectra Intelligence cloud lookups <em>— cloud search &amp; count operations</em></span>
+                </label>
+                <label class="check">
+                  <input id="set-rl-insecure" type="checkbox">
+                  <span>Skip TLS verification <em>— only for a host with a private/self-signed certificate</em></span>
+                </label>
+                <div class="modal-note">The API token is held by the local broker and never exposed to the agent's shell. Enter <code>-</code> and save to clear a stored token.</div>
+              </div>
             </section>
 
             <section class="settings-panel hidden" data-panel="connection" role="tabpanel">

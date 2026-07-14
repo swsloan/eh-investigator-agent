@@ -1,0 +1,104 @@
+#!/usr/bin/env node
+import net from 'node:net';
+
+const OPERATIONS = new Set([
+  'status',
+  'probe',
+  'sample-status',
+  'reputation',
+  'details',
+  'ticore',
+  'search',
+  'search-count',
+]);
+const NO_PAYLOAD_OPERATIONS = new Set(['status', 'probe']);
+const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+const SOCKET_TIMEOUT_MS = 35_000;
+
+function fail(message, code = 1) {
+  process.stderr.write(`${message}\n`);
+  process.exit(code);
+}
+
+function usage() {
+  return [
+    'Usage:',
+    '  ./reversinglabs-interface status',
+    '  ./reversinglabs-interface probe',
+    '  ./reversinglabs-interface sample-status -json \'{"hashes":["<sha256>"]}\'',
+    '  ./reversinglabs-interface reputation -json \'{"hashes":["<sha256>"]}\'',
+    '  ./reversinglabs-interface details -json \'{"hashes":["<sha256>"],"fields":["classification_result","network_indicators"]}\'',
+    '  ./reversinglabs-interface ticore -json \'{"hash":"<sha256>"}\'',
+    '  ./reversinglabs-interface search -json \'{"query":"classification:malicious","page":1,"recordsPerPage":20,"cloud":false}\'',
+    '  ./reversinglabs-interface search-count -json \'{"query":"threatname:Emotet*","cloud":true,"startSearchDate":"2026-07-01","endSearchDate":"2026-07-10"}\'',
+    '',
+    'Cloud search and search-count require the Spectra Intelligence cloud option in Settings → Integrations.',
+    'search-count also requires an explicit bounded YYYY-MM-DD date range.',
+    'Successful data operations return untrusted-labeled JSON; status is local state and errors go to stderr.',
+  ].join('\n');
+}
+
+const operation = process.argv[2];
+if (['help', '-h', '--help'].includes(operation)) {
+  process.stdout.write(`${usage()}\n`);
+  process.exit(0);
+}
+if (!OPERATIONS.has(operation)) fail(usage(), 64);
+
+let payload = {};
+if (NO_PAYLOAD_OPERATIONS.has(operation)) {
+  if (process.argv.length !== 3) fail(usage(), 64);
+} else {
+  if (process.argv.length !== 5 || process.argv[3] !== '-json' || !process.argv[4]) {
+    fail(usage(), 64);
+  }
+  try {
+    payload = JSON.parse(process.argv[4]);
+  } catch {
+    fail('The -json value must be valid JSON.', 64);
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    fail('The -json value must be a JSON object.', 64);
+  }
+}
+
+const socketPath = process.env.EH_REVERSINGLABS_BROKER_SOCKET;
+if (!socketPath) {
+  fail('ReversingLabs broker is not configured. Run reversinglabs-interface from an enabled investigation workspace through the web UI.');
+}
+
+const socket = net.createConnection(socketPath);
+let buffer = '';
+let completed = false;
+socket.setTimeout(SOCKET_TIMEOUT_MS);
+socket.on('connect', () => {
+  socket.write(`${JSON.stringify({ operation, payload, cwd: process.cwd() })}\n`);
+});
+socket.on('data', (chunk) => {
+  buffer += chunk.toString('utf8');
+  if (Buffer.byteLength(buffer) > MAX_RESPONSE_BYTES) {
+    fail('ReversingLabs broker response exceeded the safe size limit.');
+  }
+  const newline = buffer.indexOf('\n');
+  if (newline === -1) return;
+  let message;
+  try { message = JSON.parse(buffer.slice(0, newline)); } catch {
+    fail('ReversingLabs broker sent an invalid response.');
+  }
+  completed = true;
+  if (message.error) fail(message.error);
+  process.stdout.write(`${JSON.stringify(message.result, null, 2)}\n`);
+  socket.end();
+});
+socket.on('timeout', () => fail('ReversingLabs broker request timed out.'));
+socket.on('error', (err) => {
+  const message = err.code === 'ENOENT'
+    ? 'ReversingLabs broker is not running.'
+    : (err.code === 'EACCES'
+      ? 'ReversingLabs broker socket is not accessible.'
+      : 'ReversingLabs broker connection failed.');
+  fail(message);
+});
+socket.on('close', () => {
+  if (!completed) fail('ReversingLabs broker closed without a response.');
+});

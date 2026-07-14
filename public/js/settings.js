@@ -631,6 +631,13 @@ export async function openSettings() {
   $('hint-clientsecret').textContent = settings.extrahop.clientSecretSet ? savedHint : '— not set';
   $('set-memory-enabled').checked = Boolean(settings.memory?.enabled);
   $('set-memory-url').value = settings.memory?.url || '';
+  const rl = settings.integrations?.reversingLabs || {};
+  $('set-rl-enabled').checked = Boolean(rl.enabled);
+  $('set-rl-host').value = rl.host || '';
+  $('set-rl-allow-cloud').checked = Boolean(rl.allowCloud);
+  $('set-rl-insecure').checked = Boolean(rl.insecure);
+  $('set-rl-token').value = '';
+  $('hint-rl-token').textContent = rl.apiTokenSet ? savedHint : '— not set';
   $('set-anthropic-key').value = '';
   $('hint-anthropic').textContent = settings.anthropicKeySet ? savedHint : '— not set';
   setFamily(settings.extrahop.family || 'enterprise');
@@ -717,6 +724,15 @@ async function saveSettings() {
     memory: {
       enabled: $('set-memory-enabled').checked,
       url: $('set-memory-url').value,
+    },
+    integrations: {
+      reversingLabs: {
+        enabled: $('set-rl-enabled').checked,
+        host: $('set-rl-host').value,
+        allowCloud: $('set-rl-allow-cloud').checked,
+        insecure: $('set-rl-insecure').checked,
+        apiToken: $('set-rl-token').value,
+      },
     },
     anthropicApiKey: $('set-anthropic-key').value,
     claudeOauthToken: $('set-claude-oauth').value,

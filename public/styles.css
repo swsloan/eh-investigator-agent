@@ -2477,3 +2477,12 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 .mf-merge-cand i { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
 .mf-merge-cand span { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mf-merge-cand em { color: var(--gray); font-style: normal; font-size: 11px; }
+
+/* Settings → Integrations */
+.integration-card { border: 1px solid var(--hairline); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.integration-head { display: flex; align-items: center; gap: 12px; }
+.integration-logo { border-radius: 6px; flex: 0 0 auto; object-fit: contain; }
+.integration-title { display: flex; flex-direction: column; gap: 2px; }
+.integration-title strong { font-size: 14px; }
+.integration-title .panel-sub { margin: 0; }
+.tool-integration-logo { border-radius: 3px; flex: 0 0 auto; object-fit: contain; margin-right: 2px; }
