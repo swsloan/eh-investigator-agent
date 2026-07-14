@@ -7,6 +7,7 @@ export const state = {
   eventSource: null,
   running: false,
   idleStatus: { state: 'ok', text: 'Ready', title: 'Ready' },
+  backendUpdate: null,
   replaying: false,
   pendingFiles: [],
   usage: newUsage(),
@@ -15,16 +16,20 @@ export const state = {
   sessionRequestedReasoning: '',
   sessionModelPinned: false,
   knownFiles: null,
+  workspaceFiles: new Map(),
   hasMessages: false,
   openDirs: new Set(),
+  expandedHiddenDirs: new Set(),
   viewingPath: null,
   viewingIsHtml: false,
   viewingIsJson: false,
   viewingFile: null,
   summaryPaneLayout: 'split',
   evidenceDefaultView: 'rendered',
+  webResearchProvider: '', // resolved provider from public settings: 'brave' | 'duckduckgo'
   summaryCache: new Map(),
   currentAgentMsg: null,
+  pendingReplayAssistantBoundary: false,
   blocks: new Map(),
   toolCards: new Map(),
   challengerCards: new Map(),
@@ -34,6 +39,8 @@ export const state = {
   backendOptions: [], // [{id, label, available, message}] for the settings picker
   settingsBackend: '', // backend whose prefs the settings modal is showing
   settingsPrefs: {}, // per-backend prefs sections from GET /api/settings
+  settingsSnapshot: null, // last complete public settings response, reused when opening the modal
+  appVersion: null, // {version, commit, dirty, display} from /api/health
   catalogs: {}, // backendId -> {backend, models, error, loaded}
   preflightChecks: [],
   wiresharkAvailable: false,

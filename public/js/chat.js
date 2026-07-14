@@ -1,9 +1,14 @@
 import { postChallenge } from './api.js';
-import { integrationForToolCall } from './integration-badges.js';
 import { dom, $ } from './dom.js';
 import { renderMarkdown } from './markdown.js';
 import { modelLabel } from './model-utils.js';
-import { state } from './state.js';
+import {
+  integrationBySource,
+  integrationForResearchResult,
+  integrationForToolCall,
+  integrationSourceForToolCall,
+} from './integration-badges.js';
+import { newUsage, state } from './state.js';
 import { fmtBytes, fmtTime, fmtTokens } from './utils.js';
 import { applyIdleStatus, setStatus } from './status.js';
 
@@ -37,6 +42,16 @@ export function updateSessionModelButton() {
   const label = $('session-model-label');
   if (!label) return;
   label.textContent = sessionModelDisplay();
+  const logo = $('session-backend-logo');
+  const backendId = state.session?.backend || state.backend?.id;
+  const logoPath = {
+    pi: '/assets/harnesses/pi.svg',
+    claude: '/assets/harnesses/claude-code.svg',
+  }[backendId];
+  if (logo) {
+    logo.src = logoPath || '';
+    logo.classList.toggle('hidden', !logoPath);
+  }
   $('session-model-btn').disabled = !state.session || state.running;
 }
 
@@ -56,6 +71,7 @@ export function updateUsage() {
       <span class="u-label">Input</span><span class="u-val" data-k="input"></span>
       <span class="u-label">Output</span><span class="u-val" data-k="output"></span>
       <span class="u-label">Cache read</span><span class="u-val" data-k="cache"></span>
+      <span class="u-label">Cache write</span><span class="u-val" data-k="cache-write"></span>
       <span class="u-label">Cost</span><span class="u-val" data-k="cost"></span>
     </div>
     <div class="usage-context ${ctxClass}">
@@ -65,6 +81,7 @@ export function updateUsage() {
   dom.usageReadout.querySelector('[data-k="input"]').textContent = fmtTokens(state.usage.input);
   dom.usageReadout.querySelector('[data-k="output"]').textContent = fmtTokens(state.usage.output);
   dom.usageReadout.querySelector('[data-k="cache"]').textContent = fmtTokens(state.usage.cacheRead);
+  dom.usageReadout.querySelector('[data-k="cache-write"]').textContent = fmtTokens(state.usage.cacheWrite);
   dom.usageReadout.querySelector('[data-k="cost"]').textContent =
     state.usage.cost >= 0.01 ? `$${state.usage.cost.toFixed(2)}` : `$${state.usage.cost.toFixed(4)}`;
   dom.usageReadout.querySelector('.ctx-fill').style.width =
@@ -246,7 +263,7 @@ export function queueRender() {
     state.renderQueued = false;
     for (const block of state.blocks.values()) {
       if (block.dirty) {
-        renderMarkdown(block.el, block.raw);
+        renderMarkdown(block.el, block.raw, { workspaceFiles: [...state.workspaceFiles.values()] });
         block.dirty = false;
       }
     }
@@ -317,38 +334,49 @@ export function addToolCard(ev) {
       <div class="label">Input</div><pre class="tool-args"></pre>
       <div class="label out-label hidden">Output</div><pre class="tool-out hidden"></pre>
     </div>`;
-  // When the command is a brokered integration call (excli / ReversingLabs),
-  // show the integration's logo + friendly action ("ReversingLabs - Check
-  // Reputation") in place of the raw "bash" name. Falls back to the raw tool
-  // name/summary for everything else.
-  const integration = integrationForToolCall(ev);
-  const nameEl = card.querySelector('.tool-name');
-  if (integration) {
-    card.classList.add('tool-card-integration');
-    if (integration.logo) {
-      const logo = document.createElement('img');
-      logo.className = 'tool-integration-logo';
-      logo.src = integration.logo;
-      logo.alt = '';
-      logo.width = 14;
-      logo.height = 14;
-      card.querySelector('.tool-head').prepend(logo);
-    }
-    nameEl.textContent = integration.label;
-  } else {
-    nameEl.textContent = ev.toolName;
-    card.querySelector('.tool-summary').textContent = toolSummary(ev.toolName, ev.args);
-  }
+  card.querySelector('.tool-name').textContent = ev.toolName;
+  card.querySelector('.tool-summary').textContent = toolSummary(ev.toolName, ev.args);
   card.querySelector('.tool-args').textContent = JSON.stringify(ev.args, null, 2);
+  const integrationSource = integrationSourceForToolCall(ev);
+  if (integrationSource) card.dataset.integrationSource = integrationSource;
+  setIntegrationBadge(card, integrationForToolCall(ev));
   card.querySelector('.tool-head').addEventListener('click', () => card.classList.toggle('open'));
   agentBody().appendChild(card);
   state.toolCards.set(ev.toolCallId, card);
   autoscroll();
 }
 
+function setIntegrationBadge(card, integration) {
+  const existing = card.querySelector('.tool-integration');
+  if (!integration) {
+    existing?.remove();
+    return;
+  }
+  const badge = existing || document.createElement('span');
+  badge.className = 'tool-integration';
+  badge.title = `${integration.label} integration`;
+  badge.setAttribute('aria-label', `${integration.label} integration`);
+  if (integration.logo) {
+    badge.innerHTML = '<img alt=""><span></span>';
+    badge.querySelector('img').src = integration.logo;
+  } else {
+    badge.innerHTML = `
+      <svg class="tool-integration-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <circle cx="12" cy="12" r="9"></circle>
+        <path d="M3 12h18M12 3c2.4 2.6 3.7 5.6 3.7 9s-1.3 6.4-3.7 9c-2.4-2.6-3.7-5.6-3.7-9s1.3-6.4 3.7-9z"></path>
+      </svg>
+      <span></span>`;
+  }
+  badge.querySelector('span').textContent = integration.label;
+  if (!existing) card.querySelector('.tool-name').before(badge);
+}
+
 export function finishToolCard(ev) {
   const card = state.toolCards.get(ev.toolCallId);
   if (!card) return;
+  if (card.dataset.integrationSource === 'research') {
+    setIntegrationBadge(card, integrationForResearchResult(ev, state.webResearchProvider));
+  }
   card.classList.add(ev.isError ? 'error' : 'done');
   const text = (ev.result?.content || [])
     .filter((content) => content.type === 'text')
@@ -366,10 +394,20 @@ export function finishToolCard(ev) {
 
 export function resetStreamRendering() {
   state.currentAgentMsg = null;
+  state.pendingReplayAssistantBoundary = false;
   state.blocks = new Map();
   state.toolCards = new Map();
   state.challengerCards = new Map();
   state.renderQueued = false;
+}
+
+/** Replace browser-only conversation state before applying an authoritative snapshot. */
+export function resetConversationReplay() {
+  dom.chatEl.querySelectorAll('.msg').forEach((el) => el.remove());
+  dom.emptyState.classList.remove('hidden');
+  resetStreamRendering();
+  state.usage = newUsage();
+  setHasMessages(false);
 }
 
 export { renderMarkdown };

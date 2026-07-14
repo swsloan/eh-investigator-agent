@@ -6,6 +6,7 @@ import { sendPdf } from '../lib/pdf-export.js';
 import { getSession } from '../lib/route-utils.js';
 import { createUploadMiddleware } from '../lib/uploads.js';
 import { detectWireshark, isPacketCapturePath, openPacketCaptureInWireshark } from '../lib/wireshark.js';
+import { presentWorkspaceFiles } from '../lib/workspace-file-presentation.js';
 
 export function filesRouter({
   sessions,
@@ -28,7 +29,7 @@ export function filesRouter({
   router.get('/:id/files', (req, res) => {
     const session = getSession(sessions, req, res);
     if (!session) return;
-    res.json({ files: session.listFiles() });
+    res.json({ files: presentWorkspaceFiles(session) });
   });
 
   router.get('/:id/summaries', (req, res) => {
