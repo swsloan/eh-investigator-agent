@@ -17,9 +17,10 @@ For a proactive, hypothesis-driven sweep — not triggered by a single alert. Th
 6. **Methodology** — the analytic technique per step (stack counting, entropy/outlier scoring, beacon-timing, IOC sweep, enrichment), written so another analyst could repeat it.
 7. **Entities Identified** — any hosts/domains the hunt surfaced, with role.
 8. **Hunt Findings** — per lead: one-line answer, why it mattered, `[Observed]`/`[Assessed]`, evidence refs, confidence, MITRE ID(s). **Include the negative leads** — what you looked for and did not find.
-9. **Evidence Summary** — each query with provenance.
-10. **Coverage and Limits** — hunted-and-clean / could-not-determine / what ExtraHop can't see, plus the explicit coverage fraction.
-11. **Recommendations** — *Escalate* (now, if findings) · *Hunt further / expand coverage* (soon) · *Operationalize* (turn the hunt into a standing detection).
+9. **Third-Party Enrichment** — material web research or external-tool findings used to qualify a lead, one source-attributed entry per lookup/finding. For web research, cite the original URL and local `research/` memo. For ReversingLabs, use `data-source="reversinglabs"` on every entry so its RL icon is shown; preserve the vendor verdict/scope and cite the local `reversinglabs/` artifact. Separate provider reports from investigator assessment and from ExtraHop observation. Delete this section when no useful enrichment was performed.
+10. **Evidence Summary** — each ExtraHop query with provenance. Keep external source artifacts in Third-Party Enrichment rather than presenting them as ExtraHop evidence.
+11. **Coverage and Limits** — hunted-and-clean / could-not-determine / what ExtraHop can't see, plus the explicit coverage fraction.
+12. **Recommendations** — *Escalate* (now, if findings) · *Hunt further / expand coverage* (soon) · *Operationalize* (turn the hunt into a standing detection).
 
 ## Outcome vocabulary
 

@@ -260,6 +260,19 @@ td.mono,td .mono{word-break:break-word}
   .sheet{box-shadow:none;margin:0;max-width:none}
   .verdict{box-shadow:none}
 }
+/* ---------- Third-party enrichment ---------- */
+.enrichment-list{display:grid;gap:10px;margin:.35em 0 .2em}
+.enrichment{border:1px solid var(--rule);border-left:4px solid var(--info);border-radius:0 8px 8px 0;padding:11px 14px;background:var(--card);break-inside:avoid}
+.enrichment[data-source="reversinglabs"]{border-left-color:#F20F46}
+.enrichment-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:7px}
+.source-badge{display:inline-flex;align-items:center;gap:6px;font-size:7.6pt;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft)}
+.source-badge::before{content:"↗";display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;background:var(--sapphire-chip);color:var(--sapphire);font-size:10pt;line-height:1}
+.enrichment[data-source="reversinglabs"] .source-badge::before{content:"";background:#F20F46 url('/vendor/reversinglabs/square_logo.jpeg') center/cover no-repeat}
+.enrichment-time{font-family:var(--mono);font-size:7.8pt;color:var(--ink-faint);white-space:nowrap}
+.enrichment-title{font-weight:800;font-size:10.5pt;line-height:1.3;color:var(--ink);margin-bottom:5px}
+.enrichment p{font-size:9.5pt;line-height:1.48;margin:.25em 0}
+.enrichment-meta{margin-top:8px;padding-top:7px;border-top:1px solid var(--rule-soft);font-size:8.3pt;color:var(--ink-faint);overflow-wrap:anywhere}
+.enrichment-meta b{color:var(--ink-soft)}
 </style>
 </head>
 <body>
@@ -427,10 +440,48 @@ td.mono,td .mono{word-break:break-word}
   </div>
 </section>
 
+<!-- 8b. THIRD-PARTY ENRICHMENT (optional; delete if no material external findings) -->
+<section>
+  <div class="sec-head"><span class="sec-num">6</span><h2>Third-Party Enrichment</h2></div>
+  <p class="sec-sub">External context is reported separately from ExtraHop observations. Each item names its source, retrieval time, original source or provider artifact, and the investigator's interpretation.</p>
+  <div class="enrichment-list">
+    <article class="enrichment" data-source="web" id="X1">
+      <div class="enrichment-head">
+        <span class="source-badge">Web research</span>
+        <span class="enrichment-time">Retrieved 2026-06-10T11:12:04Z</span>
+      </div>
+      <div class="enrichment-title">Newly registered domains are a common rendezvous point for DNS-tunneling C2</div>
+      <p><b>Source reported.</b> The consulted threat reporting describes low-reputation, recently registered domains used for beaconing and DNS-based command-and-control, and recommends correlating query entropy with registration age.</p>
+      <p><b>Investigator assessment.</b> This context supports treating the WKSTN-2207 pattern as suspicious; it does not by itself confirm compromise absent endpoint corroboration.</p>
+      <div class="enrichment-meta"><b>Original source:</b> <a href="https://advisory.example.invalid/dns-tunneling-c2">Threat reporting</a> · <b>Research memo:</b> <code>research/research-dns-tunneling.md</code></div>
+    </article>
+  </div>
+
+  <!--
+    REQUIRED REVERSINGLABS ENTRY PATTERN
+    Copy this article out of the inert <template> once per RL lookup/finding,
+    replace every placeholder, and keep data-source="reversinglabs" so each
+    individual entry receives the bundled RL icon. Do not treat not-found,
+    empty, incomplete, or errored results as benign.
+  -->
+  <template data-purpose="reversinglabs-enrichment-entry">
+    <article class="enrichment" data-source="reversinglabs" id="X-RL">
+      <div class="enrichment-head">
+        <span class="source-badge">ReversingLabs</span>
+        <span class="enrichment-time">Collected YYYY-MM-DDTHH:MM:SSZ</span>
+      </div>
+      <div class="enrichment-title">SHA-256 &lt;hash&gt; — &lt;vendor classification or lookup state&gt;</div>
+      <p><b>ReversingLabs reported.</b> Preserve the vendor's classification, threat name, score, scope, analysis time, supporting details, and caveats.</p>
+      <p><b>Investigator assessment.</b> Explain how the vendor result changes—or does not change—the hunt, and whether related indicators were observed in the queried ExtraHop scope.</p>
+      <div class="enrichment-meta"><b>Operation:</b> reputation/details/ticore · <b>Artifact:</b> <code>reversinglabs/&lt;source-file&gt;.json</code></div>
+    </article>
+  </template>
+</section>
+
 <!-- 9. EVIDENCE SUMMARY -->
 <section>
-  <div class="sec-head"><span class="sec-num">6</span><h2>Evidence Summary</h2></div>
-  <p class="sec-sub">Every item reproducible from the workspace evidence files. Queries are exact excli-interface invocations.</p>
+  <div class="sec-head"><span class="sec-num">7</span><h2>Evidence Summary</h2></div>
+  <p class="sec-sub">Every ExtraHop item is reproducible from the workspace evidence files. Queries are exact excli-interface invocations; external sources are cited separately in Third-Party Enrichment.</p>
   <table>
     <tr><th style="width:42px">ID</th><th style="width:115px">Source</th><th>Query / tool call</th><th style="width:78px">Collected (UTC)</th><th style="width:32%">Result</th></tr>
     <tr id="E1"><td><span class="eid">E1</span></td><td>DNS records</td><td class="mono">./excli-interface search_records -json '{"types":["~dns"],"groupBy":["client","qtype"],"from":-1209600000}'</td><td class="mono">10:14:02</td><td>TXT-share by host; WKSTN-2207 sole outlier · <code>evidence/records/dns-qtype-by-host.json</code></td></tr>
@@ -442,7 +493,7 @@ td.mono,td .mono{word-break:break-word}
 
 <!-- 10. COVERAGE AND LIMITS -->
 <section>
-  <div class="sec-head"><span class="sec-num">7</span><h2>Coverage and Limits</h2></div>
+  <div class="sec-head"><span class="sec-num">8</span><h2>Coverage and Limits</h2></div>
   <p class="sec-sub" style="margin-left:0">A "clean" result only covers what was actually hunted. This hunt reached ~88% of the host population; the guest VLAN and lab segment are not sensed and were not examined.</p>
   <div class="bucket" data-kind="clean">
     <h3>Hunted and clean</h3>
@@ -470,7 +521,7 @@ td.mono,td .mono{word-break:break-word}
 
 <!-- 11. RECOMMENDATIONS -->
 <section>
-  <div class="sec-head"><span class="sec-num">8</span><h2>Recommendations</h2></div>
+  <div class="sec-head"><span class="sec-num">9</span><h2>Recommendations</h2></div>
   <div class="step" data-urgency="now"><span class="upill">Escalate</span>
     <div class="body"><b>Isolate WKSTN-2207, pull EDR for the window, and block <code>cdn-sync-update[.]net</code> at the resolver.</b> Hand off to IR as a suspected active compromise.</div>
   </div>

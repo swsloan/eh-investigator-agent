@@ -10,10 +10,11 @@ For a security investigation: a detection, alert, or suspected incident. The que
 4. **Entities Involved** — hosts, users, IPs, domains, processes; each with role (`offender|target|infra|identity|external`) and criticality (domain controller, crown jewel, external).
 5. **Scope and Timeline** — what was examined and the event sequence, UTC. Include the attack-chain flow when stages map to a kill chain.
 6. **Key Questions and Findings** — Q&A. Each: one-line answer, why it mattered, findings tagged `[Observed]`/`[Assessed]`, evidence refs, confidence, MITRE ATT&CK ID(s) where applicable.
-7. **Alternatives Considered** — other explanations that fit the evidence and why each was kept or ruled out. Narrative, not a scored matrix.
-8. **Evidence Summary** — every supporting metric, record, packet with its provenance.
-9. **Limits and Open Questions** — checked-and-clean / could-not-determine / what ExtraHop can't see.
-10. **Recommended Next Steps** — *Contain/Respond* (now) · *Investigate further* (soon) · *Tune detection*.
+7. **Third-Party Enrichment** — material web research or external-tool findings, one source-attributed entry per lookup/finding. For web research, cite the original URL and local `research/` memo. For ReversingLabs, use `data-source="reversinglabs"` on every entry so its RL icon is shown; preserve the vendor verdict/scope and cite the local `reversinglabs/` artifact. Separate provider reports from investigator assessment and from ExtraHop observation. Delete this section when no useful enrichment was performed.
+8. **Alternatives Considered** — other explanations that fit the evidence and why each was kept or ruled out. Narrative, not a scored matrix.
+9. **Evidence Summary** — every supporting metric, record, packet with its provenance. Keep external source artifacts in Third-Party Enrichment rather than presenting them as ExtraHop evidence.
+10. **Limits and Open Questions** — checked-and-clean / could-not-determine / what ExtraHop can't see.
+11. **Recommended Next Steps** — *Contain/Respond* (now) · *Investigate further* (soon) · *Tune detection*.
 
 ## Disposition vocabulary
 
