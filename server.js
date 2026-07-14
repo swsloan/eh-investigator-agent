@@ -10,6 +10,7 @@ import { createChallengerCoordinator } from './lib/challenger-coordinator.js';
 import { createMemoryCoordinator } from './lib/memory-coordinator.js';
 import { ExcliBroker } from './lib/excli-broker.js';
 import { ReversingLabsBroker } from './lib/reversinglabs-broker.js';
+import { ResearchBroker } from './lib/research-broker.js';
 import { localOriginGuard } from './lib/local-origin.js';
 import { redactText, redactValue } from './lib/redaction.js';
 import { securityHeaders } from './lib/security-headers.js';
@@ -108,6 +109,16 @@ const reversingLabsBroker = new ReversingLabsBroker({
   secretStore,
 });
 reversingLabsBroker.start();
+// Web research (Brave / DuckDuckGo). Always available — DuckDuckGo needs no
+// account; the broker enforces the configured provider plus SSRF and
+// secret/internal-host exfiltration guards. Secrets stay out of the agent env.
+const researchBroker = new ResearchBroker({
+  root: ROOT,
+  sessions,
+  getConfig: () => config,
+  secretStore,
+});
+researchBroker.start();
 const challenger = createChallengerCoordinator({
   getConfig: prefs,
   getBackend: activeBackend,
@@ -141,6 +152,7 @@ function buildSessionEnv(settings, backendId) {
     brokerSocketPath: excliBroker.socketPath,
     reversingLabsBrokerSocketPath: reversingLabsBroker.socketPath,
     reversingLabsEnabled: reversingLabsEnabled(settings, secretStore),
+    researchBrokerSocketPath: researchBroker.socketPath,
   });
   const secrets = secretStore.get?.() || {};
   const claudeSubscription = backendId === 'claude' && settings.claudeAuth === 'subscription';
@@ -341,6 +353,7 @@ app.use('/api', healthRouter({
   secretStore,
   excliBroker,
   reversingLabsBroker,
+  researchBroker,
 }));
 
 // In-app eval: run the labeled cases through the app's own session machinery
@@ -465,6 +478,7 @@ function shutdown() {
   for (const s of sessions.values()) s.dispose();
   excliBroker.stop();
   reversingLabsBroker.stop();
+  researchBroker.stop();
   server?.close();
   process.exit(0);
 }

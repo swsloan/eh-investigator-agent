@@ -631,6 +631,10 @@ export async function openSettings() {
   $('hint-clientsecret').textContent = settings.extrahop.clientSecretSet ? savedHint : '— not set';
   $('set-memory-enabled').checked = Boolean(settings.memory?.enabled);
   $('set-memory-url').value = settings.memory?.url || '';
+  const wr = settings.integrations?.webResearch || {};
+  $('set-research-provider').value = wr.provider || 'auto';
+  $('set-brave-key').value = '';
+  $('hint-brave-key').textContent = wr.braveApiKeySet ? savedHint : '— not set';
   const rl = settings.integrations?.reversingLabs || {};
   $('set-rl-enabled').checked = Boolean(rl.enabled);
   $('set-rl-host').value = rl.host || '';
@@ -726,6 +730,10 @@ async function saveSettings() {
       url: $('set-memory-url').value,
     },
     integrations: {
+      webResearch: {
+        provider: $('set-research-provider').value,
+        braveApiKey: $('set-brave-key').value,
+      },
       reversingLabs: {
         enabled: $('set-rl-enabled').checked,
         host: $('set-rl-host').value,

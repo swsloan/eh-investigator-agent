@@ -306,6 +306,29 @@
               <div class="panel-sub">Third-party enrichment the agent can call during an investigation.</div>
               <div class="integration-card">
                 <div class="integration-head">
+                  <span class="integration-logo integration-logo-glyph" aria-hidden="true">🔎</span>
+                  <div class="integration-title">
+                    <strong>Web Research</strong>
+                    <span class="panel-sub">Internet search &amp; readable page fetch, with SSRF and internal-host exfiltration guards.</span>
+                  </div>
+                </div>
+                <label class="field">
+                  <span>Search provider <em>— DuckDuckGo needs no account; Brave/Claude are optional</em></span>
+                  <select id="set-research-provider">
+                    <option value="auto">Auto (Brave if keyed, else Claude on Claude backend, else DuckDuckGo)</option>
+                    <option value="duckduckgo">DuckDuckGo (no account)</option>
+                    <option value="brave">Brave Search (requires API key)</option>
+                    <option value="claude">Claude built-in web search (Claude backend only)</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Brave Search API key <em id="hint-brave-key"></em></span>
+                  <input id="set-brave-key" type="password" placeholder="leave blank to keep current" autocomplete="off">
+                </label>
+                <div class="modal-note">Web research is always available; the key only enables the Brave provider. The key is held by the local broker and never exposed to the agent's shell. Enter <code>-</code> and save to clear it.</div>
+              </div>
+              <div class="integration-card">
+                <div class="integration-head">
                   <img class="integration-logo" src="/vendor/reversinglabs/square_logo.jpeg" alt="ReversingLabs" width="28" height="28">
                   <div class="integration-title">
                     <strong>ReversingLabs Spectra Analyze</strong>

@@ -1,0 +1,47 @@
+#!/usr/bin/env node
+import net from 'node:net';
+
+const socketPath = process.env.EH_RESEARCH_BROKER_SOCKET;
+
+function fail(message, code = 1) {
+  process.stderr.write(`${message}\n`);
+  process.exit(code);
+}
+
+function usage() {
+  return [
+    'Usage:',
+    '  ./research-interface status',
+    '  ./research-interface search -json \'{"query":"CVE-2024-3400","count":8,"freshness":"year"}\'',
+    '  ./research-interface fetch -json \'{"url":"https://example.com/advisory"}\'',
+  ].join('\n');
+}
+
+if (!socketPath) fail('Research broker is not configured. Run research-interface from an investigation workspace through the web UI.');
+const operation = process.argv[2];
+if (!['status', 'search', 'fetch'].includes(operation)) fail(usage(), 64);
+let payload = {};
+if (operation !== 'status') {
+  if (process.argv[3] !== '-json' || !process.argv[4]) fail(usage(), 64);
+  try { payload = JSON.parse(process.argv[4]); } catch { fail('The -json value must be valid JSON.', 64); }
+}
+
+const socket = net.createConnection(socketPath);
+let buffer = '';
+let completed = false;
+socket.on('connect', () => socket.write(`${JSON.stringify({ operation, payload, cwd: process.cwd() })}\n`));
+socket.on('data', (chunk) => {
+  buffer += chunk.toString('utf8');
+  const nl = buffer.indexOf('\n');
+  if (nl === -1) return;
+  let message;
+  try { message = JSON.parse(buffer.slice(0, nl)); } catch { fail('Research broker sent an invalid response.'); }
+  completed = true;
+  if (message.error) fail(message.error);
+  process.stdout.write(`${JSON.stringify(message.result, null, 2)}\n`);
+  socket.end();
+});
+socket.on('error', (err) => fail(err.code === 'ENOENT' ? 'Research broker is not running.' : err.message));
+socket.on('close', () => {
+  if (!completed) fail('Research broker closed without a response.');
+});
