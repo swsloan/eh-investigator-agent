@@ -1,0 +1,1524 @@
+{
+  "events": {
+    "AAA_REQUEST": [
+      {
+        "class": "AAA",
+        "path": "classes/protocol/aaa.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 28
+      }
+    ],
+    "AAA_RESPONSE": [
+      {
+        "class": "AAA",
+        "path": "classes/protocol/aaa.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 28
+      }
+    ],
+    "ACTIVEMQ_MESSAGE": [
+      {
+        "class": "ActiveMQ",
+        "path": "classes/protocol/activemq.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 30
+      }
+    ],
+    "AJP_REQUEST": [
+      {
+        "class": "AJP",
+        "path": "classes/protocol/ajp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): Void",
+          "findHeaders(name: String): Array"
+        ],
+        "property_count": 23
+      }
+    ],
+    "AJP_RESPONSE": [
+      {
+        "class": "AJP",
+        "path": "classes/protocol/ajp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): Void",
+          "findHeaders(name: String): Array"
+        ],
+        "property_count": 23
+      }
+    ],
+    "ALERT_RECORD_COMMIT": [
+      {
+        "class": "AlertRecord",
+        "path": "classes/datastore/alertrecord.md",
+        "section": "datastore-classes",
+        "methods": [],
+        "property_count": 7
+      }
+    ],
+    "BACNET_MESSAGE": [
+      {
+        "class": "BACnet",
+        "path": "classes/protocol/bacnet.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 9
+      }
+    ],
+    "CDP_FRAME": [
+      {
+        "class": "CDP",
+        "path": "classes/protocol/cdp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [],
+        "property_count": 8
+      }
+    ],
+    "CIFS_REQUEST": [
+      {
+        "class": "CIFS",
+        "path": "classes/protocol/cifs.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 59
+      }
+    ],
+    "CIFS_RESPONSE": [
+      {
+        "class": "CIFS",
+        "path": "classes/protocol/cifs.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 59
+      }
+    ],
+    "DB_REQUEST": [
+      {
+        "class": "DB",
+        "path": "classes/protocol/db.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 37
+      }
+    ],
+    "DB_RESPONSE": [
+      {
+        "class": "DB",
+        "path": "classes/protocol/db.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 37
+      }
+    ],
+    "DETECTION_UPDATE": [
+      {
+        "class": "Detection",
+        "path": "classes/general/detection.md",
+        "section": "general-purpose-classes",
+        "methods": [],
+        "property_count": 24
+      }
+    ],
+    "DHCP6_REQUEST": [
+      {
+        "class": "DHCP6",
+        "path": "classes/protocol/dhcp6.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void",
+          "getOption(optionCode: Number): Object",
+          "code: Number",
+          "name: String",
+          "payload: Number | String"
+        ],
+        "property_count": 9
+      }
+    ],
+    "DHCP6_RESPONSE": [
+      {
+        "class": "DHCP6",
+        "path": "classes/protocol/dhcp6.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void",
+          "getOption(optionCode: Number): Object",
+          "code: Number",
+          "name: String",
+          "payload: Number | String"
+        ],
+        "property_count": 9
+      }
+    ],
+    "DHCP_REQUEST": [
+      {
+        "class": "DHCP",
+        "path": "classes/protocol/dhcp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void",
+          "getOption(optionCode: Number): Object",
+          "code: Number",
+          "name: String",
+          "payload: Number | String"
+        ],
+        "property_count": 23
+      }
+    ],
+    "DHCP_RESPONSE": [
+      {
+        "class": "DHCP",
+        "path": "classes/protocol/dhcp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void",
+          "getOption(optionCode: Number): Object",
+          "code: Number",
+          "name: String",
+          "payload: Number | String"
+        ],
+        "property_count": 23
+      }
+    ],
+    "DICOM_REQUEST": [
+      {
+        "class": "DICOM",
+        "path": "classes/protocol/dicom.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void",
+          "findElement(groupTag: Number, elementTag: Number): Buffer",
+          "groupTag: Number",
+          "elementTag: Number"
+        ],
+        "property_count": 28
+      }
+    ],
+    "DICOM_RESPONSE": [
+      {
+        "class": "DICOM",
+        "path": "classes/protocol/dicom.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void",
+          "findElement(groupTag: Number, elementTag: Number): Buffer",
+          "groupTag: Number",
+          "elementTag: Number"
+        ],
+        "property_count": 28
+      }
+    ],
+    "DNP3_REQUEST": [
+      {
+        "class": "DNP3",
+        "path": "classes/protocol/dnp3.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 6
+      }
+    ],
+    "DNP3_RESPONSE": [
+      {
+        "class": "DNP3",
+        "path": "classes/protocol/dnp3.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 6
+      }
+    ],
+    "DNS_REQUEST": [
+      {
+        "class": "DNS",
+        "path": "classes/protocol/dns.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "answersInclude(term: String | IPAddress): Boolean",
+          "commitRecord(): void"
+        ],
+        "property_count": 36
+      }
+    ],
+    "DNS_RESPONSE": [
+      {
+        "class": "DNS",
+        "path": "classes/protocol/dns.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "answersInclude(term: String | IPAddress): Boolean",
+          "commitRecord(): void"
+        ],
+        "property_count": 36
+      }
+    ],
+    "EXTERNAL_DATA": [
+      {
+        "class": "ExternalData",
+        "path": "classes/general/externaldata.md",
+        "section": "general-purpose-classes",
+        "methods": [],
+        "property_count": 2
+      }
+    ],
+    "FIX_REQUEST": [
+      {
+        "class": "FIX",
+        "path": "classes/protocol/fix.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 17
+      }
+    ],
+    "FIX_RESPONSE": [
+      {
+        "class": "FIX",
+        "path": "classes/protocol/fix.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 17
+      }
+    ],
+    "FLOW_CLASSIFY": [
+      {
+        "class": "Flow",
+        "path": "classes/general/flow.md",
+        "section": "general-purpose-classes",
+        "methods": [
+          "addApplication(name: String, turnTiming: Boolean): void",
+          "captureStart(name: String, options: Object): String",
+          "name: String",
+          "options: Object",
+          "maxBytes: Number",
+          "maxBytesLookback: Number",
+          "maxDurationMSec: Number",
+          "maxPackets: Number",
+          "maxPacketsLookback: Number",
+          "captureStop(): Boolean",
+          "commitRecord1(): void",
+          "commitRecord2(): void",
+          "findCustomDevice(deviceID: String): Device",
+          "getApplications(): String"
+        ],
+        "property_count": 57
+      }
+    ],
+    "FLOW_DETACH": [
+      {
+        "class": "Flow",
+        "path": "classes/general/flow.md",
+        "section": "general-purpose-classes",
+        "methods": [
+          "addApplication(name: String, turnTiming: Boolean): void",
+          "captureStart(name: String, options: Object): String",
+          "name: String",
+          "options: Object",
+          "maxBytes: Number",
+          "maxBytesLookback: Number",
+          "maxDurationMSec: Number",
+          "maxPackets: Number",
+          "maxPacketsLookback: Number",
+          "captureStop(): Boolean",
+          "commitRecord1(): void",
+          "commitRecord2(): void",
+          "findCustomDevice(deviceID: String): Device",
+          "getApplications(): String"
+        ],
+        "property_count": 57
+      }
+    ],
+    "FLOW_RECORD": [
+      {
+        "class": "Flow",
+        "path": "classes/general/flow.md",
+        "section": "general-purpose-classes",
+        "methods": [
+          "addApplication(name: String, turnTiming: Boolean): void",
+          "captureStart(name: String, options: Object): String",
+          "name: String",
+          "options: Object",
+          "maxBytes: Number",
+          "maxBytesLookback: Number",
+          "maxDurationMSec: Number",
+          "maxPackets: Number",
+          "maxPacketsLookback: Number",
+          "captureStop(): Boolean",
+          "commitRecord1(): void",
+          "commitRecord2(): void",
+          "findCustomDevice(deviceID: String): Device",
+          "getApplications(): String"
+        ],
+        "property_count": 57
+      }
+    ],
+    "FLOW_TICK": [
+      {
+        "class": "Flow",
+        "path": "classes/general/flow.md",
+        "section": "general-purpose-classes",
+        "methods": [
+          "addApplication(name: String, turnTiming: Boolean): void",
+          "captureStart(name: String, options: Object): String",
+          "name: String",
+          "options: Object",
+          "maxBytes: Number",
+          "maxBytesLookback: Number",
+          "maxDurationMSec: Number",
+          "maxPackets: Number",
+          "maxPacketsLookback: Number",
+          "captureStop(): Boolean",
+          "commitRecord1(): void",
+          "commitRecord2(): void",
+          "findCustomDevice(deviceID: String): Device",
+          "getApplications(): String"
+        ],
+        "property_count": 57
+      }
+    ],
+    "FLOW_TURN": [
+      {
+        "class": "Flow",
+        "path": "classes/general/flow.md",
+        "section": "general-purpose-classes",
+        "methods": [
+          "addApplication(name: String, turnTiming: Boolean): void",
+          "captureStart(name: String, options: Object): String",
+          "name: String",
+          "options: Object",
+          "maxBytes: Number",
+          "maxBytesLookback: Number",
+          "maxDurationMSec: Number",
+          "maxPackets: Number",
+          "maxPacketsLookback: Number",
+          "captureStop(): Boolean",
+          "commitRecord1(): void",
+          "commitRecord2(): void",
+          "findCustomDevice(deviceID: String): Device",
+          "getApplications(): String"
+        ],
+        "property_count": 57
+      }
+    ],
+    "FTP_REQUEST": [
+      {
+        "class": "FTP",
+        "path": "classes/protocol/ftp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 25
+      }
+    ],
+    "FTP_RESPONSE": [
+      {
+        "class": "FTP",
+        "path": "classes/protocol/ftp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 25
+      }
+    ],
+    "HL7_REQUEST": [
+      {
+        "class": "HL7",
+        "path": "classes/protocol/hl7.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 14
+      }
+    ],
+    "HL7_RESPONSE": [
+      {
+        "class": "HL7",
+        "path": "classes/protocol/hl7.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 14
+      }
+    ],
+    "HTTP_REQUEST": [
+      {
+        "class": "HTTP",
+        "path": "classes/protocol/http.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void",
+          "findHeaders(name: String): Array",
+          "parseQuery(String): Object"
+        ],
+        "property_count": 69
+      }
+    ],
+    "HTTP_RESPONSE": [
+      {
+        "class": "HTTP",
+        "path": "classes/protocol/http.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void",
+          "findHeaders(name: String): Array",
+          "parseQuery(String): Object"
+        ],
+        "property_count": 69
+      }
+    ],
+    "IBMMQ_REQUEST": [
+      {
+        "class": "IBMMQ",
+        "path": "classes/protocol/ibmmq.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 31
+      }
+    ],
+    "IBMMQ_RESPONSE": [
+      {
+        "class": "IBMMQ",
+        "path": "classes/protocol/ibmmq.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 31
+      }
+    ],
+    "ICA_AUTH": [
+      {
+        "class": "ICA",
+        "path": "classes/protocol/ica.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 46
+      }
+    ],
+    "ICA_CLOSE": [
+      {
+        "class": "ICA",
+        "path": "classes/protocol/ica.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 46
+      }
+    ],
+    "ICA_OPEN": [
+      {
+        "class": "ICA",
+        "path": "classes/protocol/ica.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 46
+      }
+    ],
+    "ICA_TICK": [
+      {
+        "class": "ICA",
+        "path": "classes/protocol/ica.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 46
+      }
+    ],
+    "ICMP_MESSAGE": [
+      {
+        "class": "ICMP",
+        "path": "classes/protocol/icmp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 23
+      }
+    ],
+    "KERBEROS_REQUEST": [
+      {
+        "class": "Kerberos",
+        "path": "classes/protocol/kerberos.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 25
+      }
+    ],
+    "KERBEROS_RESPONSE": [
+      {
+        "class": "Kerberos",
+        "path": "classes/protocol/kerberos.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 25
+      }
+    ],
+    "LDAP_REQUEST": [
+      {
+        "class": "LDAP",
+        "path": "classes/protocol/ldap.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 36
+      }
+    ],
+    "LDAP_RESPONSE": [
+      {
+        "class": "LDAP",
+        "path": "classes/protocol/ldap.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 36
+      }
+    ],
+    "LLDP_FRAME": [
+      {
+        "class": "LLDP",
+        "path": "classes/protocol/lldp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [],
+        "property_count": 13
+      }
+    ],
+    "LLMNR_REQUEST": [
+      {
+        "class": "LLMNR",
+        "path": "classes/protocol/llmnr.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 19
+      }
+    ],
+    "LLMNR_RESPONSE": [
+      {
+        "class": "LLMNR",
+        "path": "classes/protocol/llmnr.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 19
+      }
+    ],
+    "MEMCACHE_REQUEST": [
+      {
+        "class": "Memcache",
+        "path": "classes/protocol/memcache.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 26
+      }
+    ],
+    "MEMCACHE_RESPONSE": [
+      {
+        "class": "Memcache",
+        "path": "classes/protocol/memcache.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 26
+      }
+    ],
+    "METRIC_CYCLE_BEGIN": [
+      {
+        "class": "MetricCycle",
+        "path": "classes/datastore/metriccycle.md",
+        "section": "datastore-classes",
+        "methods": [],
+        "property_count": 3
+      }
+    ],
+    "METRIC_CYCLE_END": [
+      {
+        "class": "MetricCycle",
+        "path": "classes/datastore/metriccycle.md",
+        "section": "datastore-classes",
+        "methods": [],
+        "property_count": 3
+      }
+    ],
+    "METRIC_RECORD_COMMIT": [
+      {
+        "class": "MetricRecord",
+        "path": "classes/datastore/metricrecord.md",
+        "section": "datastore-classes",
+        "methods": [],
+        "property_count": 4
+      }
+    ],
+    "MODBUS_REQUEST": [
+      {
+        "class": "Modbus",
+        "path": "classes/protocol/modbus.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 27
+      }
+    ],
+    "MODBUS_RESPONSE": [
+      {
+        "class": "Modbus",
+        "path": "classes/protocol/modbus.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 27
+      }
+    ],
+    "MONGODB_REQUEST": [
+      {
+        "class": "MongoDB",
+        "path": "classes/protocol/mongodb.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 28
+      }
+    ],
+    "MONGODB_RESPONSE": [
+      {
+        "class": "MongoDB",
+        "path": "classes/protocol/mongodb.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 28
+      }
+    ],
+    "MSMQ_MESSAGE": [
+      {
+        "class": "MSMQ",
+        "path": "classes/protocol/msmq.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 24
+      }
+    ],
+    "NETFLOW_RECORD": [
+      {
+        "class": "NetFlow",
+        "path": "classes/protocol/netflow.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "findField(field: Number, enterpriseId: Number): String | Number | IPAddress | Buffer | Boolean",
+          "hasField(field: Number): Boolean"
+        ],
+        "property_count": 30
+      }
+    ],
+    "NEW_APPLICATION": [
+      {
+        "class": "Discover",
+        "path": "classes/general/discover.md",
+        "section": "general-purpose-classes",
+        "methods": [],
+        "property_count": 2
+      }
+    ],
+    "NEW_DEVICE": [
+      {
+        "class": "Discover",
+        "path": "classes/general/discover.md",
+        "section": "general-purpose-classes",
+        "methods": [],
+        "property_count": 2
+      }
+    ],
+    "NFS_REQUEST": [
+      {
+        "class": "NFS",
+        "path": "classes/protocol/nfs.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 35
+      }
+    ],
+    "NFS_RESPONSE": [
+      {
+        "class": "NFS",
+        "path": "classes/protocol/nfs.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 35
+      }
+    ],
+    "NMF_RECORD": [
+      {
+        "class": "NMF",
+        "path": "classes/protocol/nmf.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 5
+      }
+    ],
+    "NTLM_MESSAGE": [
+      {
+        "class": "NTLM",
+        "path": "classes/protocol/ntlm.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 11
+      }
+    ],
+    "NTP_MESSAGE": [
+      {
+        "class": "NTP",
+        "path": "classes/protocol/ntp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 18
+      }
+    ],
+    "POP3_REQUEST": [
+      {
+        "class": "POP3",
+        "path": "classes/protocol/pop3.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 27
+      }
+    ],
+    "POP3_RESPONSE": [
+      {
+        "class": "POP3",
+        "path": "classes/protocol/pop3.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 27
+      }
+    ],
+    "QUIC_CLOSE": [
+      {
+        "class": "QUIC",
+        "path": "classes/protocol/quic.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void",
+          "getClientExtensionData(extension_name | extension_id): Buffer | Null",
+          "getServerExtensionData(extension_name | extension_id): Buffer | Null",
+          "hasClientExtension(extension_name | extension_id): boolean",
+          "hasServerExtension(extension_name | extension_id): boolean"
+        ],
+        "property_count": 20
+      }
+    ],
+    "QUIC_OPEN": [
+      {
+        "class": "QUIC",
+        "path": "classes/protocol/quic.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void",
+          "getClientExtensionData(extension_name | extension_id): Buffer | Null",
+          "getServerExtensionData(extension_name | extension_id): Buffer | Null",
+          "hasClientExtension(extension_name | extension_id): boolean",
+          "hasServerExtension(extension_name | extension_id): boolean"
+        ],
+        "property_count": 20
+      }
+    ],
+    "RDP_CLOSE": [
+      {
+        "class": "RDP",
+        "path": "classes/protocol/rdp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 31
+      }
+    ],
+    "RDP_OPEN": [
+      {
+        "class": "RDP",
+        "path": "classes/protocol/rdp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 31
+      }
+    ],
+    "RDP_TICK": [
+      {
+        "class": "RDP",
+        "path": "classes/protocol/rdp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 31
+      }
+    ],
+    "REDIS_REQUEST": [
+      {
+        "class": "Redis",
+        "path": "classes/protocol/redis.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 25
+      }
+    ],
+    "REDIS_RESPONSE": [
+      {
+        "class": "Redis",
+        "path": "classes/protocol/redis.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 25
+      }
+    ],
+    "REMOTE_RESPONSE": [
+      {
+        "class": "Remote",
+        "path": "classes/remote/remote.md",
+        "section": "open-data-stream-classes",
+        "methods": [],
+        "property_count": 5
+      }
+    ],
+    "RFB_CLOSE": [
+      {
+        "class": "RFB",
+        "path": "classes/protocol/rfb.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 17
+      }
+    ],
+    "RFB_OPEN": [
+      {
+        "class": "RFB",
+        "path": "classes/protocol/rfb.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 17
+      }
+    ],
+    "RFB_TICK": [
+      {
+        "class": "RFB",
+        "path": "classes/protocol/rfb.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 17
+      }
+    ],
+    "RPC_REQUEST": [
+      {
+        "class": "RPC",
+        "path": "classes/protocol/rpc.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 28
+      }
+    ],
+    "RPC_RESPONSE": [
+      {
+        "class": "RPC",
+        "path": "classes/protocol/rpc.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 28
+      }
+    ],
+    "RTCP_MESSAGE": [
+      {
+        "class": "RTCP",
+        "path": "classes/protocol/rtcp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 63
+      }
+    ],
+    "RTP_CLOSE": [
+      {
+        "class": "RTP",
+        "path": "classes/protocol/rtp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 15
+      }
+    ],
+    "RTP_OPEN": [
+      {
+        "class": "RTP",
+        "path": "classes/protocol/rtp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 15
+      }
+    ],
+    "RTP_TICK": [
+      {
+        "class": "RTP",
+        "path": "classes/protocol/rtp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 15
+      }
+    ],
+    "SCCP_MESSAGE": [
+      {
+        "class": "SCCP",
+        "path": "classes/protocol/sccp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 30
+      }
+    ],
+    "SESSION_EXPIRE": [
+      {
+        "class": "Session",
+        "path": "classes/general/session.md",
+        "section": "general-purpose-classes",
+        "methods": [
+          "add(key: String, value*, options: Object): *",
+          "getOptions(key: String): Object",
+          "increment(key: String, count: Number): Number | null",
+          "lookup(key: String): *",
+          "modify(key: String, value: *, options: Object): *",
+          "remove(key: String): *",
+          "replace(key: String, value: *, options: Object): *"
+        ],
+        "property_count": 4
+      }
+    ],
+    "SFLOW_RECORD": [
+      {
+        "class": "SFlow",
+        "path": "classes/protocol/sflow.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 16
+      }
+    ],
+    "SIP_REQUEST": [
+      {
+        "class": "SIP",
+        "path": "classes/protocol/sip.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void",
+          "findHeaders(name: String): Array"
+        ],
+        "property_count": 26
+      }
+    ],
+    "SIP_RESPONSE": [
+      {
+        "class": "SIP",
+        "path": "classes/protocol/sip.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void",
+          "findHeaders(name: String): Array"
+        ],
+        "property_count": 26
+      }
+    ],
+    "SLP_MESSAGE": [
+      {
+        "class": "SLP",
+        "path": "classes/protocol/slp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 5
+      }
+    ],
+    "SMPP_REQUEST": [
+      {
+        "class": "SMPP",
+        "path": "classes/protocol/smpp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 12
+      }
+    ],
+    "SMPP_RESPONSE": [
+      {
+        "class": "SMPP",
+        "path": "classes/protocol/smpp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 12
+      }
+    ],
+    "SMTP_OPEN": [
+      {
+        "class": "SMTP",
+        "path": "classes/protocol/smtp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 30
+      }
+    ],
+    "SMTP_REQUEST": [
+      {
+        "class": "SMTP",
+        "path": "classes/protocol/smtp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 30
+      }
+    ],
+    "SMTP_RESPONSE": [
+      {
+        "class": "SMTP",
+        "path": "classes/protocol/smtp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 30
+      }
+    ],
+    "SNMP_MESSAGE": [
+      {
+        "class": "SNMP",
+        "path": "classes/protocol/snmp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 6
+      }
+    ],
+    "SNMP_REQUEST": [
+      {
+        "class": "SNMP",
+        "path": "classes/protocol/snmp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 6
+      }
+    ],
+    "SNMP_RESPONSE": [
+      {
+        "class": "SNMP",
+        "path": "classes/protocol/snmp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 6
+      }
+    ],
+    "SOCKS_REQUEST": [
+      {
+        "class": "SOCKS",
+        "path": "classes/protocol/socks.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 11
+      }
+    ],
+    "SOCKS_RESPONSE": [
+      {
+        "class": "SOCKS",
+        "path": "classes/protocol/socks.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 11
+      }
+    ],
+    "SSH_CLOSE": [
+      {
+        "class": "SSH",
+        "path": "classes/protocol/ssh.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 46
+      }
+    ],
+    "SSH_OPEN": [
+      {
+        "class": "SSH",
+        "path": "classes/protocol/ssh.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 46
+      }
+    ],
+    "SSH_TICK": [
+      {
+        "class": "SSH",
+        "path": "classes/protocol/ssh.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 46
+      }
+    ],
+    "SSL_ALERT": [
+      {
+        "class": "SSL",
+        "path": "classes/protocol/ssl.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "addApplication(name: String): void",
+          "commitRecord(): void",
+          "getClientExtensionData(extension_name | extension_id): Buffer | Null",
+          "getServerExtensionData(extension_name | extension_id): Buffer | Null",
+          "hasClientExtension(extension_name | extension_id): boolean",
+          "hasServerExtension(extension_name | extension_id): boolean"
+        ],
+        "property_count": 117
+      }
+    ],
+    "SSL_CLOSE": [
+      {
+        "class": "SSL",
+        "path": "classes/protocol/ssl.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "addApplication(name: String): void",
+          "commitRecord(): void",
+          "getClientExtensionData(extension_name | extension_id): Buffer | Null",
+          "getServerExtensionData(extension_name | extension_id): Buffer | Null",
+          "hasClientExtension(extension_name | extension_id): boolean",
+          "hasServerExtension(extension_name | extension_id): boolean"
+        ],
+        "property_count": 117
+      }
+    ],
+    "SSL_HEARTBEAT": [
+      {
+        "class": "SSL",
+        "path": "classes/protocol/ssl.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "addApplication(name: String): void",
+          "commitRecord(): void",
+          "getClientExtensionData(extension_name | extension_id): Buffer | Null",
+          "getServerExtensionData(extension_name | extension_id): Buffer | Null",
+          "hasClientExtension(extension_name | extension_id): boolean",
+          "hasServerExtension(extension_name | extension_id): boolean"
+        ],
+        "property_count": 117
+      }
+    ],
+    "SSL_OPEN": [
+      {
+        "class": "SSL",
+        "path": "classes/protocol/ssl.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "addApplication(name: String): void",
+          "commitRecord(): void",
+          "getClientExtensionData(extension_name | extension_id): Buffer | Null",
+          "getServerExtensionData(extension_name | extension_id): Buffer | Null",
+          "hasClientExtension(extension_name | extension_id): boolean",
+          "hasServerExtension(extension_name | extension_id): boolean"
+        ],
+        "property_count": 117
+      }
+    ],
+    "SSL_PAYLOAD": [
+      {
+        "class": "SSL",
+        "path": "classes/protocol/ssl.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "addApplication(name: String): void",
+          "commitRecord(): void",
+          "getClientExtensionData(extension_name | extension_id): Buffer | Null",
+          "getServerExtensionData(extension_name | extension_id): Buffer | Null",
+          "hasClientExtension(extension_name | extension_id): boolean",
+          "hasServerExtension(extension_name | extension_id): boolean"
+        ],
+        "property_count": 117
+      }
+    ],
+    "SSL_RECORD": [
+      {
+        "class": "SSL",
+        "path": "classes/protocol/ssl.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "addApplication(name: String): void",
+          "commitRecord(): void",
+          "getClientExtensionData(extension_name | extension_id): Buffer | Null",
+          "getServerExtensionData(extension_name | extension_id): Buffer | Null",
+          "hasClientExtension(extension_name | extension_id): boolean",
+          "hasServerExtension(extension_name | extension_id): boolean"
+        ],
+        "property_count": 117
+      }
+    ],
+    "SSL_RENEGOTIATE": [
+      {
+        "class": "SSL",
+        "path": "classes/protocol/ssl.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "addApplication(name: String): void",
+          "commitRecord(): void",
+          "getClientExtensionData(extension_name | extension_id): Buffer | Null",
+          "getServerExtensionData(extension_name | extension_id): Buffer | Null",
+          "hasClientExtension(extension_name | extension_id): boolean",
+          "hasServerExtension(extension_name | extension_id): boolean"
+        ],
+        "property_count": 117
+      }
+    ],
+    "TCP_CLOSE": [
+      {
+        "class": "TCP",
+        "path": "classes/protocol/tcp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "getOption(kind: Number): Object | Null"
+        ],
+        "property_count": 30
+      }
+    ],
+    "TCP_OPEN": [
+      {
+        "class": "TCP",
+        "path": "classes/protocol/tcp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "getOption(kind: Number): Object | Null"
+        ],
+        "property_count": 30
+      }
+    ],
+    "TCP_PAYLOAD": [
+      {
+        "class": "TCP",
+        "path": "classes/protocol/tcp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "getOption(kind: Number): Object | Null"
+        ],
+        "property_count": 30
+      }
+    ],
+    "TELNET_MESSAGE": [
+      {
+        "class": "Telnet",
+        "path": "classes/protocol/telnet.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 16
+      }
+    ],
+    "TFTP_REQUESTS": [
+      {
+        "class": "TFTP",
+        "path": "classes/protocol/tftp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 10
+      }
+    ],
+    "TFTP_RESPONSE": [
+      {
+        "class": "TFTP",
+        "path": "classes/protocol/tftp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord(): void"
+        ],
+        "property_count": 10
+      }
+    ],
+    "TIMER_30SEC": [
+      {
+        "class": "Session",
+        "path": "classes/general/session.md",
+        "section": "general-purpose-classes",
+        "methods": [
+          "add(key: String, value*, options: Object): *",
+          "getOptions(key: String): Object",
+          "increment(key: String, count: Number): Number | null",
+          "lookup(key: String): *",
+          "modify(key: String, value: *, options: Object): *",
+          "remove(key: String): *",
+          "replace(key: String, value: *, options: Object): *"
+        ],
+        "property_count": 4
+      }
+    ],
+    "UDP_PAYLOAD": [
+      {
+        "class": "UDP",
+        "path": "classes/protocol/udp.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [],
+        "property_count": 0
+      }
+    ],
+    "WEBSOCKET_CLOSE": [
+      {
+        "class": "WebSocket",
+        "path": "classes/protocol/websocket.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [],
+        "property_count": 23
+      }
+    ],
+    "WEBSOCKET_MESSAGE": [
+      {
+        "class": "WebSocket",
+        "path": "classes/protocol/websocket.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [],
+        "property_count": 23
+      }
+    ],
+    "WEBSOCKET_OPEN": [
+      {
+        "class": "WebSocket",
+        "path": "classes/protocol/websocket.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [],
+        "property_count": 23
+      }
+    ],
+    "WSMAN_REQUEST": [
+      {
+        "class": "WSMAN",
+        "path": "classes/protocol/wsman.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord():void"
+        ],
+        "property_count": 14
+      }
+    ],
+    "WSMAN_RESPONSE": [
+      {
+        "class": "WSMAN",
+        "path": "classes/protocol/wsman.md",
+        "section": "protocol-and-network-data-classes",
+        "methods": [
+          "commitRecord():void"
+        ],
+        "property_count": 14
+      }
+    ]
+  }
+}

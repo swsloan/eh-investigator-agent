@@ -1,0 +1,4 @@
+interface:
+  display_name: "ExtraHop Triggers"
+  short_description: "Author ExtraHop Trigger API scripts"
+  default_prompt: "Use $extrahop-triggers to write or review an ExtraHop trigger."
