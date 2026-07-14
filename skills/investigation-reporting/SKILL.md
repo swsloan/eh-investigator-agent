@@ -39,6 +39,9 @@ When it's unclear which the user wants, ask.
 - **Don't overclaim.** "Correlates with" is not "caused by."
 - **Two readers, one document.** The top (verdict + summary) stands alone for the 30-second reader; reasoning and provenance sit below for the auditor.
 - **Name the blind spots.** Every report says what was checked-and-clean, what's unknown, and what the tool itself can't see (e.g. *What ExtraHop can't see*).
+- **Keep third-party enrichment distinct.** In threat-hunt and SOC reports, put material web research and vendor/tool findings in the **Third-Party Enrichment** section, separate from ExtraHop observations. Use the `security-research` skill for current external context. Cite the original URL and local `research/` memo for web claims; cite the local source artifact and collection UTC for every other provider. Never present an external claim as an ExtraHop observation. Keep the section only when enrichment materially informs identity, intent, severity, scope, or response; delete it otherwise. One card equals one source finding or lookup.
+- **Preserve source semantics.** State what the provider reported, then label any synthesis as investigator assessment. A missing, empty, errored, or not-found response is *unknown* — not benign. Correlate external indicators back to ExtraHop before claiming they were observed in the environment.
+- **Brand ReversingLabs entries consistently.** In the threat-hunt and SOC templates, every ReversingLabs item is an `<article class="enrichment" data-source="reversinglabs">` (copied from the inert `<template>` in that section); the template applies the bundled square RL icon to each item's source badge. Use `ReversingLabs reported` and `Investigator assessment` language, preserve the vendor verdict and scope, and cite the matching `reversinglabs/` artifact.
 
 ## Output
 
