@@ -5,8 +5,8 @@
 > Claude subscription-vs-API-key auth choice, and several fixes on top of the
 > upstream release. See **[docs/STATUS-HANDOFF.md](docs/STATUS-HANDOFF.md)** for current status + next steps, **[docs/CHANGES.md](docs/CHANGES.md)** for the complete
 > change inventory and **[docs/DESIGN-graphiti-memory.md](docs/DESIGN-graphiti-memory.md)**
-> for the memory design/rationale. To run in Docker: `docker compose up -d`
-> (see the [Docker](#docker) section).
+> for the memory design/rationale. **To build and run in Docker Desktop, see
+> [Quickstart — Docker Desktop](#quickstart--docker-desktop).**
 
 Local web UI for an autonomous ExtraHop investigation agent. The server drives
 either the [Pi coding agent](https://pi.dev/) (RPC mode) or
@@ -27,7 +27,57 @@ checksums, and installs its binary as `bin/excli`. It intentionally does not
 include installed dependencies, generated investigation workspaces, local
 credentials, logs, or session state.
 
-## Quick Start
+## Quickstart — Docker Desktop
+
+The fastest way to run the full stack (app + Graphiti memory + FalkorDB + Ollama)
+on one machine. **Everything builds from this repository** — no images or volumes
+need to be created beforehand, so a fresh clone works as-is.
+
+**Prerequisites**
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) running, with
+  Compose v2 (the `docker compose` subcommand). Give it roughly **8 GB RAM** and
+  **15 GB disk** — the memory stack pulls the Ollama image and a local embedding
+  model on first build.
+
+**Build and run**
+
+```bash
+git clone https://github.com/swsloan/eh-investigator-agent.git
+cd eh-investigator-agent
+docker compose build      # builds the app + graphiti-mcp images from source
+docker compose up -d      # starts app, graphiti-mcp, falkordb, ollama
+```
+
+Then open **[http://localhost:3100](http://localhost:3100)**. The first build takes
+several minutes (npm install, image pulls, embedding-model download); subsequent
+`up` is fast.
+
+**Configure credentials** — the containers start without them; add them once the
+UI is up:
+
+- **Settings → Connection**: your ExtraHop RevealX host + API key (or RevealX 360
+  client ID/secret).
+- **Settings → Agent**: an Anthropic API key, or a Claude Pro/Max subscription
+  token (`claude setup-token` on a machine with a browser). This key also powers
+  memory extraction.
+- Optional: set these ahead of time in `.env` (`cp .env.example .env`). Every
+  variable has a safe default, so `.env` is only needed to pre-seed credentials —
+  the stack comes up without it.
+
+**Verify**
+
+```bash
+curl -s http://localhost:3100/api/health   # -> {"ok":true, ...}
+docker compose ps                          # four services; app on 127.0.0.1:3100
+```
+
+Sessions, settings, and memory persist in named Docker volumes across restarts and
+rebuilds. After a `git pull`, update in place with
+`docker compose up -d --build eh-investigator`. Deeper detail (backends, auth
+modes, memory, excli) is in the [Docker](#docker) section below.
+
+## Quick Start (local, without Docker)
 
 Prerequisites:
 
