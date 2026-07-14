@@ -34,9 +34,9 @@ PREREQUISITES (check first; stop and tell me if any fail)
 - Docker Desktop has ~8 GB RAM and ~15 GB free disk available — the stack
   includes an Ollama service that pulls a large image plus a local embedding
   model on first build.
-- Git is available, and you have read access to the repo (it may be private; if
-  `git clone` fails with an auth error, stop and tell me — you'll need a GitHub
-  token or `gh auth login`).
+- Git is available. The repo is public, so `git clone` needs no authentication.
+  (If a clone ever fails with an auth error because access changed, stop and tell
+  me rather than guessing.)
 
 STEPS
 1. Clone and enter the repo:
@@ -82,9 +82,10 @@ TROUBLESHOOTING
 
 ## Notes
 
-- **Private repo access.** If the repository is private, the agent needs GitHub
-  credentials to clone it — the prompt tells it to stop and flag that rather than
-  guess. If the repo is public, any agent can clone it with no auth.
+- **Repo access.** The repository is public, so any agent can clone it with no
+  authentication. (If it is ever switched back to private, the agent would need
+  GitHub credentials; the prompt tells it to stop and flag an auth failure rather
+  than guess.)
 - **Guardrails.** The prompt deliberately tells the agent **not** to enter
   credentials or edit the Compose/Dockerfiles, so an unattended run brings up a
   clean, unconfigured stack and hands the sensitive steps back to you.
