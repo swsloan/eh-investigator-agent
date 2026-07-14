@@ -77,6 +77,9 @@ rebuilds. After a `git pull`, update in place with
 `docker compose up -d --build eh-investigator`. Deeper detail (backends, auth
 modes, memory, excli) is in the [Docker](#docker) section below.
 
+Deploying with an AI coding agent? Hand it the ready-made prompt in
+**[docs/DEPLOY-WITH-AI-AGENT.md](docs/DEPLOY-WITH-AI-AGENT.md)**.
+
 ## Quick Start (local, without Docker)
 
 Prerequisites:
