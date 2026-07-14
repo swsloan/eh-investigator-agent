@@ -8,6 +8,7 @@ import { Readable } from 'node:stream';
 import { BACKENDS, detectBackends, getBackend, resolveBackendId } from './lib/backends/index.js';
 import { createChallengerCoordinator } from './lib/challenger-coordinator.js';
 import { createMemoryCoordinator } from './lib/memory-coordinator.js';
+import { BackendUpdateManager } from './lib/backend-updates.js';
 import { ExcliBroker } from './lib/excli-broker.js';
 import { ReversingLabsBroker } from './lib/reversinglabs-broker.js';
 import { ResearchBroker } from './lib/research-broker.js';
@@ -32,6 +33,7 @@ import { healthRouter } from './routes/health.js';
 import { modelsRouter } from './routes/models.js';
 import { sessionsRouter } from './routes/sessions.js';
 import { settingsRouter } from './routes/settings.js';
+import { backendUpdatesRouter } from './routes/backend-updates.js';
 
 const ROOT = import.meta.dirname;
 const WORKSPACES = path.join(ROOT, 'workspaces');
@@ -126,6 +128,18 @@ const challenger = createChallengerCoordinator({
   secretStore,
 });
 const memory = createMemoryCoordinator({ getConfig: prefs });
+// Backend self-update (managed backends only — e.g. Pi's `pi update --self`).
+// Claude Code has no managed-update policy; it updates via its own SDK. A
+// backend is "busy" while any session on it is actively running a turn.
+const backendUpdates = new BackendUpdateManager({
+  getActiveBackend: activeBackend,
+  sessions,
+  getModelCatalog: catalogFor,
+  detectBackends,
+  isBackendBusy: (backendId) => [...sessions.values()].some(
+    (session) => session.backend === backendId && session.running,
+  ),
+});
 
 function broadcast(sessionId, event) {
   const clients = sseClients.get(sessionId);
@@ -329,6 +343,7 @@ app.use('/api/models', modelsRouter({
   getActiveBackend: activeBackend,
   getModelCatalog: catalogFor,
 }));
+app.use('/api/backend-update', backendUpdatesRouter({ manager: backendUpdates }));
 app.use('/api/sessions', sessionsRouter({
   sessions,
   sseClients,

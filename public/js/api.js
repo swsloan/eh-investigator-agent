@@ -32,6 +32,18 @@ export async function listSessions() {
   return res.json();
 }
 
+export async function getBackendUpdate(options = {}) {
+  const res = await fetch(`/api/backend-update${options.refresh ? '?refresh=1' : ''}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+export async function runBackendUpdate() {
+  const res = await fetch('/api/backend-update', { method: 'POST' });
+  return { ok: res.ok, data: await res.json().catch(() => ({})) };
+}
+
 export async function createSession() {
   const res = await fetch('/api/sessions', { method: 'POST' });
   return res.json();
