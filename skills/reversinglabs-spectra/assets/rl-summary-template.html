@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  Deterministic ReversingLabs research viewer. This is an interim RL Summary,
+  not an investigation report. Populate only through render-summary.mjs so
+  untrusted vendor fields are escaped consistently.
+-->
+<title>{{RL_TITLE}}</title>
+<link rel="stylesheet" href="/vendor/source-sans-3/source-sans-3.css">
+<style>
+:root{
+  color-scheme:light;
+  --rl-red:#EF3340;--rl-red-deep:#B81C2E;--rl-black:#101114;
+  --ink:#17181C;--muted:#60626B;--faint:#858791;--rule:#DCDDE1;
+  --paper:#FFF;--panel:#F7F7F8;--canvas:#EAEAEC;--chip:#FDEAEC;
+  --malicious:#C11414;--malicious-bg:#FBEBEA;--suspicious:#C0531C;--suspicious-bg:#FCF0E8;
+  --goodware:#3F7A4F;--goodware-bg:#ECF5EE;--unknown:#586173;--unknown-bg:#EEF0F3;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+html[data-report-theme="dark"]{
+  color-scheme:dark;--rl-red:#FF6B7A;--rl-red-deep:#FF6B7A;--rl-black:#0B0C0E;
+  --ink:#ECECEF;--muted:#C3C4CB;--faint:#9A9BA3;--rule:#393A42;
+  --paper:#141519;--panel:#1D1E24;--canvas:#0E0F12;--chip:#3B1D20;
+  --malicious:#FF8585;--malicious-bg:#3A1D22;--suspicious:#FF9A5C;--suspicious-bg:#392616;
+  --goodware:#67D391;--goodware-bg:#183427;--unknown:#B4B6C0;--unknown-bg:#2A2A35;
+}
+@media screen and (prefers-color-scheme:dark){html:not([data-report-theme="light"]){
+  color-scheme:dark;--rl-red:#FF6B7A;--rl-red-deep:#FF6B7A;--rl-black:#0B0C0E;
+  --ink:#ECECEF;--muted:#C3C4CB;--faint:#9A9BA3;--rule:#393A42;
+  --paper:#141519;--panel:#1D1E24;--canvas:#0E0F12;--chip:#3B1D20;
+  --malicious:#FF8585;--malicious-bg:#3A1D22;--suspicious:#FF9A5C;--suspicious-bg:#392616;
+  --goodware:#67D391;--goodware-bg:#183427;--unknown:#B4B6C0;--unknown-bg:#2A2A35;
+}}
+*{box-sizing:border-box}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{margin:0;background:var(--canvas);color:var(--ink);font:10.5pt/1.48 "Source Sans 3",Arial,sans-serif}
+.sheet{max-width:8in;margin:28px auto;background:var(--paper);box-shadow:0 2px 30px rgba(16,17,20,.15)}
+.masthead{padding:.42in .58in .46in;background:#101114;color:#fff;border-bottom:4px solid #EF3340}
+.brand{display:flex;align-items:center;gap:11px}.badge{display:grid;place-items:center;width:34px;height:34px;background:#EF3340;font-weight:900}
+.wordmark{font-size:14pt;font-weight:900;letter-spacing:.02em}.wordmark b{color:#EF3340}.kind{margin-top:28px;color:#EF3340;font-size:9pt;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+h1{margin:4px 0 5px;font-size:26pt;line-height:1}.subtitle{margin:0;color:rgba(255,255,255,.72)}
+.subject{margin-top:14px;padding:8px 10px;border:1px solid rgba(255,255,255,.18);border-radius:5px;background:rgba(255,255,255,.07);font:8.5pt/1.4 var(--mono);overflow-wrap:anywhere}
+.meta{display:flex;flex-wrap:wrap;gap:6px 24px;margin-top:14px;padding-top:11px;border-top:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.62);font-size:8.5pt}.meta b{color:#fff}
+.overview{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:20px .58in 8px}.stat{padding:12px 14px;border:1px solid var(--rule);border-radius:8px;background:var(--panel)}
+.stat span,.eyebrow{display:block;color:var(--faint);font-size:8pt;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.stat strong{display:block;margin-top:3px;font-size:15pt;line-height:1.1}
+.content{padding:4px .58in .4in}.note{margin:12px 0 18px;padding:12px 14px;border-left:4px solid var(--rl-red);border-radius:0 7px 7px 0;background:var(--panel);color:var(--muted)}
+.operation{margin:0 0 18px;border:1px solid var(--rule);border-radius:9px;overflow:hidden}.operation-head{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;background:var(--rl-black);color:#fff}
+.operation h2{margin:2px 0 0;font-size:15pt;text-transform:capitalize}.operation-count{text-align:right}.operation-count strong,.operation-count span{display:block}.operation-count strong{font-size:17pt;line-height:1}.operation-count span{color:rgba(255,255,255,.6);font-size:8pt;text-transform:uppercase}
+.query{display:grid;grid-template-columns:80px 1fr;gap:8px;padding:10px 15px;border-bottom:1px solid var(--rule);background:var(--panel)}.query span{color:var(--faint);font-size:8pt;font-weight:800;text-transform:uppercase}.query code{overflow-wrap:anywhere}
+.results{display:grid;gap:10px;padding:12px}.result-card{padding:12px 14px;border:1px solid var(--rule);border-left:5px solid var(--unknown);border-radius:7px;background:var(--paper)}
+.status-overview{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 12px 0}.status-overview div{padding:9px 11px;border:1px solid var(--rule);border-radius:7px;background:var(--panel)}.status-overview span{display:block;color:var(--faint);font-size:8pt;font-weight:800;text-transform:uppercase}.status-overview strong{display:block;margin-top:2px;font-size:15pt}.status-note{margin:10px 12px;padding:9px 11px;border-left:4px solid var(--rl-red);background:var(--panel);color:var(--muted)}.status-table{margin:0 12px 12px}.status-table td:first-child{width:100%}.status-table td:nth-child(2),.status-table td:nth-child(3){white-space:nowrap}
+.result-card[data-class="malicious"]{border-left-color:var(--malicious)}.result-card[data-class="suspicious"]{border-left-color:var(--suspicious)}.result-card[data-class="goodware"],.result-card[data-class="known"]{border-left-color:var(--goodware)}
+.result-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}.classification{padding:2px 9px;border-radius:99px;background:var(--unknown-bg);color:var(--unknown);font-size:8pt;font-weight:900;text-transform:uppercase}
+[data-class="malicious"] .classification{background:var(--malicious-bg);color:var(--malicious)}[data-class="suspicious"] .classification{background:var(--suspicious-bg);color:var(--suspicious)}[data-class="goodware"] .classification,[data-class="known"] .classification{background:var(--goodware-bg);color:var(--goodware)}
+dl{display:grid;grid-template-columns:130px 1fr;gap:4px 12px;margin:0;font-size:9.5pt}dt{color:var(--faint);font-weight:700}dd{margin:0;overflow-wrap:anywhere}.hashes{margin-top:10px;padding-top:8px;border-top:1px solid var(--rule)}
+.hash-row{display:grid;grid-template-columns:58px 1fr;gap:8px;margin:3px 0}.hash-row span{color:var(--faint);font-size:8pt;font-weight:800;text-transform:uppercase}code{font:8.4pt/1.45 var(--mono);overflow-wrap:anywhere}.tags{margin-top:9px}.tag{display:inline-block;margin:0 5px 5px 0;padding:2px 8px;border-radius:99px;background:var(--chip);color:var(--rl-red-deep);font:7.8pt/1.4 var(--mono)}
+.empty{padding:20px;border:1px dashed var(--rule);border-radius:7px;color:var(--muted);text-align:center}.provenance{margin-top:24px}.provenance h2{font-size:14pt}.table-wrap{overflow:auto;border:1px solid var(--rule);border-radius:8px}table{width:100%;border-collapse:collapse;font-size:8.7pt}th{padding:7px 8px;background:var(--rl-black);color:#fff;text-align:left;text-transform:uppercase}td{padding:7px 8px;border-bottom:1px solid var(--rule);vertical-align:top}tr:last-child td{border-bottom:0}.evidence-id{padding:1px 6px;background:var(--chip);color:var(--rl-red-deep);font-family:var(--mono);font-weight:800}
+footer{padding:12px .58in;border-top:2px solid var(--rl-red);color:var(--faint);font-size:8pt}
+@page{size:letter;margin:.4in}@media print{html{color-scheme:light;--ink:#17181C;--muted:#60626B;--faint:#858791;--rule:#DCDDE1;--paper:#FFF;--panel:#F7F7F8;--canvas:#FFF;--chip:#FDEAEC;--malicious:#C11414;--malicious-bg:#FBEBEA;--suspicious:#C0531C;--suspicious-bg:#FCF0E8;--goodware:#3F7A4F;--goodware-bg:#ECF5EE;--unknown:#586173;--unknown-bg:#EEF0F3}body{background:#fff}.sheet{max-width:none;margin:0;box-shadow:none}.operation,.result-card{break-inside:avoid}}
+</style>
+</head>
+<body>
+<main class="sheet">
+  <header class="masthead">
+    <div class="brand" role="img" aria-label="ReversingLabs"><span class="badge">&#1071;L</span><span class="wordmark">&#1071;EVERSING<b>LABS</b></span></div>
+    <div class="kind">Spectra Analyze research viewer</div>
+    <h1>{{RL_TITLE}}</h1>
+    <p class="subtitle">Interim vendor-enrichment summary · not the final investigation report</p>
+    <div class="subject">{{RL_SUBJECTS}}</div>
+    <div class="meta"><span><b>Operations:</b> {{RL_OPERATIONS}}</span><span><b>Generated:</b> {{RL_GENERATED_AT}}</span><span><b>Source:</b> ReversingLabs Spectra Analyze</span></div>
+  </header>
+  <div class="overview">
+    <div class="stat"><span>Source files</span><strong>{{RL_SOURCE_COUNT}}</strong></div>
+    <div class="stat"><span>Returned items</span><strong>{{RL_ITEM_COUNT}}</strong></div>
+    <div class="stat"><span>RL classifications</span><strong>{{RL_CLASSIFICATIONS}}</strong></div>
+  </div>
+  <div class="content">
+    <div class="note">This deterministic viewer contains ReversingLabs-reported enrichment only. Empty or missing results remain unknown/not found and are never treated as benign. Network observations, investigator conclusions, and response actions belong in the parent investigation and its final report.</div>
+    <!-- RL_OPERATION_SECTIONS -->
+    <section class="provenance">
+      <h2>Source files</h2>
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Operation</th><th>Scope</th><th>Retrieved</th><th>Workspace file</th></tr></thead><tbody><!-- RL_PROVENANCE_ROWS --></tbody></table></div>
+    </section>
+  </div>
+  <footer>RL Summary · generated from normalized broker responses in <code>reversinglabs/</code></footer>
+</main>
+</body>
+</html>
