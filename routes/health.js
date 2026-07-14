@@ -3,7 +3,7 @@ import { publicBackendInfo } from '../lib/backends/index.js';
 import { credentialsConfigured } from '../lib/settings.js';
 import { getSystemPreflight } from '../lib/system-preflight.js';
 
-export function healthRouter({ getConfig, sessions, root, getActiveBackend, getModelCatalog, secretStore, excliBroker, reversingLabsBroker }) {
+export function healthRouter({ getConfig, sessions, root, getActiveBackend, getModelCatalog, secretStore, excliBroker, reversingLabsBroker, researchBroker }) {
   const router = express.Router();
 
   router.get('/health', (req, res) => {
@@ -27,6 +27,7 @@ export function healthRouter({ getConfig, sessions, root, getActiveBackend, getM
       secretStore,
       excliBroker,
       reversingLabsBroker,
+      researchBroker,
     });
     res.status(status.ok ? 200 : 503).json(status);
   });

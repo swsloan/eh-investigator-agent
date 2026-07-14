@@ -1,0 +1,4 @@
+interface:
+  display_name: "Security Research"
+  short_description: "Research current security identifiers and threats"
+  default_prompt: "Use $security-research to investigate this unfamiliar security indicator with current, cited sources."
