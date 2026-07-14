@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  ============================================================================
+  OPERATIONAL HEALTH ASSESSMENT — TEMPLATE (worked example)
+  ----------------------------------------------------------------------------
+  A posture/reporting scaffold for health checks, protocol fleet reviews,
+  critical-device baselines, and periodic operational health summaries. Use this
+  when the deliverable is not an incident/RCA, but still needs a durable,
+  evidence-backed assessment.
+
+  This is a populated EXAMPLE (an environment health assessment). Copy it, then
+  replace every invented host, count, query, and conclusion. Delete sections that
+  do not serve the assessment; a health report should never carry empty
+  scaffolding.
+
+  STATUS TOKENS (drive all status color through these — never invent colors):
+    Health status / item severity ..... data-sev="critical|high|medium|low|info"
+    Evidence tag ...................... <span class="tag obs">Observed</span>
+                                        <span class="tag ass">Assessed</span>
+    Recommendation urgency ............ data-urgency="now|soon|tune"
+    Limits bucket ..................... data-kind="clean|unknown|blind"
+  ============================================================================
+-->
+<title>Operational Health Assessment — Environment</title>
+<link rel="stylesheet" href="/vendor/source-sans-3/source-sans-3.css">
+<style>
+:root{
+  --sapphire:#261F63; --plum:#7F2854; --accent:#00AAEF;
+  --gradient:linear-gradient(135deg,#261F63,#7F2854);
+  --ink:#1A1A22; --ink-soft:#54555F; --ink-faint:#85868F;
+  --rule:#D9D8E0; --rule-soft:#ECEBF1; --paper:#FFFFFF; --panel:#FAFAFC;
+  --card:#FFFFFF; --canvas:#E9E9EE; --code-ink:#2C2C38; --sheet-shadow:0 2px 30px rgba(20,18,40,.14); --lift-shadow:0 10px 28px rgba(20,18,40,.16);
+  --sapphire-chip:#ECEBF6;
+  --critical:#9E1B1B; --high:#C0531C; --medium:#A36F0B; --low:#3F7A4F; --info:#586173;
+  --critical-bg:#FBEDED; --high-bg:#FCF0E8; --medium-bg:#FBF4E2; --low-bg:#ECF5EE; --info-bg:#EEF0F3;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --maxw:7.5in;
+}
+html[data-report-theme="dark"]{
+  color-scheme:dark;
+  --sapphire:#B3A8F2; --plum:#D171A0; --accent:#37C0F5;
+  --ink:#ECECF2; --ink-soft:#C4C3CF; --ink-faint:#9B9BA6;
+  --rule:#3A3947; --rule-soft:#2E2D3A; --paper:#15141C; --panel:#1F1E28;
+  --card:#232230; --canvas:#0F0E14; --code-ink:#D7D6E4; --sheet-shadow:0 2px 30px rgba(0,0,0,.45); --lift-shadow:0 10px 28px rgba(0,0,0,.38);
+  --sapphire-chip:#2A2740;
+  --critical:#FF8585; --high:#FF9A5C; --medium:#F2C356; --low:#67D391; --info:#A6A6B4;
+  --critical-bg:#3A1D22; --high-bg:#392616; --medium-bg:#342B16; --low-bg:#183427; --info-bg:#2A2A35;
+}
+@media screen and (prefers-color-scheme:dark){
+  html:not([data-report-theme="light"]){
+    color-scheme:dark;
+    --sapphire:#B3A8F2; --plum:#D171A0; --accent:#37C0F5;
+    --ink:#ECECF2; --ink-soft:#C4C3CF; --ink-faint:#9B9BA6;
+    --rule:#3A3947; --rule-soft:#2E2D3A; --paper:#15141C; --panel:#1F1E28;
+    --card:#232230; --canvas:#0F0E14; --code-ink:#D7D6E4; --sheet-shadow:0 2px 30px rgba(0,0,0,.45); --lift-shadow:0 10px 28px rgba(0,0,0,.38);
+    --sapphire-chip:#2A2740;
+    --critical:#FF8585; --high:#FF9A5C; --medium:#F2C356; --low:#67D391; --info:#A6A6B4;
+    --critical-bg:#3A1D22; --high-bg:#392616; --medium-bg:#342B16; --low-bg:#183427; --info-bg:#2A2A35;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{font-family:"Source Sans 3",Arial,Helvetica,sans-serif;color:var(--ink);background:var(--canvas);margin:0;font-size:10.5pt;line-height:1.5;-webkit-font-smoothing:antialiased}
+.sheet{background:var(--paper);max-width:var(--maxw);margin:28px auto;padding:0 0 .42in;box-shadow:var(--sheet-shadow)}
+p{margin:0 0 .55em}
+a{color:var(--accent);text-decoration:none}
+strong,b{font-weight:700}
+code,.mono{font-family:var(--mono);font-size:.84em}
+code{background:var(--rule-soft);padding:.06em .35em;border-radius:3px;color:var(--code-ink)}
+ul{margin:.2em 0 .4em;padding-left:1.15em}
+li{margin:0 0 .25em}
+.small{font-size:9pt;color:var(--ink-soft)}
+
+/* ---------- Masthead (the one gradient moment) ---------- */
+.masthead{background:var(--gradient);color:#fff;padding:.4in .62in .58in}
+.brandbar{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.brandbar .logo{width:142px;height:auto;display:block}
+.classif{font-size:7.5pt;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#fff;border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.10);padding:3px 10px;border-radius:99px;white-space:nowrap}
+.doc-kind{font-size:8.5pt;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.66);margin:.32in 0 7px}
+h1.report-title{font-size:23pt;line-height:1.1;font-weight:900;letter-spacing:-.012em;color:#fff;margin:0 0 .18em}
+.subtitle{font-size:12pt;font-weight:300;color:rgba(255,255,255,.85);margin:0;max-width:6.2in}
+.meta-row{display:flex;flex-wrap:wrap;gap:5px 26px;margin-top:18px;padding-top:12px;border-top:1px solid rgba(255,255,255,.22);font-size:8.7pt;color:rgba(255,255,255,.62)}
+.meta-row b{color:#fff;font-weight:600}
+
+/* ---------- Verdict card (overlaps masthead) ---------- */
+.verdict{margin:-.36in .62in 0;background:var(--card);border:1px solid var(--rule);border-radius:10px;box-shadow:var(--lift-shadow);overflow:hidden;display:grid;grid-template-columns:7px 1fr;break-inside:avoid;position:relative}
+.verdict .accent{background:var(--info)}
+.verdict[data-sev="critical"] .accent{background:var(--critical)}
+.verdict[data-sev="high"] .accent{background:var(--high)}
+.verdict[data-sev="medium"] .accent{background:var(--medium)}
+.verdict[data-sev="low"] .accent{background:var(--low)}
+.verdict-grid{display:grid;grid-template-columns:1.15fr 1fr 1fr}
+.vcell{padding:15px 18px 13px;border-right:1px solid var(--rule-soft)}
+.vcell:last-child{border-right:0}
+.vlabel{font-size:7.8pt;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:6px}
+.vvalue{font-size:15pt;font-weight:800;line-height:1.05;color:var(--ink)}
+.vnote{font-size:8.5pt;color:var(--ink-faint);margin-top:5px;line-height:1.35}
+.status-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;background:var(--info)}
+.verdict[data-sev="critical"] .status-dot{background:var(--critical)}
+.verdict[data-sev="high"] .status-dot{background:var(--high)}
+.verdict[data-sev="medium"] .status-dot{background:var(--medium)}
+.verdict[data-sev="low"] .status-dot{background:var(--low)}
+.sev-pill{display:inline-block;font-size:11.5pt;font-weight:800;padding:1px 11px;border-radius:99px}
+.verdict[data-sev="critical"] .sev-pill{color:var(--critical);background:var(--critical-bg)}
+.verdict[data-sev="high"] .sev-pill{color:var(--high);background:var(--high-bg)}
+.verdict[data-sev="medium"] .sev-pill{color:var(--medium);background:var(--medium-bg)}
+.verdict[data-sev="low"] .sev-pill{color:var(--low);background:var(--low-bg)}
+.verdict[data-sev="info"] .sev-pill{color:var(--info);background:var(--info-bg)}
+.confmeter{display:inline-flex;gap:3px;margin-top:8px}
+.confmeter span{width:24px;height:6px;border-radius:99px;background:var(--rule)}
+.vcell[data-conf="low"] .confmeter span:nth-child(-n+1),
+.vcell[data-conf="moderate"] .confmeter span:nth-child(-n+2),
+.vcell[data-conf="high"] .confmeter span:nth-child(-n+3){background:var(--sapphire)}
+
+/* ---------- Sections ---------- */
+section{padding:.18in .62in 0}
+.sec-head{display:flex;align-items:center;gap:11px;margin:.65em 0 .55em;break-after:avoid}
+.sec-head::after{content:"";flex:1;height:1px;background:var(--rule-soft)}
+.sec-num{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:21px;padding:0 10px;border-radius:99px;background:var(--sapphire);color:#fff;font-size:8.5pt;font-weight:700;letter-spacing:.04em}
+.sec-head h2{font-size:13.5pt;font-weight:800;color:var(--sapphire);margin:0;letter-spacing:-.005em;white-space:nowrap}
+.sec-sub{font-size:9.3pt;color:var(--ink-faint);margin:-.15em 0 .8em 41px;break-after:avoid}
+
+/* ---------- Analyst summary ---------- */
+.summary{margin-top:.3em;border:1px solid var(--rule);border-left:4px solid var(--sapphire);background:var(--panel);padding:14px 18px;border-radius:0 8px 8px 0;font-size:10.8pt;line-height:1.58;break-inside:avoid}
+
+/* ---------- Key numbers ---------- */
+.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:.45em 0 .2em}
+.metric{border:1px solid var(--rule);border-top:3px solid var(--sapphire);border-radius:7px;padding:10px 11px 9px;background:var(--card);break-inside:avoid}
+.metric .mval{font-size:17pt;font-weight:900;color:var(--sapphire);line-height:1;letter-spacing:-.01em}
+.metric .mlabel{font-size:7.8pt;color:var(--ink-faint);text-transform:uppercase;font-weight:800;letter-spacing:.09em;margin-top:5px}
+.metric .mnote{font-size:8.5pt;color:var(--ink-soft);margin-top:2px;line-height:1.35}
+
+/* ---------- Optional scoped entities ---------- */
+.entity-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.entity{border:1px solid var(--rule);border-left:4px solid var(--info);border-radius:0 8px 8px 0;padding:11px 14px;background:var(--card);break-inside:avoid}
+.entity[data-role="degraded"]{border-left-color:var(--critical)}
+.entity[data-role="primary"]{border-left-color:var(--sapphire)}
+.entity[data-role="infra"]{border-left-color:var(--high)}
+.entity[data-role="identity"]{border-left-color:var(--medium)}
+.entity[data-role="external"]{border-left-color:var(--info)}
+.ename{font-weight:700;font-size:10.5pt;line-height:1.2}
+.eip{font-family:var(--mono);font-size:8.3pt;color:var(--ink-soft);margin-top:2px}
+.erole{font-size:9pt;color:var(--ink-soft);margin-top:5px;line-height:1.4}
+.ecrit{display:inline-block;margin-top:7px;font-size:7.5pt;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:2px 8px;border-radius:99px;background:var(--rule-soft);color:var(--ink-soft)}
+.entity[data-role="degraded"] .ecrit{background:var(--critical-bg);color:var(--critical)}
+.entity[data-role="primary"] .ecrit{background:var(--sapphire-chip);color:var(--sapphire)}
+.entity[data-role="infra"] .ecrit{background:var(--high-bg);color:var(--high)}
+.entity[data-role="identity"] .ecrit{background:var(--medium-bg);color:var(--medium)}
+
+/* ---------- Optional health-flow ---------- */
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;align-items:stretch;margin:.25em 0 .85em}
+.flow-node{border:1px solid var(--rule);border-radius:8px;padding:9px 10px;background:var(--panel);position:relative;break-inside:avoid}
+.flow-node:not(:last-child)::after{content:"›";position:absolute;right:-9px;top:50%;transform:translateY(-50%);color:var(--ink-faint);font-weight:800;font-size:12pt;line-height:1}
+.flow-node .stage{font-size:7.3pt;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-faint)}
+.flow-node .name{font-weight:800;font-size:9.6pt;line-height:1.15;margin-top:3px}
+.flow-node .state{font-size:8.3pt;color:var(--ink-soft);margin-top:5px;line-height:1.35}
+.flow-node[data-sev="critical"]{border-color:var(--critical);background:var(--critical-bg)}
+.flow-node[data-sev="high"]{border-color:var(--high);background:var(--high-bg)}
+.flow-node[data-sev="medium"]{border-color:var(--medium);background:var(--medium-bg)}
+.flow-node[data-sev="low"]{border-color:var(--low);background:var(--low-bg)}
+
+/* ---------- Timeline ---------- */
+.timeline{margin-top:.2em}
+.tl-item{display:grid;grid-template-columns:118px 28px 1fr;padding:0 0 15px;break-inside:avoid}
+.tl-item:last-child{padding-bottom:2px}
+.tl-time{font-family:var(--mono);font-size:8.3pt;color:var(--ink-soft);text-align:right;padding-right:14px;padding-top:1px;line-height:1.4}
+.tl-time .d{color:var(--ink-faint)}
+.tl-rail{position:relative;display:flex;justify-content:center}
+.tl-rail::before{content:"";position:absolute;top:4px;bottom:-15px;width:2px;background:var(--rule-soft)}
+.tl-item:last-child .tl-rail::before{display:none}
+.tl-dot{position:relative;z-index:1;width:13px;height:13px;border-radius:50%;background:var(--card);border:3.5px solid var(--info);margin-top:2px}
+.tl-item[data-sev="critical"] .tl-dot{border-color:var(--critical)}
+.tl-item[data-sev="high"] .tl-dot{border-color:var(--high)}
+.tl-item[data-sev="medium"] .tl-dot{border-color:var(--medium)}
+.tl-item[data-sev="low"] .tl-dot{border-color:var(--low)}
+.tl-body{padding-left:7px}
+.tl-head{font-weight:700;font-size:10pt}
+.tl-id{font-family:var(--mono);font-size:7.6pt;font-weight:600;color:var(--sapphire);background:var(--sapphire-chip);padding:1px 6px;border-radius:4px;margin-left:5px;vertical-align:1px}
+.tl-body p{font-size:9.4pt;color:var(--ink-soft);margin:.2em 0 0;line-height:1.45}
+
+/* ---------- Findings ---------- */
+.finding{border:1px solid var(--rule);border-left:4px solid var(--sapphire);border-radius:0 8px 8px 0;padding:12px 15px;margin:11px 0;break-inside:avoid;background:var(--card)}
+.finding .q{font-weight:800;color:var(--sapphire);font-size:11.3pt;line-height:1.3;margin-bottom:2px}
+.finding .answer{font-weight:700;font-size:10.3pt;color:var(--ink);margin:0 0 .35em}
+.finding .why{font-size:8.8pt;color:var(--ink-faint);margin-bottom:9px}
+.finding p{font-size:9.7pt;line-height:1.5}
+.tag{display:inline-block;font-size:7.4pt;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:99px;margin-right:6px;vertical-align:1px}
+.tag.obs{background:var(--sapphire-chip);color:var(--sapphire)}
+.tag.ass{border:1px solid var(--medium);color:var(--medium);background:var(--card)}
+.tag.note{border:1px solid var(--rule);color:var(--ink-soft);background:var(--panel);text-transform:none;letter-spacing:.02em}
+.evref{font-family:var(--mono);font-size:8.4pt;font-weight:600}
+.fmeta{margin-top:9px;padding-top:8px;border-top:1px solid var(--rule-soft);font-size:8.6pt;color:var(--ink-faint)}
+.fmeta b{color:var(--ink-soft)}
+
+/* ---------- Evidence table ---------- */
+table{width:100%;border-collapse:collapse;font-size:8.8pt}
+th{background:var(--sapphire);color:#fff;text-align:left;padding:7px 9px;font-weight:700;font-size:8.2pt;letter-spacing:.05em;text-transform:uppercase}
+td{border-bottom:1px solid var(--rule-soft);padding:7px 9px;vertical-align:top;overflow-wrap:anywhere}
+tr:nth-child(even) td{background:var(--panel)}
+td.mono,td .mono{word-break:break-word}
+.eid{display:inline-block;font-family:var(--mono);font-size:8pt;font-weight:700;color:var(--sapphire);background:var(--sapphire-chip);padding:1px 7px;border-radius:4px}
+
+/* ---------- Limits buckets ---------- */
+.bucket{border:1px solid var(--rule);border-left-width:4px;border-radius:0 8px 8px 0;padding:10px 14px;margin:9px 0;break-inside:avoid;background:var(--card)}
+.bucket h3{font-size:10.3pt;margin:0 0 5px;color:var(--ink);display:flex;align-items:center;gap:8px}
+.bucket h3::before{content:"";flex:none;width:9px;height:9px;border-radius:50%;background:var(--info)}
+.bucket[data-kind="clean"]{border-left-color:var(--low)}
+.bucket[data-kind="clean"] h3::before{background:var(--low)}
+.bucket[data-kind="unknown"]{border-left-color:var(--medium)}
+.bucket[data-kind="unknown"] h3::before{background:var(--medium)}
+.bucket[data-kind="blind"]{border-left-color:var(--info)}
+.bucket ul{margin:.1em 0 .2em}
+.bucket li{font-size:9.5pt;color:var(--ink-soft)}
+
+/* ---------- Next steps ---------- */
+.step{display:grid;grid-template-columns:auto 1fr;gap:12px;border:1px solid var(--rule);border-radius:8px;padding:11px 13px;margin:9px 0;break-inside:avoid;align-items:start;background:var(--card)}
+.step .upill{font-size:7.4pt;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:3px 9px;border-radius:99px;white-space:nowrap;margin-top:2px;text-align:center;align-self:start}
+.step[data-urgency="now"] .upill{background:var(--critical-bg);color:var(--critical)}
+.step[data-urgency="soon"] .upill{background:var(--medium-bg);color:var(--medium)}
+.step[data-urgency="tune"] .upill{background:var(--info-bg);color:var(--info)}
+.step .body{font-size:9.5pt;line-height:1.5}
+.step .body b{font-size:10pt}
+
+/* ---------- Footer ---------- */
+.report-footer{margin:.45in .62in 0}
+.report-footer .gradient-rule{height:2px;border-radius:99px;background:var(--gradient);margin-bottom:10px}
+.report-footer .cols{display:flex;justify-content:space-between;font-size:8pt;color:var(--ink-faint)}
+
+/* ---------- Print ---------- */
+@page{size:letter;margin:.4in}
+@media print{
+  html{
+    color-scheme:light;
+    --sapphire:#261F63; --plum:#7F2854; --accent:#00AAEF;
+    --ink:#1A1A22; --ink-soft:#54555F; --ink-faint:#85868F;
+    --rule:#D9D8E0; --rule-soft:#ECEBF1; --paper:#FFFFFF; --panel:#FAFAFC;
+    --card:#FFFFFF; --canvas:#FFFFFF; --code-ink:#2C2C38; --sheet-shadow:none; --lift-shadow:none;
+    --sapphire-chip:#ECEBF6;
+    --critical:#9E1B1B; --high:#C0531C; --medium:#A36F0B; --low:#3F7A4F; --info:#586173;
+    --critical-bg:#FBEDED; --high-bg:#FCF0E8; --medium-bg:#FBF4E2; --low-bg:#ECF5EE; --info-bg:#EEF0F3;
+  }
+  body{background:#fff}
+  .sheet{box-shadow:none;margin:0;max-width:none}
+  .verdict{box-shadow:none}
+}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<!-- 1. TITLE / HEADER -->
+<header class="masthead">
+  <div class="brandbar">
+    <svg class="logo" role="img" aria-label="ExtraHop" viewBox="0 0 223.8 22.1" xmlns="http://www.w3.org/2000/svg"><g fill="#FFFFFF"><path d="M0,0h15.9v5.1h-10v3.4h8.2v4.8H5.8V17h10.7v5.1H0V0z M26.9,10.8L19.4,0h7.2l3.7,5.7L33.8,0h6.5l-6.8,10.2 L41.8,22h-7.3L30,15.3l-4.3,6.8h-6.4L26.9,10.8z M49.3,5.1h-6.8V0h19.4v5.1h-6.7V22h-5.9V5.1z M66,0h9.1c1.2,0,2.3,0.2,3.2,0.5 c1,0.3,1.8,0.8,2.5,1.4s1.2,1.4,1.6,2.3S83,6.1,83,7.3c0,1.5-0.3,2.7-1,3.8c-0.6,1.1-1.5,1.9-2.5,2.6l4.7,8.5h-6.3l-3.7-7.5h-2.4 v7.5H66V0z M74.5,10c0.8,0,1.4-0.2,1.9-0.7s0.7-1.1,0.7-1.9s-0.2-1.5-0.7-2s-1.1-0.7-1.9-0.7h-2.8V10H74.5z M94.2,0h6.7l7.8,22 h-6.3l-1.4-4.6h-7.4L92.1,22h-6L94.2,0z M99.8,13.2l-2.4-8.1l-2.5,8.1H99.8z M112.7,0h5.8v8.1h13V0h5.8v22h-5.8v-8.6h-13V22h-5.8V0 z M153.2,22c-1.6,0-3-0.3-4.4-0.8c-1.3-0.6-2.5-1.3-3.5-2.3s-1.7-2.1-2.3-3.5c-0.5-1.4-0.8-2.8-0.8-4.4s0.3-3.1,0.8-4.4 c0.5-1.4,1.3-2.5,2.3-3.5s2.1-1.7,3.5-2.3c1.3-0.5,2.8-0.8,4.4-0.8H166c1.6,0,3,0.3,4.4,0.8c1.3,0.6,2.5,1.3,3.5,2.3 s1.7,2.1,2.3,3.5C176.7,8,177,9.4,177,11s-0.3,3.1-0.8,4.4c-0.5,1.4-1.3,2.5-2.3,3.5s-2.1,1.7-3.5,2.3c-1.3,0.5-2.8,0.8-4.4,0.8 C166,22,153.2,22,153.2,22z M166.1,16.8c0.8,0,1.5-0.2,2.2-0.5c0.6-0.3,1.2-0.7,1.6-1.2c0.4-0.5,0.8-1.1,1-1.9 c0.2-0.7,0.3-1.5,0.3-2.3s-0.1-1.5-0.3-2.3c-0.2-0.7-0.6-1.3-1-1.9c-0.4-0.5-1-0.9-1.6-1.2S166.9,5,166.1,5h-12.8 c-0.8,0-1.5,0.2-2.2,0.5c-0.6,0.3-1.2,0.7-1.6,1.2c-0.4,0.5-0.8,1.1-1,1.9c-0.2,0.7-0.3,1.5-0.3,2.3s0.1,1.5,0.3,2.3 c0.2,0.7,0.6,1.3,1,1.9c0.4,0.5,1,0.9,1.6,1.2c0.6,0.3,1.4,0.5,2.2,0.5H166.1z M181.9,0h25.2c1.2,0,2.3,0.2,3.2,0.5 c1,0.3,1.8,0.8,2.5,1.4s1.2,1.4,1.6,2.3c0.4,0.9,0.6,2,0.6,3.2c0,1.1-0.2,2.1-0.6,3.1c-0.4,0.9-0.9,1.7-1.6,2.3 c-0.7,0.7-1.5,1.1-2.4,1.5c-0.9,0.3-2,0.5-3.1,0.5h-19.7v7.3h-5.7V0z M206.7,10.1c0.8,0,1.4-0.3,1.9-0.8s0.7-1.2,0.7-1.9 c0-0.8-0.2-1.5-0.7-2c-0.4-0.5-1.1-0.8-1.9-0.8h-19v5.5H206.7z"/><path d="M222,3.8c-0.3,0-0.6-0.1-0.9-0.2c-0.3-0.2-0.5-0.4-0.7-0.7s-0.2-0.6-0.2-1s0.1-0.7,0.2-1c0.2-0.3,0.4-0.5,0.7-0.7 S221.7,0,222,0c0.3,0,0.6,0.1,0.9,0.2c0.3,0.2,0.5,0.4,0.7,0.7s0.2,0.6,0.2,1s-0.1,0.7-0.2,1c-0.2,0.3-0.4,0.5-0.7,0.7 C222.6,3.8,222.3,3.8,222,3.8z M222,3.5c0.3,0,0.5-0.1,0.7-0.2c0.2-0.1,0.4-0.3,0.5-0.6c0.1-0.2,0.2-0.5,0.2-0.8s-0.1-0.6-0.2-0.8 c-0.1-0.2-0.3-0.4-0.5-0.6c-0.2-0.1-0.5-0.2-0.7-0.2c-0.3,0-0.5,0.1-0.7,0.2s-0.4,0.3-0.5,0.6c-0.1,0.2-0.2,0.5-0.2,0.8 s0.1,0.6,0.2,0.8c0.1,0.2,0.3,0.4,0.5,0.6C221.5,3.4,221.7,3.5,222,3.5z M221.3,2.9v-2h0.7c0.2,0,0.4,0,0.5,0.1s0.2,0.3,0.2,0.5 c0,0.1,0,0.2-0.1,0.3S222.4,2,222.3,2l0.4,0.8h-0.4L222,2.1h-0.4v0.7L221.3,2.9L221.3,2.9z M221.7,1.9h0.3c0.1,0,0.2,0,0.3-0.1 s0.1-0.1,0.1-0.2s0-0.2-0.1-0.2c-0.1-0.1-0.2-0.1-0.3-0.1h-0.3V1.9z"/></g></svg>
+    <div class="classif">Internal · Operations</div>
+  </div>
+  <div class="doc-kind">Operational Health Assessment · Environment</div>
+  <h1 class="report-title">Environment Health Check — Last 24 Hours</h1>
+  <p class="subtitle">Service and network posture across core application, DNS, identity, database, and transport domains</p>
+  <div class="meta-row">
+    <span><b>Generated:</b> 2026-07-09T14:00:00Z</span>
+    <span><b>Window:</b> Last 24 hours ending 2026-07-09T14:00:00Z</span>
+    <span><b>Prepared by:</b> ExtraHop Investigation Agent</span>
+    <span><b>Data sources:</b> ExtraHop RevealX metrics, records, and device metadata</span>
+  </div>
+</header>
+
+<!-- 2. STATUS STRIP -->
+<div class="verdict" data-sev="medium">
+  <div class="accent"></div>
+  <div class="verdict-grid">
+    <div class="vcell">
+      <div class="vlabel">Overall Health</div>
+      <div class="vvalue"><span class="status-dot"></span>Warning (new)</div>
+      <div class="vnote">One new domain warning; no degraded services</div>
+    </div>
+    <div class="vcell" data-conf="high">
+      <div class="vlabel">Telemetry Confidence</div>
+      <div class="vvalue">High</div>
+      <div class="confmeter"><span></span><span></span><span></span></div>
+      <div class="vnote">Fresh sensor data; activity gates met</div>
+    </div>
+    <div class="vcell">
+      <div class="vlabel">Scope</div>
+      <div class="vvalue">3 sensors</div>
+      <div class="vnote">42 critical devices; 6 protocol domains</div>
+    </div>
+  </div>
+</div>
+
+<!-- 3. EXECUTIVE HEALTH SUMMARY -->
+<section>
+  <div class="sec-head"><span class="sec-num">1</span><h2>Executive Health Summary</h2></div>
+  <div class="summary">
+    The environment is <b>operationally healthy with one new warning</b>. Core DNS, Kerberos, LDAP, database,
+    and TCP transport indicators are within normal ranges after activity and freshness gates. HTTP response
+    latency on <b>web-app-03</b> is newly elevated versus last Thursday's baseline, but HTTP 5xx errors remain
+    low and peer servers are absorbing normal volume. No silent outage pattern was detected.
+  </div>
+</section>
+
+<!-- 4. KEY INDICATORS -->
+<section>
+  <div class="metric-grid">
+    <div class="metric"><div class="mval">2m</div><div class="mlabel">Data Freshness</div><div class="mnote">newest capture bucket</div></div>
+    <div class="metric"><div class="mval">6 / 6</div><div class="mlabel">Domains Checked</div><div class="mnote">all activity gates met</div></div>
+    <div class="metric"><div class="mval">1</div><div class="mlabel">New Warning</div><div class="mnote">HTTP latency on one host</div></div>
+    <div class="metric"><div class="mval">0</div><div class="mlabel">Silent Outages</div><div class="mnote">volume within baseline</div></div>
+  </div>
+</section>
+
+<!-- 5. HEALTH DOMAINS -->
+<section>
+  <div class="sec-head"><span class="sec-num">2</span><h2>Health Domains</h2></div>
+  <p class="sec-sub" style="margin-left:0">Statuses are after freshness gates, activity gates, benign-error reclassification, and baseline comparison.</p>
+  <table>
+    <tr><th>Domain</th><th>Status</th><th>Current</th><th>Baseline / Peer Context</th><th>Evidence</th></tr>
+    <tr><td>HTTP application tier</td><td><span class="tag ass">Warning</span></td><td>web-app-03 p95 1.2s; 5xx 0.4%</td><td>p95 220 ms last Thursday; peers 180-260 ms</td><td><a class="evref" href="#E2">E2</a>, <a class="evref" href="#E3">E3</a></td></tr>
+    <tr><td>DNS recursive service</td><td>Normal</td><td>SERVFAIL + FORMERR 0.18%; p95 34 ms</td><td>within 9% of baseline; no resolver outlier</td><td><a class="evref" href="#E4">E4</a></td></tr>
+    <tr><td>Identity services</td><td>Normal</td><td>Kerberos/LDAP actionable errors below 0.3%</td><td>steady; PREAUTH_REQUIRED excluded as benign</td><td><a class="evref" href="#E5">E5</a></td></tr>
+    <tr><td>Database tier</td><td>Normal</td><td>OLTP p95 84 ms; DB errors 0.2%</td><td>within normal baseline band</td><td><a class="evref" href="#E6">E6</a></td></tr>
+    <tr><td>TCP transport</td><td>Normal</td><td>RTO per packet 0.03%; unidirectional flows 4%</td><td>routing visibility acceptable</td><td><a class="evref" href="#E7">E7</a></td></tr>
+  </table>
+</section>
+
+<!-- 6. FINDINGS -->
+<section>
+  <div class="sec-head"><span class="sec-num">3</span><h2>Findings</h2></div>
+  <div class="finding">
+    <div class="q">HTTP latency is the only new operational warning</div>
+    <p class="answer">web-app-03 is slow relative to baseline and peers, but it is not failing requests at an incident level.</p>
+    <p><span class="tag obs">Observed</span>HTTP server processing p95 on web-app-03 rose to 1.2s across the last 3 hours, versus 220 ms in the same Thursday window last week. 5xx response rate remained 0.4% (<a class="evref" href="#E2">E2</a>, <a class="evref" href="#E3">E3</a>).</p>
+    <p><span class="tag ass">Assessed</span>This is a new performance warning and should be investigated before it becomes user-impacting. Current peer capacity and error rate do not support an outage verdict.</p>
+  </div>
+
+  <div class="finding">
+    <div class="q">No silent outage pattern was detected</div>
+    <p class="answer">Request and response volumes remain within the expected weekday band across checked services.</p>
+    <p><span class="tag obs">Observed</span>HTTP, DNS, LDAP, Kerberos, and DB response volume stayed within 0.82x-1.18x of same-day-last-week baselines. No peer showed a collapse toward zero traffic (<a class="evref" href="#E8">E8</a>).</p>
+  </div>
+
+  <div class="finding">
+    <div class="q">Telemetry is fresh and representative enough for a verdict</div>
+    <p class="answer">All three sensors reported fresh capture-level data and passed the TCP visibility gate.</p>
+    <p><span class="tag obs">Observed</span>Newest capture buckets were 1-2 minutes old. Capture-level unidirectional flows were below 5% on all sensors, so TCP transport metrics are usable (<a class="evref" href="#E1">E1</a>, <a class="evref" href="#E7">E7</a>).</p>
+  </div>
+</section>
+
+<!-- 7. BASELINE AND CHANGE -->
+<section>
+  <div class="sec-head"><span class="sec-num">4</span><h2>Baseline and Change</h2></div>
+  <table>
+    <tr><th>Signal</th><th>Classification</th><th>Pattern</th><th>Meaning</th></tr>
+    <tr><td>web-app-03 HTTP latency</td><td>New warning</td><td>Step change beginning 10:50Z</td><td>Investigate host/app dependency before next peak.</td></tr>
+    <tr><td>DNS, LDAP, Kerberos, DB errors</td><td>Steady normal</td><td>No sustained deviation</td><td>Authentication and dependency health are not driving the HTTP warning.</td></tr>
+    <tr><td>TCP transport</td><td>Steady normal</td><td>No peer or sensor outlier</td><td>Network loss is not implicated by current evidence.</td></tr>
+    <tr><td>Volume by service</td><td>Steady normal</td><td>No >5x drop/rise</td><td>No silent outage or load-shift pattern observed.</td></tr>
+  </table>
+</section>
+
+<!-- 8. RECOMMENDATIONS -->
+<section>
+  <div class="sec-head"><span class="sec-num">5</span><h2>Recommendations</h2></div>
+  <div class="step" data-urgency="soon"><span class="upill">Investigate</span>
+    <div class="body"><b>Check web-app-03 host and application dependency health around 10:50Z</b>. Start with CPU, thread pools, local logs, and outbound dependency latency; ExtraHop evidence does not implicate TCP loss or database latency.</div>
+  </div>
+  <div class="step" data-urgency="tune"><span class="upill">Clean up</span>
+    <div class="body"><b>Add web-app-03 to the next protocol fleet check</b> to confirm whether the warning recovers or becomes chronic performance debt.</div>
+  </div>
+  <div class="step" data-urgency="tune"><span class="upill">Monitor</span>
+    <div class="body"><b>Rerun this environment health check after the next traffic peak</b>. Confirm HTTP p95 returns to the peer band and no volume-shift pattern appears.</div>
+  </div>
+</section>
+
+<!-- 9. SCOPE, METHOD AND LIMITS -->
+<section>
+  <div class="sec-head"><span class="sec-num">6</span><h2>Scope, Method and Limits</h2></div>
+  <p class="sec-sub" style="margin-left:0">Examined: capture freshness, service response volume, HTTP, DNS, Kerberos, LDAP, database, and TCP metrics over the last 24 hours, with same-day-last-week baseline where history was available.</p>
+  <div class="bucket" data-kind="clean">
+    <h3>Checked and clean</h3>
+    <ul>
+      <li>DNS actionable errors after excluding benign NXDOMAIN traffic.</li>
+      <li>Kerberos and LDAP actionable errors after excluding benign pre-auth/referral patterns.</li>
+      <li>Database processing time and TCP retransmission indicators.</li>
+      <li>Silent outage checks for service-volume collapse.</li>
+    </ul>
+  </div>
+  <div class="bucket" data-kind="unknown">
+    <h3>Could not determine</h3>
+    <ul>
+      <li>Whether web-app-03 latency is caused by CPU, runtime saturation, host I/O, or an application dependency not visible in this window.</li>
+      <li>Whether any planned change occurred at 10:50Z; change-management data was not provided.</li>
+    </ul>
+  </div>
+  <div class="bucket" data-kind="blind">
+    <h3>What this check does not cover</h3>
+    <ul>
+      <li>Host CPU, memory, disk, process state, and application logs.</li>
+      <li>Client retries or failures that never reached a monitored segment.</li>
+      <li>Encrypted payload content; conclusions rely on protocol metadata, timing, and volume.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 10. EVIDENCE INDEX -->
+<section>
+  <div class="sec-head"><span class="sec-num">7</span><h2>Evidence Index</h2></div>
+  <p class="sec-sub">Every figure reproducible from the workspace evidence files.</p>
+  <table>
+    <tr><th style="width:42px">ID</th><th style="width:115px">Source</th><th>Query / tool call</th><th style="width:78px">Collected (UTC)</th><th style="width:32%">Result</th></tr>
+    <tr id="E1"><td><span class="eid">E1</span></td><td>Capture metrics</td><td class="mono">./excli-interface execute_metric_query -json "$(cat scratch/freshness-query.json)"</td><td class="mono">14:00:12</td><td>Newest capture buckets 1-2m old · <code>evidence/metrics/capture-freshness.json</code></td></tr>
+    <tr id="E2"><td><span class="eid">E2</span></td><td>HTTP metrics</td><td class="mono">./excli-interface execute_metric_query -json "$(cat scratch/http-latency-current.json)"</td><td class="mono">14:02:08</td><td>web-app-03 p95 1.2s · <code>evidence/metrics/http-latency-current.json</code></td></tr>
+    <tr id="E3"><td><span class="eid">E3</span></td><td>HTTP baseline</td><td class="mono">./excli-interface execute_metric_query -json "$(cat scratch/http-latency-baseline.json)"</td><td class="mono">14:03:11</td><td>web-app-03 p95 220ms last week · <code>evidence/metrics/http-latency-baseline.json</code></td></tr>
+    <tr id="E4"><td><span class="eid">E4</span></td><td>DNS metrics</td><td class="mono">./excli-interface execute_metric_query -json "$(cat scratch/dns-health.json)"</td><td class="mono">14:05:33</td><td>Actionable DNS errors 0.18%; p95 34ms · <code>evidence/metrics/dns-health.json</code></td></tr>
+    <tr id="E5"><td><span class="eid">E5</span></td><td>Identity metrics</td><td class="mono">./excli-interface execute_metric_query -json "$(cat scratch/ad-health.json)"</td><td class="mono">14:07:42</td><td>Kerberos/LDAP actionable errors below gate thresholds · <code>evidence/metrics/ad-health.json</code></td></tr>
+    <tr id="E6"><td><span class="eid">E6</span></td><td>Database metrics</td><td class="mono">./excli-interface execute_metric_query -json "$(cat scratch/db-health.json)"</td><td class="mono">14:09:04</td><td>OLTP DB latency and errors normal · <code>evidence/metrics/db-health.json</code></td></tr>
+    <tr id="E7"><td><span class="eid">E7</span></td><td>TCP metrics</td><td class="mono">./excli-interface execute_metric_query -json "$(cat scratch/tcp-transport.json)"</td><td class="mono">14:10:27</td><td>RTO per packet 0.03%; unidirectional flows below 5% · <code>evidence/metrics/tcp-transport.json</code></td></tr>
+    <tr id="E8"><td><span class="eid">E8</span></td><td>Volume metrics</td><td class="mono">./excli-interface execute_metric_query -json "$(cat scratch/service-volume.json)"</td><td class="mono">14:12:19</td><td>No service volume collapse or >5x load shift · <code>evidence/metrics/service-volume.json</code></td></tr>
+  </table>
+</section>
+
+<div class="report-footer">
+  <div class="gradient-rule"></div>
+  <div class="cols">
+    <span>Generated by the ExtraHop Investigation Agent</span>
+    <span>Operational Health Assessment · 2026-07-09</span>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,6 +1,6 @@
 ---
 name: investigation-reporting
-description: "Writes clean, interrogatable reports from ExtraHop work, and indexes the four report types. Use for threat hunts, SOC/security investigations, NOC/SRE operations investigations (outages, latency, RCA, postmortems), and freeform informational reports (health checks, performance reviews, hygiene/risk rankings, periodic summaries). Trigger when the user asks for a report, writeup, findings, summary, RCA, or postmortem; when an investigation reaches a material conclusion; or when a question is better answered as a written deliverable. Reports are written into this skill's HTML templates, never as Markdown. If the user only asked a question and the answer is minor, answer in chat and offer a report instead of writing one unprompted."
+description: "Writes clean, interrogatable HTML reports from ExtraHop work and routes among threat hunt, SOC/security, NOC/SRE operations, operational health, informational, and PQC TLS readiness report types. Use for threat hunts, security detection triage, detections/incidents, outages/latency/RCA/postmortems, health checks/performance/hygiene summaries, and post-quantum TLS/key-exchange readiness assessments. Trigger when the user asks for a report, writeup, findings, summary, RCA, or postmortem; when an investigation reaches a material conclusion; or when a question is better answered as a written deliverable. Reports are written into this skill's HTML templates, never as Markdown. If the user only asked a question and the answer is minor, answer in chat and offer a report instead of writing one unprompted."
 ---
 
 # investigation-reporting
@@ -14,9 +14,13 @@ Turn finished ExtraHop work into a report a reader can audit: they can separate 
 | Threat hunt | Proactive, hypothesis-driven sweep. "Is *anyone* doing X?" | `references/threat-hunting.md` | `assets/threat-hunting-template.html` |
 | SOC investigation | A detection, alert, or suspected security incident. "Is this malicious?" | `references/soc-investigation.md` | `assets/soc-investigation-template.html` |
 | NOC/SRE investigation | Outage, latency, degradation, capacity. Incident report, RCA, postmortem. | `references/noc-sre-investigation.md` | `assets/noc-sre-template.html` |
-| Informational | Freeform: health check, performance review, hygiene/risk ranking, periodic summary. | `references/informational-report.md` | `assets/informational-template.html` |
+| Operational health | Health checks, service posture, protocol fleet reviews, critical-device baselines. | `references/operational-health-assessment.md` | `assets/operational-health-template.html` |
+| Informational | Freeform: performance review, hygiene/risk ranking, periodic summary. | `references/informational-report.md` | `assets/informational-template.html` |
+| PQC TLS readiness | Inventory internal TLS servers and assess post-quantum key exchange adoption. | `references/PQC-Readiness-Report.md` | `assets/pqc-readiness-report-template.html` |
 
 Open the matching reference for that type's structure, vocabulary, and done criteria. When a task spans two (a hunt that turns up a live threat), pick the type that fits the *deliverable*, and borrow sections as needed.
+
+For `extrahop-triage` work, do not create a separate triage report type by default. Use SOC investigation for detection/alert/incident outcomes and threat hunting for proactive sweeps or hypothesis-driven searches. Quick queue triage usually stays in chat as Detection Sets unless the user asks for a report or a material case deserves durable handoff.
 
 ## Report, or just answer?
 

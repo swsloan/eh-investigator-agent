@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PQC TLS Readiness — ExtraHop RevealX</title>
+<!--
+  ════════════════════════════════════════════════════════════════════
+  STATIC TEMPLATE FOR: extrahop-pqc-tls-readiness skill
+  AGENT INSTRUCTIONS:
+    1. Copy this file to the workspace root and rename it report-pqc-readiness-<YYYY-MM-DD>.html.
+    2. Replace bracketed placeholders and repeat/remove marked server rows, lozenges, table rows, and finding cards.
+    3. Compute totals, percentages, widths, and shares before writing the report. This file intentionally contains no JavaScript so it renders in the in-app sandboxed viewer.
+    4. Never fabricate. If a value is unknown, render "—" and explain the gap in Method/Caveats.
+  ════════════════════════════════════════════════════════════════════
+-->
+
+<style>
+  @import url('/vendor/source-sans-3/source-sans-3.css');
+  :root{
+    --sapphire:#261F63;
+    --plum:#7F2854;
+    --cyan:#00AAEF;
+    --cyan-deep:#0088C4;
+    --ink:#1C1A2E;
+    --muted:#898A8D;
+    --hairline:#E4E3EC;
+    --wash:#F7F7FB;
+    --white:#FFFFFF;
+    --grad:linear-gradient(135deg,#261F63,#7F2854);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:'Source Sans 3',Arial,sans-serif;
+    color:var(--ink);
+    background:var(--white);
+    font-size:17px;line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  .num{font-variant-numeric:tabular-nums}
+
+  /* ── Reveal choreography ─────────────────────────────── */
+  .rv{opacity:1;transform:none}
+  .rv.in{opacity:1;transform:none}
+  @media (prefers-reduced-motion:reduce){
+    .rv{opacity:1;transform:none;transition:none}
+    *{animation:none!important;transition:none!important}
+  }
+
+  /* ── Hero ────────────────────────────────────────────── */
+  .hero{
+    background:var(--grad);
+    color:var(--white);
+    padding:56px 0 72px;
+    position:relative;overflow:hidden;
+  }
+  .hero::after{ /* faint lozenge ghost, brand motion cue */
+    content:"";position:absolute;right:-180px;top:-120px;width:560px;height:280px;
+    border-radius:280px;background:rgba(255,255,255,.045);transform:rotate(-24deg);
+    pointer-events:none;
+  }
+  .shell{max-width:1020px;margin:0 auto;padding:0 40px;position:relative}
+  .hero-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:64px}
+  .hero-top .logo svg{width:180px;height:auto;display:block}
+  .doc-id{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.7);font-weight:600;text-align:right;line-height:1.5}
+  .eyebrow{font-size:13px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:rgba(255,255,255,.75);margin-bottom:14px}
+  .hero h1{
+    font-weight:900;font-size:clamp(38px,5vw,58px);line-height:1.04;
+    letter-spacing:-.015em;max-width:15ch;margin-bottom:26px;
+  }
+  .hero h1 .accent{color:#7FDBFF}
+  .thesis{
+    font-size:clamp(19px,2.2vw,23px);font-weight:300;line-height:1.5;
+    max-width:56ch;color:rgba(255,255,255,.92);
+  }
+  .thesis strong{font-weight:700;color:#fff}
+  .hero-prov{margin-top:22px;font-size:13.5px;letter-spacing:.06em;color:rgba(255,255,255,.6)}
+  .hero-prov b{color:rgba(255,255,255,.85);font-weight:600}
+
+  /* ── Signature: the estate field ─────────────────────── */
+  .field{margin-top:52px}
+  .field-cap{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+  .field-cap .lbl{font-size:12.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.65)}
+  .legend{display:flex;gap:20px;font-size:13.5px;color:rgba(255,255,255,.8)}
+  .legend i{display:inline-block;width:22px;height:11px;border-radius:6px;margin-right:7px;vertical-align:baseline}
+  .legend .on i{background:var(--cyan)}
+  .legend .off i{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.4)}
+  .loz-wrap{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding-top:26px}
+  .loz{
+    height:30px;border-radius:16px;position:relative;flex-shrink:0;
+    background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.35);
+    opacity:1;transform:none;
+    transition:none;
+  }
+  .loz.show{opacity:1;transform:none}
+  .loz.pqc{background:var(--cyan);border-color:var(--cyan);box-shadow:0 0 22px rgba(0,170,239,.55)}
+  .loz .tag{
+    position:absolute;left:50%;top:-24px;transform:translateX(-50%);
+    font-size:11.5px;font-weight:600;letter-spacing:.04em;white-space:nowrap;
+    color:rgba(255,255,255,.9);opacity:0;transition:opacity .2s;pointer-events:none;
+  }
+  .loz:hover .tag{opacity:1}
+  .loz.pqc .tag{opacity:.95;color:#BFEBFF}
+  .field-note{margin-top:16px;font-size:13px;color:rgba(255,255,255,.55)}
+
+  /* ── Sections ────────────────────────────────────────── */
+  section{padding:76px 0}
+  section.wash{background:var(--wash)}
+  .sec-eyebrow{
+    font-size:12.5px;font-weight:700;letter-spacing:.24em;text-transform:uppercase;
+    color:var(--plum);margin-bottom:12px;
+  }
+  .sec-eyebrow::after{content:"";display:block;width:44px;height:4px;border-radius:2px;background:var(--grad);margin-top:10px}
+  h2{font-weight:900;font-size:clamp(26px,3vw,34px);letter-spacing:-.01em;color:var(--sapphire);margin-bottom:16px}
+  .lede{font-size:18.5px;font-weight:300;max-width:66ch;color:#3B3852}
+  .lede b{font-weight:700;color:var(--sapphire)}
+
+  /* ── Headline metrics ────────────────────────────────── */
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin-top:44px;border-top:1px solid var(--hairline)}
+  .stat{padding:26px 22px 0 0;border-right:1px solid var(--hairline);margin-right:22px}
+  .stat:last-child{border-right:none;margin-right:0}
+  .stat .v{font-size:clamp(30px,3.4vw,42px);font-weight:300;color:var(--sapphire);letter-spacing:-.02em;line-height:1.05}
+  .stat .v .u{font-size:.5em;font-weight:600;color:var(--muted);margin-left:2px}
+  .stat.good .v{color:var(--cyan-deep);font-weight:700}
+  .stat.bad .v{color:var(--plum)}
+  .stat .k{font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:8px}
+  .stat .sub{font-size:13.5px;color:var(--muted);margin-top:4px}
+
+  /* ── Bar rows (breakdown + magnitude) ────────────────── */
+  .rows{margin-top:40px}
+  .row{
+    display:grid;grid-template-columns:210px 1fr 150px;gap:18px;align-items:center;
+    padding:11px 0;border-bottom:1px solid var(--hairline);
+  }
+  .row .name{font-weight:600;font-size:15.5px;color:var(--sapphire);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .name .role{display:block;font-weight:400;font-size:12.5px;color:var(--muted)}
+  .track{height:14px;border-radius:8px;background:#ECEBF3;overflow:hidden;position:relative}
+  .fill{height:100%;border-radius:8px;width:0;transition:width 1.1s cubic-bezier(.25,.8,.25,1)}
+  .fill.cyan{background:var(--cyan)}
+  .fill.grad{background:var(--grad)}
+  .fill.zero{background:var(--plum);opacity:.28;min-width:3px}
+  .overlay{position:absolute;left:0;top:0;height:100%;border-radius:8px 0 0 8px;background:var(--cyan);width:0;transition:width 1.1s .15s cubic-bezier(.25,.8,.25,1)}
+  .row .val{font-size:15px;text-align:right;color:#3B3852}
+  .row .val b{color:var(--sapphire)}
+  .row .val .mini{display:block;font-size:12.5px;color:var(--cyan-deep);font-weight:600}
+  .row.dim .name,.row.dim .val{opacity:.62}
+
+  /* ── Table ───────────────────────────────────────────── */
+  .tbl-wrap{overflow-x:auto;margin-top:40px}
+  table{width:100%;border-collapse:collapse;font-size:14.5px}
+  thead th{
+    text-align:left;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--muted);padding:0 14px 12px 0;border-bottom:2px solid var(--sapphire);white-space:nowrap;
+  }
+  thead th.r,td.r{text-align:right}
+  tbody td{padding:11px 14px 11px 0;border-bottom:1px solid var(--hairline);vertical-align:middle}
+  tbody tr:hover{background:var(--wash)}
+  td .dev{font-weight:700;color:var(--sapphire)}
+  td .ip{color:var(--muted);font-size:13px}
+  .pill{
+    display:inline-block;padding:3px 14px;border-radius:999px;font-size:12.5px;font-weight:700;
+    letter-spacing:.04em;white-space:nowrap;
+  }
+  .pill.yes{background:rgba(0,170,239,.12);color:var(--cyan-deep)}
+  .pill.no{background:rgba(127,40,84,.09);color:var(--plum)}
+
+  /* ── Findings ────────────────────────────────────────── */
+  .findings{display:grid;gap:26px;margin-top:44px}
+  .finding{
+    background:var(--white);border:1px solid var(--hairline);border-radius:14px;
+    padding:30px 34px;display:grid;grid-template-columns:1fr 1fr;gap:34px;
+    box-shadow:0 1px 2px rgba(38,31,99,.04);
+  }
+  .finding .fk{font-size:12px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;margin-bottom:10px}
+  .finding .f-side .fk{color:var(--plum)}
+  .finding .a-side .fk{color:var(--cyan-deep)}
+  .finding h3{font-size:19px;font-weight:700;color:var(--sapphire);margin-bottom:8px;letter-spacing:-.005em}
+  .finding p{font-size:15.5px;color:#3B3852}
+  .finding p b{color:var(--sapphire)}
+  .finding .a-side{border-left:1px solid var(--hairline);padding-left:34px}
+  .finding code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;background:var(--wash);border:1px solid var(--hairline);border-radius:5px;padding:1px 6px;color:var(--sapphire)}
+
+  /* ── Provenance footer ───────────────────────────────── */
+  footer{background:var(--sapphire);color:rgba(255,255,255,.85);padding:56px 0 48px}
+  footer .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:32px;margin-top:30px}
+  footer .k{font-size:11.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.5);margin-bottom:6px}
+  footer .v{font-size:15px;font-weight:600;color:#fff}
+  footer .v small{display:block;font-weight:400;color:rgba(255,255,255,.65);font-size:13px;margin-top:2px}
+  footer .method{margin-top:36px;padding-top:24px;border-top:1px solid rgba(255,255,255,.15);font-size:13.5px;color:rgba(255,255,255,.6);max-width:80ch}
+  footer .logo-ft svg{width:150px;height:auto;opacity:.9}
+  footer .ft-top{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
+  footer .ft-top .t{font-size:13px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:rgba(255,255,255,.7)}
+
+  /* ── Responsive ──────────────────────────────────────── */
+  @media(max-width:860px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .stat{border-right:none;border-bottom:1px solid var(--hairline);padding-bottom:20px}
+    .finding{grid-template-columns:1fr}
+    .finding .a-side{border-left:none;padding-left:0;border-top:1px solid var(--hairline);padding-top:22px}
+    .row{grid-template-columns:130px 1fr 110px;gap:10px}
+    footer .grid{grid-template-columns:repeat(2,1fr)}
+    .shell{padding:0 22px}
+  }
+
+  /* ── Print / PDF ─────────────────────────────────────── */
+
+
+  /* ── In-app theme bridge: public/js/theme.js injects data-report-theme ── */
+  html[data-report-theme="dark"]{
+    --dark-bg:#100D1F;
+    --dark-wash:#171329;
+    --dark-card:#211A35;
+    --dark-line:#5A5075;
+    --dark-text:#F4F1FF;
+    --dark-body:#DCD7EA;
+    --dark-muted:#B8B3C7;
+    --dark-heading:#D7F3FF;
+    --dark-cyan:#7FDBFF;
+    --dark-cyan-strong:#39C7FF;
+    --dark-plum:#FF9BD3;
+    --dark-code:#151125;
+  }
+  html[data-report-theme="dark"] body{background:var(--dark-bg);color:var(--dark-text)}
+  html[data-report-theme="dark"] section{background:var(--dark-bg)}
+  html[data-report-theme="dark"] section.wash{background:var(--dark-wash)}
+  html[data-report-theme="dark"] h2,
+  html[data-report-theme="dark"] .stat .v,
+  html[data-report-theme="dark"] .row .name,
+  html[data-report-theme="dark"] .row .val b,
+  html[data-report-theme="dark"] td .dev,
+  html[data-report-theme="dark"] .finding h3,
+  html[data-report-theme="dark"] .finding p b,
+  html[data-report-theme="dark"] .lede b{color:var(--dark-heading)}
+  html[data-report-theme="dark"] .lede,
+  html[data-report-theme="dark"] .finding p,
+  html[data-report-theme="dark"] .row .val,
+  html[data-report-theme="dark"] tbody td{color:var(--dark-body)}
+  html[data-report-theme="dark"] .stat .k,
+  html[data-report-theme="dark"] .stat .sub,
+  html[data-report-theme="dark"] .row .name .role,
+  html[data-report-theme="dark"] td .ip,
+  html[data-report-theme="dark"] .row.dim .name,
+  html[data-report-theme="dark"] .row.dim .val{color:var(--dark-muted)}
+  html[data-report-theme="dark"] .sec-eyebrow,
+  html[data-report-theme="dark"] .finding .f-side .fk,
+  html[data-report-theme="dark"] .stat.bad .v{color:var(--dark-plum)}
+  html[data-report-theme="dark"] .finding .a-side .fk,
+  html[data-report-theme="dark"] .row .val .mini,
+  html[data-report-theme="dark"] .stat.good .v{color:var(--dark-cyan)}
+  html[data-report-theme="dark"] .stats,
+  html[data-report-theme="dark"] .stat,
+  html[data-report-theme="dark"] .row,
+  html[data-report-theme="dark"] tbody td,
+  html[data-report-theme="dark"] .finding,
+  html[data-report-theme="dark"] .finding .a-side,
+  html[data-report-theme="dark"] .pill,
+  html[data-report-theme="dark"] .finding code{border-color:var(--dark-line)}
+  html[data-report-theme="dark"] thead th{color:var(--dark-muted);border-bottom-color:var(--dark-heading)}
+  html[data-report-theme="dark"] .finding{background:var(--dark-card);box-shadow:none}
+  html[data-report-theme="dark"] .track{background:#302845}
+  html[data-report-theme="dark"] .sec-eyebrow::after{background:linear-gradient(135deg,var(--dark-cyan-strong),var(--dark-plum))}
+  html[data-report-theme="dark"] .fill.cyan,
+  html[data-report-theme="dark"] .overlay{background:var(--dark-cyan-strong)}
+  html[data-report-theme="dark"] .fill.grad{background:linear-gradient(135deg,#9B92FF,#EA7CBC)}
+  html[data-report-theme="dark"] .fill.zero{background:var(--dark-plum);opacity:.75}
+  html[data-report-theme="dark"] tbody tr:hover{background:#2A2240}
+  html[data-report-theme="dark"] .finding code{background:var(--dark-code);color:var(--dark-heading)}
+  html[data-report-theme="dark"] .pill.yes{background:rgba(57,199,255,.18);color:var(--dark-cyan);border-color:rgba(127,219,255,.45)}
+  html[data-report-theme="dark"] .pill.no{background:rgba(255,155,211,.14);color:var(--dark-plum);border-color:rgba(255,155,211,.45)}
+
+  @media (prefers-color-scheme: dark){
+    html:not([data-report-theme="light"]){
+      --dark-bg:#100D1F;
+      --dark-wash:#171329;
+      --dark-card:#211A35;
+      --dark-line:#5A5075;
+      --dark-text:#F4F1FF;
+      --dark-body:#DCD7EA;
+      --dark-muted:#B8B3C7;
+      --dark-heading:#D7F3FF;
+      --dark-cyan:#7FDBFF;
+      --dark-cyan-strong:#39C7FF;
+      --dark-plum:#FF9BD3;
+      --dark-code:#151125;
+      }
+    html:not([data-report-theme="light"]) body{background:var(--dark-bg);color:var(--dark-text)}
+    html:not([data-report-theme="light"]) section{background:var(--dark-bg)}
+    html:not([data-report-theme="light"]) section.wash{background:var(--dark-wash)}
+    html:not([data-report-theme="light"]) h2,
+    html:not([data-report-theme="light"]) .stat .v,
+    html:not([data-report-theme="light"]) .row .name,
+    html:not([data-report-theme="light"]) .row .val b,
+    html:not([data-report-theme="light"]) td .dev,
+    html:not([data-report-theme="light"]) .finding h3,
+    html:not([data-report-theme="light"]) .finding p b,
+    html:not([data-report-theme="light"]) .lede b{color:var(--dark-heading)}
+    html:not([data-report-theme="light"]) .lede,
+    html:not([data-report-theme="light"]) .finding p,
+    html:not([data-report-theme="light"]) .row .val,
+    html:not([data-report-theme="light"]) tbody td{color:var(--dark-body)}
+    html:not([data-report-theme="light"]) .stat .k,
+    html:not([data-report-theme="light"]) .stat .sub,
+    html:not([data-report-theme="light"]) .row .name .role,
+    html:not([data-report-theme="light"]) td .ip,
+    html:not([data-report-theme="light"]) .row.dim .name,
+    html:not([data-report-theme="light"]) .row.dim .val{color:var(--dark-muted)}
+    html:not([data-report-theme="light"]) .sec-eyebrow,
+    html:not([data-report-theme="light"]) .finding .f-side .fk,
+    html:not([data-report-theme="light"]) .stat.bad .v{color:var(--dark-plum)}
+    html:not([data-report-theme="light"]) .finding .a-side .fk,
+    html:not([data-report-theme="light"]) .row .val .mini,
+    html:not([data-report-theme="light"]) .stat.good .v{color:var(--dark-cyan)}
+    html:not([data-report-theme="light"]) .stats,
+    html:not([data-report-theme="light"]) .stat,
+    html:not([data-report-theme="light"]) .row,
+    html:not([data-report-theme="light"]) tbody td,
+    html:not([data-report-theme="light"]) .finding,
+    html:not([data-report-theme="light"]) .finding .a-side,
+    html:not([data-report-theme="light"]) .pill,
+    html:not([data-report-theme="light"]) .finding code{border-color:var(--dark-line)}
+    html:not([data-report-theme="light"]) thead th{color:var(--dark-muted);border-bottom-color:var(--dark-heading)}
+    html:not([data-report-theme="light"]) .finding{background:var(--dark-card);box-shadow:none}
+    html:not([data-report-theme="light"]) .track{background:#302845}
+    html:not([data-report-theme="light"]) .sec-eyebrow::after{background:linear-gradient(135deg,var(--dark-cyan-strong),var(--dark-plum))}
+    html:not([data-report-theme="light"]) .fill.cyan,
+    html:not([data-report-theme="light"]) .overlay{background:var(--dark-cyan-strong)}
+    html:not([data-report-theme="light"]) .fill.grad{background:linear-gradient(135deg,#9B92FF,#EA7CBC)}
+    html:not([data-report-theme="light"]) .fill.zero{background:var(--dark-plum);opacity:.75}
+    html:not([data-report-theme="light"]) tbody tr:hover{background:#2A2240}
+    html:not([data-report-theme="light"]) .finding code{background:var(--dark-code);color:var(--dark-heading)}
+    html:not([data-report-theme="light"]) .pill.yes{background:rgba(57,199,255,.18);color:var(--dark-cyan);border-color:rgba(127,219,255,.45)}
+    html:not([data-report-theme="light"]) .pill.no{background:rgba(255,155,211,.14);color:var(--dark-plum);border-color:rgba(255,155,211,.45)}
+  }
+
+  @media print{
+    body{font-size:12.5px;background:#FFFFFF!important;color:#1C1A2E!important}
+    section,section.wash{background:#FFFFFF!important}
+    h2,.stat .v,.row .name,.row .val b,td .dev,.finding h3,.finding p b{color:#261F63!important}
+    .lede,.finding p,.row .val{color:#3B3852!important}
+    .finding{background:#FFFFFF!important;border-color:#E4E3EC!important}
+    .hero,footer,.fill,.overlay,.loz,.pill{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .rv{opacity:1!important;transform:none!important}
+    .loz{opacity:1!important;transform:none!important}
+    .fill,.overlay{transition:none}
+    section{padding:36px 0;page-break-inside:avoid}
+    .finding{page-break-inside:avoid;box-shadow:none}
+    .hero{padding:36px 0 44px}
+    thead{display:table-header-group}
+  }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="shell">
+    <div class="hero-top">
+      <div class="logo"><svg viewBox="0 0 223.8 22.1" xmlns="http://www.w3.org/2000/svg" aria-label="ExtraHop"><g fill="#FFFFFF"><path d="M0,0h15.9v5.1h-10v3.4h8.2v4.8H5.8V17h10.7v5.1H0V0z M26.9,10.8L19.4,0h7.2l3.7,5.7L33.8,0h6.5l-6.8,10.2L41.8,22h-7.3L30,15.3l-4.3,6.8h-6.4L26.9,10.8z M49.3,5.1h-6.8V0h19.4v5.1h-6.7V22h-5.9V5.1z M66,0h9.1c1.2,0,2.3,0.2,3.2,0.5c1,0.3,1.8,0.8,2.5,1.4s1.2,1.4,1.6,2.3S83,6.1,83,7.3c0,1.5-0.3,2.7-1,3.8c-0.6,1.1-1.5,1.9-2.5,2.6l4.7,8.5h-6.3l-3.7-7.5h-2.4v7.5H66V0z M74.5,10c0.8,0,1.4-0.2,1.9-0.7s0.7-1.1,0.7-1.9s-0.2-1.5-0.7-2s-1.1-0.7-1.9-0.7h-2.8V10H74.5z M94.2,0h6.7l7.8,22h-6.3l-1.4-4.6h-7.4L92.1,22h-6L94.2,0z M99.8,13.2l-2.4-8.1l-2.5,8.1H99.8z M112.7,0h5.8v8.1h13V0h5.8v22h-5.8v-8.6h-13V22h-5.8V0z M153.2,22c-1.6,0-3-0.3-4.4-0.8c-1.3-0.6-2.5-1.3-3.5-2.3s-1.7-2.1-2.3-3.5c-0.5-1.4-0.8-2.8-0.8-4.4s0.3-3.1,0.8-4.4c0.5-1.4,1.3-2.5,2.3-3.5s2.1-1.7,3.5-2.3c1.3-0.5,2.8-0.8,4.4-0.8H166c1.6,0,3,0.3,4.4,0.8c1.3,0.6,2.5,1.3,3.5,2.3s1.7,2.1,2.3,3.5C176.7,8,177,9.4,177,11s-0.3,3.1-0.8,4.4c-0.5,1.4-1.3,2.5-2.3,3.5s-2.1,1.7-3.5,2.3c-1.3,0.5-2.8,0.8-4.4,0.8C166,22,153.2,22,153.2,22z M166.1,16.8c0.8,0,1.5-0.2,2.2-0.5c0.6-0.3,1.2-0.7,1.6-1.2c0.4-0.5,0.8-1.1,1-1.9c0.2-0.7,0.3-1.5,0.3-2.3s-0.1-1.5-0.3-2.3c-0.2-0.7-0.6-1.3-1-1.9c-0.4-0.5-1-0.9-1.6-1.2S166.9,5,166.1,5h-12.8c-0.8,0-1.5,0.2-2.2,0.5c-0.6,0.3-1.2,0.7-1.6,1.2c-0.4,0.5-0.8,1.1-1,1.9c-0.2,0.7-0.3,1.5-0.3,2.3s0.1,1.5,0.3,2.3c0.2,0.7,0.6,1.3,1,1.9c0.4,0.5,1,0.9,1.6,1.2c0.6,0.3,1.4,0.5,2.2,0.5H166.1z M181.9,0h25.2c1.2,0,2.3,0.2,3.2,0.5c1,0.3,1.8,0.8,2.5,1.4s1.2,1.4,1.6,2.3c0.4,0.9,0.6,2,0.6,3.2c0,1.1-0.2,2.1-0.6,3.1c-0.4,0.9-0.9,1.7-1.6,2.3c-0.7,0.7-1.5,1.1-2.4,1.5c-0.9,0.3-2,0.5-3.1,0.5h-19.7v7.3h-5.7V0z M206.7,10.1c0.8,0,1.4-0.3,1.9-0.8s0.7-1.2,0.7-1.9c0-0.8-0.2-1.5-0.7-2c-0.4-0.5-1.1-0.8-1.9-0.8h-19v5.5H206.7z"/><path d="M222,3.8c-0.3,0-0.6-0.1-0.9-0.2c-0.3-0.2-0.5-0.4-0.7-0.7s-0.2-0.6-0.2-1s0.1-0.7,0.2-1c0.2-0.3,0.4-0.5,0.7-0.7S221.7,0,222,0c0.3,0,0.6,0.1,0.9,0.2c0.3,0.2,0.5,0.4,0.7,0.7s0.2,0.6,0.2,1s-0.1,0.7-0.2,1c-0.2,0.3-0.4,0.5-0.7,0.7C222.6,3.8,222.3,3.8,222,3.8z M222,3.5c0.3,0,0.5-0.1,0.7-0.2c0.2-0.1,0.4-0.3,0.5-0.6c0.1-0.2,0.2-0.5,0.2-0.8s-0.1-0.6-0.2-0.8c-0.1-0.2-0.3-0.4-0.5-0.6c-0.2-0.1-0.5-0.2-0.7-0.2c-0.3,0-0.5,0.1-0.7,0.2s-0.4,0.3-0.5,0.6c-0.1,0.2-0.2,0.5-0.2,0.8s0.1,0.6,0.2,0.8c0.1,0.2,0.3,0.4,0.5,0.6C221.5,3.4,221.7,3.5,222,3.5z M221.3,2.9v-2h0.7c0.2,0,0.4,0,0.5,0.1s0.2,0.3,0.2,0.5c0,0.1,0,0.2-0.1,0.3S222.4,2,222.3,2l0.4,0.8h-0.4L222,2.1h-0.4v0.7L221.3,2.9L221.3,2.9z M221.7,1.9h0.3c0.1,0,0.2,0,0.3-0.1s0.1-0.1,0.1-0.2s0-0.2-0.1-0.2c-0.1-0.1-0.2-0.1-0.3-0.1h-0.3V1.9z"/></g></svg></div>
+      <div class="doc-id">RevealX Network Intelligence<br><span>[Month D, YYYY]</span></div>
+    </div>
+    <div class="eyebrow">[Customer or organization] · TLS Inventory · [window label] Window</div>
+    <h1>Post-Quantum <span class="accent">TLS Readiness</span></h1>
+    <p class="thesis">[Main conclusion with the most important counts and percentages. Example structure: <strong>N of M</strong> internal TLS servers negotiated post-quantum key exchange, covering <strong>X of Y sessions (Z%)</strong>.]</p>
+    <p class="hero-prov"><b>ExtraHop RevealX</b> · [window-start UTC] → [window-end UTC] · sensor [sensor or console name]</p>
+    <div class="field">
+      <div class="field-cap">
+        <span class="lbl">The estate, at a glance — each shape is one server, sized by TLS volume</span>
+        <span class="legend"><span class="on"><i></i>Negotiated PQC</span><span class="off"><i></i>Classical only</span></span>
+      </div>
+      <div class="loz-wrap">
+        <!-- Repeat one lozenge per confirmed TLS server; add class "pqc" and a tag span when pqcSessions > 0. -->
+        <div class="loz" style="width:34px" title="[server-name-1] — 0 sessions, 0 PQC"></div>
+        <div class="loz" style="width:34px" title="[server-name-2] — 0 sessions, 0 PQC"></div>
+      </div>
+      <p class="field-note">0 of 2 servers negotiated PQC · 0 of 0 sessions (—) used post-quantum key exchange</p>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="shell">
+    <div class="rv"><div class="sec-eyebrow">Scope</div><h2>What was measured</h2><p class="lede">[Population, time window, exclusions, and qualified server count. Use raw metric names where useful, for example <code>ssl_server:connected</code>.]</p></div>
+    <div class="stats rv">
+      <!-- Update these five headline cards from derived totals. -->
+      <div class="stat "><div class="v num">2</div><div class="k">TLS Servers</div><div class="sub num">internal, active in window</div></div>
+<div class="stat good"><div class="v num">0</div><div class="k">PQC-Ready</div><div class="sub num">0% of estate</div></div>
+<div class="stat bad"><div class="v num">2</div><div class="k">Classical Only</div><div class="sub num">100% of estate</div></div>
+<div class="stat "><div class="v num">0</div><div class="k">TLS Sessions</div><div class="sub num">0 PQC (—)</div></div>
+<div class="stat good"><div class="v num">0</div><div class="k">PQC Clients</div><div class="sub num">vs 0 classical-only</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="wash">
+  <div class="shell">
+    <div class="rv"><div class="sec-eyebrow">Per-Server Breakdown</div><h2>PQC client coverage, server by server</h2><p class="lede">Share of each server's <b>unique clients</b> that completed at least one post-quantum key exchange in the window. A client counts as PQC-capable if it negotiated PQC even once.</p></div>
+    <div class="rows rv">
+      <!-- Repeat one coverage row per server; width = PQC clients / total clients. -->
+      <div class="row dim">
+        <div class="name">[server-name-1]<span class="role">[server role]</span></div>
+        <div class="track"><div class="fill zero" style="width:0.0%"></div></div>
+        <div class="val num"><b>—</b> · 0 of 0</div>
+      </div>
+      <div class="row dim">
+        <div class="name">[server-name-2]<span class="role">[server role]</span></div>
+        <div class="track"><div class="fill zero" style="width:0.0%"></div></div>
+        <div class="val num"><b>—</b> · 0 of 0</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="shell">
+    <div class="rv"><div class="sec-eyebrow">Magnitude</div><h2>Where the traffic actually is</h2><p class="lede">Session volume per server, with the post-quantum portion in cyan. The two PQC-ready servers account for <b>—</b> of all TLS sessions and <b>100%</b> of observed PQC traffic.</p></div>
+    <div class="rows rv">
+      <!-- Repeat one volume row per server; main width = sessions / max sessions, overlay = PQC sessions / max sessions. -->
+      <div class="row dim">
+        <div class="name">[server-name-1]<span class="role">0 PQC sessions</span></div>
+        <div class="track"><div class="fill grad" style="width:0.0%"></div><div class="overlay" style="width:0.0%"></div></div>
+        <div class="val num"><b>0</b> sessions</div>
+      </div>
+      <div class="row dim">
+        <div class="name">[server-name-2]<span class="role">0 PQC sessions</span></div>
+        <div class="track"><div class="fill grad" style="width:0.0%"></div><div class="overlay" style="width:0.0%"></div></div>
+        <div class="val num"><b>0</b> sessions</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="wash">
+  <div class="shell">
+    <div class="rv"><div class="sec-eyebrow">Full Detail</div><h2>Server inventory</h2><p class="lede">Every confirmed TLS server in the window, with raw counts so the derived metrics above can be verified.</p></div>
+    <div class="tbl-wrap rv"><table><thead><tr><th>Server</th><th>Role</th><th class="r">TLS Sessions</th><th class="r">PQC Sessions</th><th class="r">PQC Clients</th><th class="r">Non-PQC Clients</th><th class="r">Client Coverage</th><th>Status</th></tr></thead><tbody>
+          <!-- Repeat one table row per confirmed TLS server. -->
+          <tr>
+            <td><span class="dev">[server-name-1]</span><br><span class="ip num">[server-ip-or-id]</span></td>
+            <td>[server role]</td>
+            <td class="r num">0</td>
+            <td class="r num">0</td>
+            <td class="r num">0</td>
+            <td class="r num">0</td>
+            <td class="r num">—</td>
+            <td><span class="pill no">Classical Only</span></td>
+          </tr>
+          <tr>
+            <td><span class="dev">[server-name-2]</span><br><span class="ip num">[server-ip-or-id]</span></td>
+            <td>[server role]</td>
+            <td class="r num">0</td>
+            <td class="r num">0</td>
+            <td class="r num">0</td>
+            <td class="r num">0</td>
+            <td class="r num">—</td>
+            <td><span class="pill no">Classical Only</span></td>
+          </tr>
+        </tbody></table></div>
+  </div>
+</section>
+
+<section>
+  <div class="shell">
+    <div class="rv"><div class="sec-eyebrow">Findings &amp; Recommended Actions</div><h2>What the numbers mean, and what to do next</h2></div>
+    <div class="findings">
+        <!-- Keep 2-5 finding cards; each needs one concrete action. -->
+        <article class="finding rv">
+          <div class="f-side"><div class="fk">Finding</div><h3>[Finding title with the key measured fact]</h3><p>[Finding narrative with raw counts, percentages, server/client names, and caveat if needed.]</p></div>
+          <div class="a-side"><div class="fk">Recommended Action</div><p>[One concrete recommended action tied to this finding.]</p></div>
+        </article>
+<article class="finding rv">
+          <div class="f-side"><div class="fk">Finding</div><h3>[Second finding title]</h3><p>[Finding narrative.]</p></div>
+          <div class="a-side"><div class="fk">Recommended Action</div><p>[One concrete recommended action.]</p></div>
+        </article>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="shell">
+    <div class="ft-top"><span class="t">Provenance</span><span class="logo-ft"><svg viewBox="0 0 223.8 22.1" xmlns="http://www.w3.org/2000/svg" aria-label="ExtraHop"><g fill="#FFFFFF"><path d="M0,0h15.9v5.1h-10v3.4h8.2v4.8H5.8V17h10.7v5.1H0V0z M26.9,10.8L19.4,0h7.2l3.7,5.7L33.8,0h6.5l-6.8,10.2L41.8,22h-7.3L30,15.3l-4.3,6.8h-6.4L26.9,10.8z M49.3,5.1h-6.8V0h19.4v5.1h-6.7V22h-5.9V5.1z M66,0h9.1c1.2,0,2.3,0.2,3.2,0.5c1,0.3,1.8,0.8,2.5,1.4s1.2,1.4,1.6,2.3S83,6.1,83,7.3c0,1.5-0.3,2.7-1,3.8c-0.6,1.1-1.5,1.9-2.5,2.6l4.7,8.5h-6.3l-3.7-7.5h-2.4v7.5H66V0z M74.5,10c0.8,0,1.4-0.2,1.9-0.7s0.7-1.1,0.7-1.9s-0.2-1.5-0.7-2s-1.1-0.7-1.9-0.7h-2.8V10H74.5z M94.2,0h6.7l7.8,22h-6.3l-1.4-4.6h-7.4L92.1,22h-6L94.2,0z M99.8,13.2l-2.4-8.1l-2.5,8.1H99.8z M112.7,0h5.8v8.1h13V0h5.8v22h-5.8v-8.6h-13V22h-5.8V0z M153.2,22c-1.6,0-3-0.3-4.4-0.8c-1.3-0.6-2.5-1.3-3.5-2.3s-1.7-2.1-2.3-3.5c-0.5-1.4-0.8-2.8-0.8-4.4s0.3-3.1,0.8-4.4c0.5-1.4,1.3-2.5,2.3-3.5s2.1-1.7,3.5-2.3c1.3-0.5,2.8-0.8,4.4-0.8H166c1.6,0,3,0.3,4.4,0.8c1.3,0.6,2.5,1.3,3.5,2.3s1.7,2.1,2.3,3.5C176.7,8,177,9.4,177,11s-0.3,3.1-0.8,4.4c-0.5,1.4-1.3,2.5-2.3,3.5s-2.1,1.7-3.5,2.3c-1.3,0.5-2.8,0.8-4.4,0.8C166,22,153.2,22,153.2,22z M166.1,16.8c0.8,0,1.5-0.2,2.2-0.5c0.6-0.3,1.2-0.7,1.6-1.2c0.4-0.5,0.8-1.1,1-1.9c0.2-0.7,0.3-1.5,0.3-2.3s-0.1-1.5-0.3-2.3c-0.2-0.7-0.6-1.3-1-1.9c-0.4-0.5-1-0.9-1.6-1.2S166.9,5,166.1,5h-12.8c-0.8,0-1.5,0.2-2.2,0.5c-0.6,0.3-1.2,0.7-1.6,1.2c-0.4,0.5-0.8,1.1-1,1.9c-0.2,0.7-0.3,1.5-0.3,2.3s0.1,1.5,0.3,2.3c0.2,0.7,0.6,1.3,1,1.9c0.4,0.5,1,0.9,1.6,1.2c0.6,0.3,1.4,0.5,2.2,0.5H166.1z M181.9,0h25.2c1.2,0,2.3,0.2,3.2,0.5c1,0.3,1.8,0.8,2.5,1.4s1.2,1.4,1.6,2.3c0.4,0.9,0.6,2,0.6,3.2c0,1.1-0.2,2.1-0.6,3.1c-0.4,0.9-0.9,1.7-1.6,2.3c-0.7,0.7-1.5,1.1-2.4,1.5c-0.9,0.3-2,0.5-3.1,0.5h-19.7v7.3h-5.7V0z M206.7,10.1c0.8,0,1.4-0.3,1.9-0.8s0.7-1.2,0.7-1.9c0-0.8-0.2-1.5-0.7-2c-0.4-0.5-1.1-0.8-1.9-0.8h-19v5.5H206.7z"/><path d="M222,3.8c-0.3,0-0.6-0.1-0.9-0.2c-0.3-0.2-0.5-0.4-0.7-0.7s-0.2-0.6-0.2-1s0.1-0.7,0.2-1c0.2-0.3,0.4-0.5,0.7-0.7S221.7,0,222,0c0.3,0,0.6,0.1,0.9,0.2c0.3,0.2,0.5,0.4,0.7,0.7s0.2,0.6,0.2,1s-0.1,0.7-0.2,1c-0.2,0.3-0.4,0.5-0.7,0.7C222.6,3.8,222.3,3.8,222,3.8z M222,3.5c0.3,0,0.5-0.1,0.7-0.2c0.2-0.1,0.4-0.3,0.5-0.6c0.1-0.2,0.2-0.5,0.2-0.8s-0.1-0.6-0.2-0.8c-0.1-0.2-0.3-0.4-0.5-0.6c-0.2-0.1-0.5-0.2-0.7-0.2c-0.3,0-0.5,0.1-0.7,0.2s-0.4,0.3-0.5,0.6c-0.1,0.2-0.2,0.5-0.2,0.8s0.1,0.6,0.2,0.8c0.1,0.2,0.3,0.4,0.5,0.6C221.5,3.4,221.7,3.5,222,3.5z M221.3,2.9v-2h0.7c0.2,0,0.4,0,0.5,0.1s0.2,0.3,0.2,0.5c0,0.1,0,0.2-0.1,0.3S222.4,2,222.3,2l0.4,0.8h-0.4L222,2.1h-0.4v0.7L221.3,2.9L221.3,2.9z M221.7,1.9h0.3c0.1,0,0.2,0,0.3-0.1s0.1-0.1,0.1-0.2s0-0.2-0.1-0.2c-0.1-0.1-0.2-0.1-0.3-0.1h-0.3V1.9z"/></g></svg></span></div>
+    <div class="grid">
+      <div><div class="k">Source</div><div class="v num">ExtraHop RevealX<small>sensor [sensor or console name]</small></div></div>
+      <div><div class="k">Analysis Window</div><div class="v num">[window label]<small>[window-start UTC] → [window-end UTC]</small></div></div>
+      <div><div class="k">Generated</div><div class="v num">[Month D, YYYY]<small>re-runnable, same query set</small></div></div>
+      <div><div class="k">Population</div><div class="v num">2 internal TLS servers<small>TLS Server Activity group</small></div></div>
+    </div>
+    <p class="method">Method — [Metric categories, stat names, device group/object scope, bucketing, window, limits, collection timestamp, and caveats.]</p>
+  </div>
+</footer>
+</body>
+</html>
