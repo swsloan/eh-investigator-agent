@@ -7,6 +7,7 @@
   "scripts": {
     "bootstrap": "bash scripts/bootstrap.sh",
     "check": "bash scripts/check-syntax.sh",
+    "check:claude-sdk": "node scripts/check-claude-sdk.js",
     "package:dist": "bash scripts/package.sh",
     "smoke": "playwright test smoke/spa-smoke.spec.js --reporter=line",
     "test": "node --test",

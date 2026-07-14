@@ -34,11 +34,13 @@ import {
 } from './sessions.js';
 import { refreshPreflight } from './status.js';
 import { initTheme } from './theme.js';
+import { closeBackendUpdateDialog, initBackendUpdate, isBackendUpdateDialogOpen, refreshBackendUpdate } from './backend-update.js';
 
 function initEscapeHandling() {
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
-    if (isDownloadMenuOpen()) closeDownloadMenu();
+    if (isBackendUpdateDialogOpen()) closeBackendUpdateDialog();
+    else if (isDownloadMenuOpen()) closeDownloadMenu();
     else if (isMemoryOpen()) closeMemory();
     else if (hasOpenSessionMenu()) closeSessionMenu();
     else if (isViewerOpen()) closeViewer();
@@ -52,6 +54,7 @@ function initEscapeHandling() {
 async function boot() {
   refreshPreflight();
   refreshBackendInfo();
+  refreshBackendUpdate();
   try { await refreshSettingsState(); } catch { /* settings modal will surface save/load errors later */ }
   const list = await listSessions();
   if (list.length) {
@@ -70,6 +73,7 @@ export function startApp() {
   initSessionMenus();
   initEval();
   initMemory();
+  initBackendUpdate();
   initEscapeHandling();
   boot();
 }

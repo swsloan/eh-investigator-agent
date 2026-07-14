@@ -30,6 +30,8 @@ export const dom = {
   viewerDownloadFileLabel: $('viewer-download-file-label'),
   viewerDownloadCsv: $('viewer-download-csv'),
   viewerDownloadPdf: $('viewer-download-pdf'),
+  backendUpdateBadge: $('backend-update-badge'),
+  backendUpdateText: $('backend-update-badge').querySelector('.backend-update-text'),
   settingsModal: $('settings-modal'),
   sessionModelModal: $('session-model-modal'),
 };
