@@ -129,19 +129,18 @@ services:
     restart: unless-stopped
 
 volumes:
-  # Reuse the volumes created by the previous (v26.07.01) deployment so the Pi
-  # provider login and existing investigation workspaces are preserved across
-  # this upgrade. These names come from the old Compose project.
+  # All volumes are project-managed: `docker compose up` creates them on first
+  # run, and they persist across restarts and upgrades. Nothing external is
+  # required, so a fresh clone works with no pre-created volumes.
+  #
+  # Persisted investigation workspaces (sessions, evidence, reports).
   workspaces:
-    external: true
-    name: eh-investigator-agent-a70505d40e65_workspaces
+  # Pi coding-agent backend home (its provider login/config).
   pi_home:
-    external: true
-    name: eh-investigator-agent-a70505d40e65_pi_home
-  # New volume for the Claude Code backend login (managed by this project).
+  # Claude Code backend login.
   claude_home:
   # Persisted app settings (config.json).
   config_data:
-  # Graphiti memory stack volumes (managed by this project).
+  # Graphiti memory stack volumes.
   falkordb_data:
   ollama_models:
