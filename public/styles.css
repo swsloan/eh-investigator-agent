@@ -3150,3 +3150,126 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 }
 
 .backend-update-status { margin-top: 10px; }
+
+/* ===== Governed write path: proposed-action approval tray ===== */
+.actions-tray {
+  max-width: 780px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 28px;
+}
+.actions-tray.hidden { display: none; }
+.actions-tray-head {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--warn);
+  padding: 2px 2px 8px;
+}
+.actions-tray-list { display: flex; flex-direction: column; gap: 8px; }
+
+.action-card {
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--warn);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 11px 13px;
+  font-size: 13px;
+  box-shadow: var(--shadow-soft);
+}
+.action-card.action-executed { border-left-color: var(--ok); }
+.action-card.action-rejected { border-left-color: var(--gray); opacity: 0.75; }
+.action-card.action-failed { border-left-color: var(--danger); }
+.action-card.action-approved,
+.action-card.action-executing { border-left-color: var(--cyan); }
+
+.action-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.action-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  border: 1px solid var(--chip-border);
+  color: var(--text-2);
+}
+.action-badge.badge-proposed { color: var(--warn); border-color: var(--warn); }
+.action-badge.badge-executed { color: var(--ok); border-color: var(--ok); }
+.action-badge.badge-failed { color: var(--danger-text); border-color: var(--danger-border); background: var(--danger-bg); }
+.action-badge.badge-executing,
+.action-badge.badge-approved { color: var(--sapphire); border-color: var(--sapphire); }
+.action-cap {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sapphire);
+}
+.action-destructive {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--danger-text);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+.action-label { margin: 7px 0; color: var(--ink); line-height: 1.4; }
+.action-params { font-size: 12px; }
+.action-params summary {
+  cursor: pointer;
+  color: var(--gray);
+  font-size: 11px;
+  font-weight: 600;
+  user-select: none;
+}
+.action-params pre {
+  margin: 6px 0 0;
+  padding: 9px 11px;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 8px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.action-error {
+  margin-top: 8px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  color: var(--danger-text);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.action-feedback {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--danger-text);
+}
+.action-feedback.hidden { display: none; }
+.action-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.action-btn {
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--border-strong);
+}
+.action-btn:disabled { opacity: 0.55; cursor: default; }
+.action-reject { background: var(--surface); color: var(--text-2); }
+.action-reject:not(:disabled):hover { background: var(--surface-hover); }
+.action-approve { background: var(--gradient); color: #fff; border-color: transparent; }
+.action-approve:not(:disabled):hover { filter: brightness(1.05); }

@@ -17,6 +17,7 @@ import {
 } from './chat.js';
 import { dom } from './dom.js';
 import { onSessionEvent } from './memory.js';
+import { applyActionEvent } from './actions.js';
 import { state } from './state.js';
 import { applyIdleStatus, setStatus } from './status.js';
 
@@ -163,6 +164,12 @@ export function handleEvent(ev) {
     case 'session_error':
       addSysNote(ev.error);
       setRunning(false);
+      break;
+
+    case 'action_proposed':
+    case 'action_decided':
+    case 'action_result':
+      applyActionEvent(ev);
       break;
 
     case 'challenger_status':

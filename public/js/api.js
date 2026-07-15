@@ -32,6 +32,21 @@ export async function listSessions() {
   return res.json();
 }
 
+export async function listActions(sessionId) {
+  const res = await fetch(`/api/actions?session=${encodeURIComponent(sessionId)}`);
+  if (!res.ok) return [];
+  return res.json().catch(() => []);
+}
+
+export async function decideAction(sessionId, actionId, decision) {
+  const res = await fetch(`/api/actions/${encodeURIComponent(actionId)}/decide`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session: sessionId, decision }),
+  });
+  return { ok: res.ok, data: await res.json().catch(() => ({})) };
+}
+
 export async function getBackendUpdate(options = {}) {
   const res = await fetch(`/api/backend-update${options.refresh ? '?refresh=1' : ''}`);
   const data = await res.json().catch(() => ({}));

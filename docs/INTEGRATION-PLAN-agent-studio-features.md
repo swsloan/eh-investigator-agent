@@ -228,6 +228,21 @@ is costing context — measure first.
 
 ## Phase 4 — Approval dashboard (async surface)
 
+**Status: implemented** (branch `feat/governed-write-path`) as an **approval tray**
+above the composer rather than a separate cross-session view — approvals are
+high-priority, so surfacing them inline in the active session is more prominent
+and avoids entangling the Files/Memory right-panel overlay. New `public/js/actions.js`
+renders proposed actions with Approve/Reject; populated from `GET /api/actions`
+on session switch (durable across reload) and updated live from `action_*` SSE
+events. Wired via `api.js`, `sse.js`, `sessions.js`, `state.js`, `dom.js`,
+`index.html`, `styles.css`. Verified in a real browser: tray renders, badges/
+destructive flag show, Reject transitions live + persists, Approve runs the
+executor end-to-end (this caught a real bug — the decide route dispatches in the
+`executing` state, so `executeApproved` now accepts `approved` OR `executing`,
+a state reachable only from `approved`). A true cross-session dashboard (approve
+from outside the originating session) remains a future enhancement.
+
+
 The UI counterpart to Phase 1, in `public/`.
 
 - New "Actions" view listing pending/decided actions across all sessions

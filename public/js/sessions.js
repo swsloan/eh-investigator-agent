@@ -3,6 +3,7 @@ import { openPromoteDialog } from './eval.js';
 import { resetStreamRendering, setHasMessages, updateUsage } from './chat.js';
 import { $, dom } from './dom.js';
 import { closeViewer, refreshFiles } from './files.js';
+import { clearActionsTray, refreshActions } from './actions.js';
 import { connect } from './sse.js';
 import { newUsage, state } from './state.js';
 
@@ -253,8 +254,10 @@ export function switchSession(session) {
   state.sessionModelPinned = !!session.modelPinned;
   state.agentModel = session.agentState?.model || null;
   updateUsage();
+  clearActionsTray(); // drop the previous session's actions before fetching this one's
   connect(session.id);
   refreshFiles();
+  refreshActions(session.id);
   loadSessions();
 }
 

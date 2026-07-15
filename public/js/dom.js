@@ -17,6 +17,7 @@ export const dom = {
   connText: connStatus.querySelector('.conn-text'),
   usageReadout: $('usage-readout'),
   filesList: $('files-list'),
+  actionsTray: $('actions-tray'),
   dropOverlay: $('drop-overlay'),
   viewerEl: $('viewer'),
   viewerScrim: $('viewer-scrim'),
