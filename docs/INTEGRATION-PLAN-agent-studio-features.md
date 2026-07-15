@@ -65,7 +65,7 @@ A proposed action is persisted per session, using the existing
 Store under the workspace at `.actions/<actionId>.json` (dot-prefixed so it is
 excluded from `visibleFiles()` and never rendered as evidence).
 
-```
+```jsonc
 {
   id,                       // uuid
   sessionId,

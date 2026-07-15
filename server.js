@@ -374,8 +374,7 @@ app.use('/api/sessions', sessionsRouter({
 app.use('/api/actions', actionsRouter({
   sessions,
   executeApproved: (action, opts) => excliBroker.executeApproved(action, opts),
-  broadcast,
-  redact,
+  broadcast, // responses + SSE are redacted centrally (res.json override + broadcast)
 }));
 app.use('/api/sessions', filesRouter({ sessions }));
 app.use('/api', healthRouter({

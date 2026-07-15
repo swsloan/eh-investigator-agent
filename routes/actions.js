@@ -3,11 +3,13 @@ import { readAction, listActions, transitionAction, isValidActionId } from '../l
 
 /**
  * Human-in-the-loop approval surface for proposed write actions (Phase 1).
- * Mounted behind the local-origin guard + secret redaction like every other
- * mutating route. The agent proposes (via the action broker); this route is the
- * ONLY place a proposal is approved and dispatched to the privileged executor.
+ * Mounted behind the local-origin guard. HTTP responses and SSE broadcasts are
+ * redacted centrally in server.js (the res.json override and broadcast()), so
+ * this router does not redact locally. The agent proposes (via the action
+ * broker); this route is the ONLY place a proposal is approved and dispatched to
+ * the privileged executor.
  */
-export function actionsRouter({ sessions, executeApproved, broadcast = () => {}, redact = (v) => v }) {
+export function actionsRouter({ sessions, executeApproved, broadcast = () => {} }) {
   const router = express.Router();
 
   /** GET /api/actions?session=:id — list a session's actions (newest first). */
@@ -45,33 +47,41 @@ export function actionsRouter({ sessions, executeApproved, broadcast = () => {},
 
     const decidedAt = new Date().toISOString();
 
-    if (decision === 'reject') {
-      const updated = transitionAction(session.workspace, id, 'rejected', { decidedAt, decidedBy: 'user' });
-      broadcast(session.id, { type: 'action_decided', action: updated });
-      return res.json({ ok: true, action: updated });
-    }
-
-    // Approve → execute. Persist the approval, then flip to executing before
-    // dispatching so a crash mid-execution leaves a recoverable, non-'proposed'
-    // record (it will never silently re-run).
-    transitionAction(session.workspace, id, 'approved', { decidedAt, decidedBy: 'user' });
-    const executing = transitionAction(session.workspace, id, 'executing', {});
-    broadcast(session.id, { type: 'action_decided', action: executing });
-
-    let result;
+    // A persistence/transition failure (fs error, illegal state) must still send
+    // a response — this is an async handler, and Express 4 does not route a
+    // rejected promise to the error middleware, so an unguarded throw would hang
+    // the request.
     try {
-      result = await executeApproved(executing, { workspace: session.workspace });
-    } catch (err) {
-      const failed = transitionAction(session.workspace, id, 'failed', {
-        result: { ok: false, error: err.message || 'Execution failed before running.' },
-      });
-      broadcast(session.id, { type: 'action_result', action: failed });
-      return res.status(500).json({ ok: false, action: failed });
-    }
+      if (decision === 'reject') {
+        const updated = transitionAction(session.workspace, id, 'rejected', { decidedAt, decidedBy: 'user' });
+        broadcast(session.id, { type: 'action_decided', action: updated });
+        return res.json({ ok: true, action: updated });
+      }
 
-    const done = transitionAction(session.workspace, id, result.ok ? 'executed' : 'failed', { result });
-    broadcast(session.id, { type: 'action_result', action: done });
-    return res.json({ ok: result.ok, action: done });
+      // Approve → execute. Persist the approval, then flip to executing before
+      // dispatching so a crash mid-execution leaves a recoverable, non-'proposed'
+      // record (it will never silently re-run).
+      transitionAction(session.workspace, id, 'approved', { decidedAt, decidedBy: 'user' });
+      const executing = transitionAction(session.workspace, id, 'executing', {});
+      broadcast(session.id, { type: 'action_decided', action: executing });
+
+      let result;
+      try {
+        result = await executeApproved(executing, { workspace: session.workspace });
+      } catch (err) {
+        const failed = transitionAction(session.workspace, id, 'failed', {
+          result: { ok: false, error: err.message || 'Execution failed before running.' },
+        });
+        broadcast(session.id, { type: 'action_result', action: failed });
+        return res.status(500).json({ ok: false, action: failed });
+      }
+
+      const done = transitionAction(session.workspace, id, result.ok ? 'executed' : 'failed', { result });
+      broadcast(session.id, { type: 'action_result', action: done });
+      return res.json({ ok: result.ok, action: done });
+    } catch (err) {
+      return res.status(500).json({ error: err.message || 'Could not record the action decision.' });
+    }
   });
 
   return router;
