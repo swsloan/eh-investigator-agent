@@ -10,6 +10,7 @@ import { createChallengerCoordinator } from './lib/challenger-coordinator.js';
 import { createMemoryCoordinator } from './lib/memory-coordinator.js';
 import { BackendUpdateManager } from './lib/backend-updates.js';
 import { ExcliBroker } from './lib/excli-broker.js';
+import { ActionBroker } from './lib/action-broker.js';
 import { ReversingLabsBroker } from './lib/reversinglabs-broker.js';
 import { ResearchBroker } from './lib/research-broker.js';
 import { localOriginGuard } from './lib/local-origin.js';
@@ -33,6 +34,7 @@ import { healthRouter } from './routes/health.js';
 import { modelsRouter } from './routes/models.js';
 import { sessionsRouter } from './routes/sessions.js';
 import { settingsRouter } from './routes/settings.js';
+import { actionsRouter } from './routes/actions.js';
 import { backendUpdatesRouter } from './routes/backend-updates.js';
 
 const ROOT = import.meta.dirname;
@@ -121,6 +123,16 @@ const researchBroker = new ResearchBroker({
   secretStore,
 });
 researchBroker.start();
+// Governed write path: the agent proposes write actions here (read-only socket);
+// a human approves them via /api/actions, and only then does the server-side
+// executor run the write. Depends on excliBroker for the capability catalog and
+// workspace resolution; emits SSE via broadcast.
+const actionBroker = new ActionBroker({
+  root: ROOT,
+  excli: excliBroker,
+  broadcast: (sessionId, event) => broadcast(sessionId, event),
+});
+actionBroker.start();
 const challenger = createChallengerCoordinator({
   getConfig: prefs,
   getBackend: activeBackend,
@@ -167,6 +179,7 @@ function buildSessionEnv(settings, backendId) {
     reversingLabsBrokerSocketPath: reversingLabsBroker.socketPath,
     reversingLabsEnabled: reversingLabsEnabled(settings, secretStore),
     researchBrokerSocketPath: researchBroker.socketPath,
+    actionBrokerSocketPath: actionBroker.socketPath,
   });
   const secrets = secretStore.get?.() || {};
   const claudeSubscription = backendId === 'claude' && settings.claudeAuth === 'subscription';
@@ -358,6 +371,12 @@ app.use('/api/sessions', sessionsRouter({
   challenger,
   redact,
 }));
+app.use('/api/actions', actionsRouter({
+  sessions,
+  executeApproved: (action, opts) => excliBroker.executeApproved(action, opts),
+  broadcast,
+  redact,
+}));
 app.use('/api/sessions', filesRouter({ sessions }));
 app.use('/api', healthRouter({
   getConfig: () => config,
@@ -492,6 +511,7 @@ listen(BASE_PORT, PORT_ATTEMPTS);
 function shutdown() {
   for (const s of sessions.values()) s.dispose();
   excliBroker.stop();
+  actionBroker.stop();
   reversingLabsBroker.stop();
   researchBroker.stop();
   server?.close();

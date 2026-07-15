@@ -44,6 +44,20 @@ execution an in-process method rather than a second service.
 
 ## Phase 1 — Governed write path (propose → approve → execute)
 
+**Status: implemented** (branch `feat/governed-write-path`). New: `lib/action-store.js`
+(file-based records + one-shot state machine + `<pending-actions>` render),
+`lib/action-broker.js` + `propose-action` shim (agent-facing propose seam),
+`ExcliBroker.executeApproved()` (privileged in-process executor) +
+`describeCapability()`, `routes/actions.js` (`GET /api/actions`, `POST
+/api/actions/:id/decide`). Wired into `server.js`, `settings.js buildAgentEnv`,
+`agent-session.js` (symlink + system prompt), and `routes/sessions.js` (pending
+block injected per turn). Covered by `action-store.test.js`,
+`action-execute.test.js`, `action-broker.test.js` (24 cases); server boots and
+the route is reachable. The one item deferred from the design below: the audit
+sink is the action record itself (no separate `activity_log` — this app has no
+Postgres); wiring `accessTypeForTool` into a UI badge is Phase 4.
+
+
 ### 1a. Data model — `lib/action-store.js` (new)
 
 A proposed action is persisted per session, using the existing

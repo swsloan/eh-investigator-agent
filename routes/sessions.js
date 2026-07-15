@@ -5,6 +5,7 @@ import { sessionSummary } from '../lib/session-store.js';
 import { getSession } from '../lib/route-utils.js';
 import { validateAttachments } from '../lib/uploads.js';
 import { containsSecretMaterial } from '../lib/redaction.js';
+import { renderPendingActionsBlock } from '../lib/action-store.js';
 
 export function sessionsRouter({
   sessions,
@@ -108,6 +109,10 @@ export function sessionsRouter({
       const lines = safeAttachments.map((a) => `- ./uploads/${a.name} (${a.size} bytes)`);
       message += `\n\n[The user shared ${safeAttachments.length} file(s) with you, saved in your working directory:\n${lines.join('\n')}]`;
     }
+    // Prepend the live status of any actions this session proposed, so the model
+    // never re-proposes or misreports a write. Server-generated (trusted) context.
+    const pendingActions = renderPendingActionsBlock(session.workspace);
+    if (pendingActions) message = `${pendingActions}\n\n${message}`;
     const isFirst = session.promptCount === 0;
     if (isFirst && !session.modelPinned) {
       const config = getConfig();
