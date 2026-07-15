@@ -1,0 +1,84 @@
+#!/usr/bin/env node
+// Agent-facing interface for proposing a write action for human approval.
+// It does NOT execute anything: it records a proposal that a person approves or
+// rejects in the UI, after which the server (never the agent) runs the write.
+// Same brokered-socket pattern as excli-interface / reversinglabs-interface.
+import net from 'node:net';
+
+const MAX_RESPONSE_BYTES = 1 * 1024 * 1024;
+const SOCKET_TIMEOUT_MS = 15_000;
+
+function fail(message, code = 1) {
+  process.stderr.write(`${message}\n`);
+  process.exit(code);
+}
+
+function usage() {
+  return [
+    'Usage:',
+    "  ./propose-action -json '{\"capabilityId\":\"update_detection\",\"params\":{...},\"label\":\"short human summary\"}'",
+    '',
+    'Proposes a write-class ExtraHop action for human approval. This does NOT',
+    'execute the action — it is recorded and a person approves or rejects it in',
+    'the UI. Read-class tools need no approval: call them directly via',
+    './excli-interface. Fields:',
+    '  capabilityId  the excli tool name (must be a write tool)',
+    '  params        JSON object of arguments, matching that tool\'s -help schema',
+    '  label         a short, plain-language summary of the change for the approver',
+  ].join('\n');
+}
+
+const [, , flag, value] = process.argv;
+if (['help', '-h', '--help'].includes(flag)) {
+  process.stdout.write(`${usage()}\n`);
+  process.exit(0);
+}
+if (flag !== '-json' || !value) fail(usage(), 64);
+
+let payload;
+try {
+  payload = JSON.parse(value);
+} catch {
+  fail('The -json value must be valid JSON.', 64);
+}
+
+const socketPath = process.env.EH_ACTION_BROKER_SOCKET;
+if (!socketPath) {
+  fail('Action broker is not configured. Run propose-action from an investigation workspace through the web UI.');
+}
+
+const socket = net.createConnection(socketPath);
+let buffer = '';
+let completed = false;
+socket.setTimeout(SOCKET_TIMEOUT_MS);
+socket.on('connect', () => {
+  socket.write(`${JSON.stringify({ payload, cwd: process.cwd() })}\n`);
+});
+socket.on('data', (chunk) => {
+  buffer += chunk.toString('utf8');
+  if (Buffer.byteLength(buffer) > MAX_RESPONSE_BYTES) {
+    fail('Action broker response exceeded the safe size limit.');
+  }
+  const newline = buffer.indexOf('\n');
+  if (newline === -1) return;
+  let message;
+  try {
+    message = JSON.parse(buffer.slice(0, newline));
+  } catch {
+    fail('Action broker sent an invalid response.');
+  }
+  completed = true;
+  if (message.error) fail(message.error);
+  process.stdout.write(`${JSON.stringify(message.result, null, 2)}\n`);
+  socket.end();
+});
+socket.on('timeout', () => fail('Action broker request timed out.'));
+socket.on('error', (err) => {
+  const message = err.code === 'ENOENT'
+    ? 'Action broker is not running.'
+    : (err.code === 'EACCES' ? 'Action broker socket is not accessible.' : 'Action broker connection failed.');
+  fail(message);
+});
+socket.on('close', () => {
+  if (!completed) fail('Action broker closed without a response.');
+});

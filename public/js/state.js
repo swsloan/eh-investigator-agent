@@ -17,6 +17,7 @@ export const state = {
   sessionModelPinned: false,
   knownFiles: null,
   workspaceFiles: new Map(),
+  actions: [], // proposed write actions for the active session (governed write path)
   hasMessages: false,
   openDirs: new Set(),
   expandedHiddenDirs: new Set(),
