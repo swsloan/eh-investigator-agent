@@ -257,22 +257,35 @@ Depends on Phase 1 endpoints and events. No backend work beyond Phase 1.
 
 ---
 
-## Phase 5 — Context hygiene (small, self-contained)
+## Phase 5 — Context hygiene
 
-Two mechanisms from Agent Studio §I, portable independently of everything above.
-Applies to the harness driver in `lib/agent-session.js` / the backend adapters.
+**Status: evaluated, not implemented — both mechanisms are already provided by
+the harness architecture.** Agent Studio's §I patterns were written for its own
+hand-rolled agent loop; the Investigation Agent drives external harnesses
+(Claude Code SDK, Pi) that already own these concerns. Verified empirically
+rather than assumed:
 
-- **Keyword-preserving truncation**: for oversized tool results, keep head +
-  tail + snippets around domain keywords (`detection`, `device`, `record`,
-  `metric`), append a "narrow your query" notice. Exempt file-read results (they
-  feed the workspace, like Studio exempts `read_file`).
-- **Anti-premature-stop nudge**: if the harness tries to stop with an
-  unfinished plan and no pending tool call, inject one synthetic "continue"
-  turn — guarded by an "awaiting user input" regex check and a max of one nudge
-  in a row, so it can't loop.
+- **Keyword-preserving truncation → redundant.** A prototype utility
+  (`truncateWithKeywords` / envelope-aware `applyContextHygiene`, fully unit-
+  tested) was wired into the Claude backend's `PostToolUse` hook and tested on
+  the live appliance with a 633 KB un-redirected Bash result. Finding: the
+  **Claude Agent SDK already truncates oversized tool output (~2 KB head) and
+  persists the full result to a file *before* `PostToolUse` runs**, so the hook
+  received ~2 KB and no-op'd — the agent saw the SDK's truncation, never the
+  keyword-preserving one. The Pi backend independently handles this via native
+  proactive + in-turn **compaction** (`maybeCompactBeforePrompt` /
+  `maybeCompactDuringTurn`). Shipping the hook would be inert code, so it was
+  reverted. The system prompt already steers the agent to redirect large output
+  to `evidence/` and inspect with jq/grep/head — the effective mitigation here.
+- **Anti-premature-stop nudge → not applicable.** Agent Studio injected a
+  synthetic "continue" turn when its custom loop stalled with incomplete todos.
+  The Investigation Agent has no custom loop or todo state to nudge against — the
+  Claude Code SDK and Pi own their own agentic loops and stop decisions.
+  Injecting synthetic turns would fight the harness.
 
-These are robustness wins with no security surface; land them whenever
-convenient.
+Takeaway: on a harness-based agent, context hygiene lives in the harness (SDK
+truncation + Pi compaction) and the workspace file-redirect pattern, not in a
+bolt-on truncation/nudge layer. Left unimplemented by design.
 
 ---
 
