@@ -3273,3 +3273,69 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 .action-reject:not(:disabled):hover { background: var(--surface-hover); }
 .action-approve { background: var(--gradient); color: #fff; border-color: transparent; }
 .action-approve:not(:disabled):hover { filter: brightness(1.05); }
+
+/* ===== Cross-session approvals: header badge + panel (issue #13, Phase A) ===== */
+.approvals-btn { position: relative; }
+.approvals-btn.has-pending { color: var(--warn); }
+.approvals-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--warn);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+.approvals-count.hidden { display: none; }
+
+.approvals-card { width: min(680px, 92vw); max-height: 82vh; display: flex; flex-direction: column; }
+.approvals-body {
+  padding: 14px 16px 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.approvals-empty {
+  color: var(--gray);
+  font-size: 13px;
+  text-align: center;
+  padding: 28px 0;
+}
+.approvals-group { display: flex; flex-direction: column; gap: 8px; }
+.approvals-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--hairline);
+}
+.approvals-group-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.approvals-open-session {
+  flex-shrink: 0;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--sapphire);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.approvals-open-session:hover { text-decoration: underline; }
+/* The origin label is redundant inside a grouped panel; group header carries it. */
+.approvals-body .action-origin { display: none; }

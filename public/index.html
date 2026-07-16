@@ -42,6 +42,10 @@
             <span class="backend-update-dot"></span>
             <span class="backend-update-text">Update available</span>
           </button>
+          <button id="approvals-btn" class="icon-btn approvals-btn" type="button" title="Pending approvals across all sessions">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><path d="M21 12a9 9 0 11-6.2-8.6"/></svg>
+            <span id="approvals-count" class="approvals-count hidden">0</span>
+          </button>
           <button id="memory-btn" class="icon-btn" title="Memory graph — what do we know?">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2.2"/><circle cx="19" cy="6" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="M7 7l4 9M17 7l-4 9M7 6h10"/></svg>
           </button>
@@ -162,6 +166,19 @@
       <div id="viewer-body" class="viewer-body"></div>
     </div>
     <div id="viewer-scrim" class="viewer-scrim hidden"></div>
+
+    <!-- ===== Cross-session approvals panel ===== -->
+    <div id="approvals-modal" class="modal hidden">
+      <div class="modal-card approvals-card">
+        <div class="modal-head">
+          <span>Pending approvals</span>
+          <button id="approvals-close" class="icon-btn" title="Close">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <div id="approvals-body" class="approvals-body"></div>
+      </div>
+    </div>
 
     <!-- ===== Settings modal ===== -->
     <div id="settings-modal" class="modal hidden">

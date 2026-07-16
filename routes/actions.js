@@ -1,5 +1,7 @@
 import express from 'express';
-import { readAction, listActions, transitionAction, isValidActionId } from '../lib/action-store.js';
+import {
+  readAction, listActions, transitionAction, isValidActionId, listActionsAcrossWorkspaces,
+} from '../lib/action-store.js';
 
 /**
  * Human-in-the-loop approval surface for proposed write actions (Phase 1).
@@ -17,6 +19,21 @@ export function actionsRouter({ sessions, executeApproved, broadcast = () => {} 
     const session = sessions.get(String(req.query.session || ''));
     if (!session) return res.status(404).json({ error: 'Session not found' });
     return res.json(listActions(session.workspace));
+  });
+
+  /**
+   * GET /api/actions/pending — cross-session aggregate for the approval
+   * dashboard: every open action (proposed/approved/executing) across all
+   * sessions, oldest-first, each stamped with its origin session, plus
+   * `pendingCount` (actions awaiting a human decision). Read-only.
+   */
+  router.get('/pending', (req, res) => {
+    const entries = [...sessions.values()].map((s) => ({
+      sessionId: s.id,
+      sessionTitle: s.title || 'New session',
+      workspace: s.workspace,
+    }));
+    return res.json(listActionsAcrossWorkspaces(entries));
   });
 
   /** POST /api/actions/:id/decide { session, decision: 'approve' | 'reject' } */
