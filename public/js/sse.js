@@ -18,6 +18,7 @@ import {
 import { dom } from './dom.js';
 import { onSessionEvent } from './memory.js';
 import { applyActionEvent } from './actions.js';
+import { refreshApprovals } from './approvals.js';
 import { state } from './state.js';
 import { applyIdleStatus, setStatus } from './status.js';
 
@@ -170,6 +171,7 @@ export function handleEvent(ev) {
     case 'action_decided':
     case 'action_result':
       applyActionEvent(ev);
+      refreshApprovals(); // keep the cross-session badge/panel current
       break;
 
     case 'challenger_status':

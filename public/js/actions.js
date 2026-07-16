@@ -1,14 +1,16 @@
-// Governed write path — the approval surface (Phase 4).
+// Governed write path — the approval surface (Phase 4 + Phase A dashboard).
 // Renders proposed write actions in a tray above the composer and lets the user
 // approve or reject them. Populated from GET /api/actions on session switch (so
 // pending approvals survive a reload) and updated live from action_* SSE events.
+// The card renderer + decide flow are exported so the cross-session approvals
+// dashboard (approvals.js) reuses one implementation.
 import { listActions, decideAction } from './api.js';
 import { dom } from './dom.js';
 import { state } from './state.js';
 
 const TERMINAL = new Set(['executed', 'rejected', 'failed']);
 
-const STATUS_LABEL = {
+export const STATUS_LABEL = {
   proposed: 'Awaiting approval',
   approved: 'Approved',
   executing: 'Executing…',
@@ -76,10 +78,22 @@ function renderActionsTray() {
   tray.replaceChildren(head, list);
 }
 
-function actionCard(action) {
+/**
+ * Render one action as a card. `onResult(updatedAction)` fires after a decide
+ * (default: reflect it into the in-chat tray). The dashboard passes its own
+ * handler. `showSession` prepends the origin session's title (cross-session view).
+ */
+export function actionCard(action, { onResult, showSession = false } = {}) {
   const card = document.createElement('div');
   card.className = `action-card action-${action.status}`;
   card.dataset.actionId = action.id;
+
+  if (showSession && action.sessionTitle) {
+    const origin = document.createElement('div');
+    origin.className = 'action-origin';
+    origin.textContent = action.sessionTitle;
+    card.appendChild(origin);
+  }
 
   const headRow = document.createElement('div');
   headRow.className = 'action-head';
@@ -124,12 +138,12 @@ function actionCard(action) {
   card.appendChild(feedback);
 
   if (action.status === 'proposed') {
-    card.appendChild(actionButtons(action, feedback));
+    card.appendChild(actionButtons(action, feedback, onResult));
   }
   return card;
 }
 
-function actionButtons(action, feedback) {
+function actionButtons(action, feedback, onResult) {
   const row = document.createElement('div');
   row.className = 'action-buttons';
   const reject = document.createElement('button');
@@ -141,20 +155,26 @@ function actionButtons(action, feedback) {
   approve.className = 'action-btn action-approve';
   approve.textContent = 'Approve & run';
   const setBusy = (on) => { reject.disabled = on; approve.disabled = on; };
-  reject.addEventListener('click', () => decide(action, 'reject', setBusy, feedback));
-  approve.addEventListener('click', () => decide(action, 'approve', setBusy, feedback));
+  reject.addEventListener('click', () => decide(action, 'reject', setBusy, feedback, onResult));
+  approve.addEventListener('click', () => decide(action, 'approve', setBusy, feedback, onResult));
   row.append(reject, approve);
   return row;
 }
 
-async function decide(action, decision, setBusy, feedback) {
-  if (!state.session) return;
+/**
+ * Approve/reject an action. Keys off the action's OWN sessionId so it works from
+ * both the in-chat tray (active session) and the cross-session dashboard.
+ * `onResult` defaults to reflecting the outcome into the tray.
+ */
+async function decide(action, decision, setBusy, feedback, onResult = (a) => applyActionEvent({ action: a })) {
+  const sessionId = action.sessionId || state.session?.id;
+  if (!sessionId) return;
   setBusy(true);
   feedback.classList.add('hidden');
   try {
-    const { ok, data } = await decideAction(state.session.id, action.id, decision);
+    const { ok, data } = await decideAction(sessionId, action.id, decision);
     if (ok && data?.action) {
-      applyActionEvent({ action: data.action }); // re-renders; SSE will also confirm
+      onResult(data.action);
       return;
     }
     showFeedback(feedback, data?.error || 'Could not complete that action.');

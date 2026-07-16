@@ -33,6 +33,7 @@ import {
   switchSession,
 } from './sessions.js';
 import { refreshPreflight } from './status.js';
+import { closeApprovals, initApprovals, isApprovalsOpen } from './approvals.js';
 import { initTheme } from './theme.js';
 import { closeBackendUpdateDialog, initBackendUpdate, isBackendUpdateDialogOpen, refreshBackendUpdate } from './backend-update.js';
 
@@ -40,6 +41,7 @@ function initEscapeHandling() {
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
     if (isBackendUpdateDialogOpen()) closeBackendUpdateDialog();
+    else if (isApprovalsOpen()) closeApprovals();
     else if (isDownloadMenuOpen()) closeDownloadMenu();
     else if (isMemoryOpen()) closeMemory();
     else if (hasOpenSessionMenu()) closeSessionMenu();
@@ -71,6 +73,7 @@ export function startApp() {
   initComposer();
   initSessionStream({ refreshFiles, loadSessions });
   initSessionMenus();
+  initApprovals();
   initEval();
   initMemory();
   initBackendUpdate();

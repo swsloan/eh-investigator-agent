@@ -38,6 +38,12 @@ export async function listActions(sessionId) {
   return res.json().catch(() => []);
 }
 
+export async function listPendingActions() {
+  const res = await fetch('/api/actions/pending');
+  if (!res.ok) return { pendingCount: 0, actions: [] };
+  return res.json().catch(() => ({ pendingCount: 0, actions: [] }));
+}
+
 export async function decideAction(sessionId, actionId, decision) {
   const res = await fetch(`/api/actions/${encodeURIComponent(actionId)}/decide`, {
     method: 'POST',
