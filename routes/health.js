@@ -2,6 +2,7 @@ import express from 'express';
 import { publicBackendInfo } from '../lib/backends/index.js';
 import { credentialsConfigured } from '../lib/settings.js';
 import { getSystemPreflight } from '../lib/system-preflight.js';
+import { getAppVersion } from '../lib/app-version.js';
 
 export function healthRouter({ getConfig, sessions, root, getActiveBackend, getModelCatalog, secretStore, excliBroker, reversingLabsBroker, researchBroker }) {
   const router = express.Router();
@@ -10,6 +11,7 @@ export function healthRouter({ getConfig, sessions, root, getActiveBackend, getM
     const config = getConfig();
     res.json({
       ok: true,
+      version: getAppVersion(),
       backend: publicBackendInfo(getActiveBackend()),
       extrahopConfigured: credentialsConfigured(config, secretStore),
       host: config.extrahop.host || null,

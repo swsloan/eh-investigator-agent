@@ -29,6 +29,9 @@ Run the additional checks required by the paths you changed, as described in
 check passed unless you ran it. If a check cannot run, explain why in the pull
 request and describe the compensating validation.
 
+Every supported command is listed in the README's
+[Developer commands](README.md#developer-commands) table.
+
 ## Pull requests
 
 - Keep one primary concern per pull request.

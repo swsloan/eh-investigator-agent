@@ -107,18 +107,20 @@ confirm() {
   [[ "$answer" =~ ^[Yy]$ ]]
 }
 
-node_major() {
-  node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || echo 0
+# True when the running Node satisfies the required >=22.19 (checks minor, not
+# just major, so 22.0–22.18 are correctly rejected).
+node_version_ok() {
+  node -e 'const [maj, min] = process.versions.node.split(".").map(Number); process.exit(maj > 22 || (maj === 22 && min >= 19) ? 0 : 1)' 2>/dev/null
 }
 
 install_node_with_brew_if_possible() {
   if [[ "$(uname -s)" == "Darwin" ]] && have brew; then
-    if confirm "Node.js 20+ was not found. Install Node with Homebrew now?"; then
+    if confirm "Node.js 22.19+ was not found. Install Node with Homebrew now?"; then
       brew install node
       return
     fi
   fi
-  die "Install Node.js 20+ and npm, then rerun this script. macOS: brew install node. Linux: use your distro package manager or https://nodejs.org/."
+  die "Install Node.js 22.19+ and npm, then rerun this script. macOS: brew install node. Linux: use your distro package manager or https://nodejs.org/."
 }
 
 detect_platform() {
@@ -520,7 +522,7 @@ log "Fixing file permissions"
 ensure_permissions
 
 log "Checking Node.js"
-if ! have node || [[ "$(node_major)" -lt 20 ]] || ! have npm; then
+if ! have node || ! node_version_ok || ! have npm; then
   install_node_with_brew_if_possible
 fi
 
