@@ -1,16 +1,19 @@
 // Cross-session approval dashboard (issue #13, Phase A — MVP).
 // A header badge shows the number of write actions awaiting approval across ALL
 // sessions; clicking it opens a panel to review/approve/reject them without
-// leaving the current session. Backed by GET /api/actions/pending. MVP is
-// poll-based (while the tab is visible) plus an immediate refresh on any local
-// action_* SSE event; Phase B replaces polling with a global event stream.
+// leaving the current session. Backed by GET /api/actions/pending (index-served)
+// and driven in real time by the global GET /api/actions/stream SSE channel
+// (Phase B): the stream pushes the pending count on every action change so the
+// badge updates instantly; the panel re-fetches the full list on a poke. A slow
+// poll runs only as a reconnect safety net.
 import { listPendingActions, listSessions } from './api.js';
 import { $ } from './dom.js';
 import { actionCard } from './actions.js';
 import { switchSession } from './sessions.js';
 
-const POLL_MS = 15000;
-let pollTimer = null;
+const FALLBACK_POLL_MS = 60000;
+let stream = null;
+let fallbackTimer = null;
 let lastData = { pendingCount: 0, actions: [] };
 
 export function isApprovalsOpen() {
@@ -97,27 +100,40 @@ function el(tag, className, text) {
   return node;
 }
 
-function startPolling() {
-  stopPolling();
-  if (document.visibilityState === 'visible') pollTimer = setInterval(refreshApprovals, POLL_MS);
+function onStreamMessage(ev) {
+  let msg;
+  try { msg = JSON.parse(ev.data); } catch { return; }
+  if (typeof msg.pendingCount === 'number') updateBadge(msg.pendingCount);
+  // The stream carries only the count; the panel (when open) needs the full list.
+  if (isApprovalsOpen()) refreshApprovals();
 }
 
-function stopPolling() {
-  if (pollTimer) clearInterval(pollTimer);
-  pollTimer = null;
+function connectStream() {
+  try { stream?.close(); } catch { /* ignore */ }
+  stream = new EventSource('/api/actions/stream'); // auto-reconnects on error
+  stream.onmessage = onStreamMessage;
+}
+
+// Safety net: only polls when the stream is not open (e.g. mid-reconnect).
+function startFallbackPoll() {
+  stopFallbackPoll();
+  fallbackTimer = setInterval(() => {
+    if (document.visibilityState === 'visible' && (!stream || stream.readyState !== 1)) refreshApprovals();
+  }, FALLBACK_POLL_MS);
+}
+
+function stopFallbackPoll() {
+  if (fallbackTimer) clearInterval(fallbackTimer);
+  fallbackTimer = null;
 }
 
 export function initApprovals() {
   $('approvals-btn')?.addEventListener('click', openApprovals);
   $('approvals-close')?.addEventListener('click', closeApprovals);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      refreshApprovals();
-      startPolling();
-    } else {
-      stopPolling();
-    }
+    if (document.visibilityState === 'visible') refreshApprovals();
   });
-  refreshApprovals();
-  startPolling();
+  connectStream();
+  startFallbackPoll();
+  refreshApprovals(); // initial load (the stream snapshot also updates the badge)
 }

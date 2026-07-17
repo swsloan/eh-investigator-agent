@@ -4,14 +4,23 @@ import {
 } from '../lib/action-store.js';
 
 /**
- * Human-in-the-loop approval surface for proposed write actions (Phase 1).
- * Mounted behind the local-origin guard. HTTP responses and SSE broadcasts are
- * redacted centrally in server.js (the res.json override and broadcast()), so
- * this router does not redact locally. The agent proposes (via the action
- * broker); this route is the ONLY place a proposal is approved and dispatched to
- * the privileged executor.
+ * Human-in-the-loop approval surface for proposed write actions (Phase 1 + the
+ * Phase B cross-session stream). Mounted behind the local-origin guard. HTTP
+ * responses and the per-session SSE are redacted centrally in server.js (the
+ * res.json override and broadcast()); the /stream endpoint writes SSE directly,
+ * so it applies `redact` itself. The agent proposes (via the action broker);
+ * this route is the ONLY place a proposal is approved and dispatched to the
+ * privileged executor.
  */
-export function actionsRouter({ sessions, executeApproved, broadcast = () => {} }) {
+export function actionsRouter({
+  sessions,
+  executeApproved,
+  broadcast = () => {},
+  actionIndex = null,
+  getSessionTitle = () => '',
+  globalActionClients = new Set(),
+  redact = (v) => v,
+}) {
   const router = express.Router();
 
   /** GET /api/actions?session=:id — list a session's actions (newest first). */
@@ -25,15 +34,42 @@ export function actionsRouter({ sessions, executeApproved, broadcast = () => {} 
    * GET /api/actions/pending — cross-session aggregate for the approval
    * dashboard: every open action (proposed/approved/executing) across all
    * sessions, oldest-first, each stamped with its origin session, plus
-   * `pendingCount` (actions awaiting a human decision). Read-only.
+   * `pendingCount`. Served from the in-memory index (Phase B); falls back to a
+   * filesystem scan if no index was wired. Read-only.
    */
   router.get('/pending', (req, res) => {
+    if (actionIndex) return res.json(actionIndex.snapshot(getSessionTitle));
     const entries = [...sessions.values()].map((s) => ({
       sessionId: s.id,
       sessionTitle: s.title || 'New session',
       workspace: s.workspace,
     }));
     return res.json(listActionsAcrossWorkspaces(entries));
+  });
+
+  /**
+   * GET /api/actions/stream — global SSE channel for the approval dashboard,
+   * independent of any session. Sends the current pending count on connect and
+   * on every action lifecycle change (fanned out from server.js broadcast()), so
+   * the badge updates in real time; the panel re-fetches /pending on a poke. The
+   * snapshot IS the resume, so no cursor is needed on reconnect.
+   */
+  router.get('/stream', (req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+    const pendingCount = actionIndex ? actionIndex.snapshot(getSessionTitle).pendingCount : 0;
+    res.write(`data: ${JSON.stringify(redact({ type: 'snapshot', pendingCount }))}\n\n`);
+    globalActionClients.add(res);
+    const keepalive = setInterval(() => {
+      try { res.write(': keepalive\n\n'); } catch { /* closed */ }
+    }, 15000);
+    req.on('close', () => {
+      clearInterval(keepalive);
+      globalActionClients.delete(res);
+    });
   });
 
   /** POST /api/actions/:id/decide { session, decision: 'approve' | 'reject' } */
