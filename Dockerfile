@@ -48,6 +48,11 @@ RUN npm ci --omit=dev
 
 COPY . .
 
+# Fail the build early if the Claude Agent SDK's arch-native CLI binary did not
+# install (e.g. optional deps were dropped). This validates the BUILD arch; the
+# entrypoint re-checks the RUN arch to catch a build-arch != run-arch mismatch.
+RUN node scripts/check-claude-native.js --build
+
 # excli: this release bundles every platform's CLI under vendor/excli/ with a
 # checksums file. Instead of the old macOS->Linux binary swap, extract the
 # archive matching THIS image's architecture into bin/excli at build time.

@@ -50,4 +50,10 @@ else
   install_excli_for_arch || log "WARNING: excli unavailable; ExtraHop tool calls will fail until fixed."
 fi
 
+# Verify the Claude Agent SDK's arch-native CLI binary matches THIS machine. If
+# the image was built for a different CPU arch, the Claude Code backend would
+# otherwise fail only at the first agent turn; this surfaces it now (warns and
+# continues — the Pi backend is unaffected).
+node "$ROOT_DIR/scripts/check-claude-native.js" || true
+
 exec "$@"
