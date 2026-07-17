@@ -1,37 +1,56 @@
 # ExtraHop CLI Maintenance
 
-This document is for maintainers and deployment operators who need to replace
-the bundled ExtraHop CLI as new `excli` releases are produced.
+This document is for maintainers and deployment operators who need to move the
+pinned ExtraHop CLI reference as new `excli` releases are produced.
+
+## Redistribution note
+
+The excli binaries are **not committed to this repository**. Upstream
+[ExtraHop/agent-cli](https://github.com/ExtraHop/agent-cli) carries no license
+granting redistribution (unlike ExtraHop/agent-skills, which is MIT), so this
+project pins an upstream source and **fetches** the arch-matched release —
+checksum-verified — at build/install time instead of hosting the binaries.
 
 ## Stable Contract
 
 - Repository-root `./excli-interface` is the broker interface that the agent backend calls from session workspaces.
-- `vendor/excli/` is the bundled ExtraHop CLI release directory shipped with the package, exactly as the release drop provides it: `excli-<os>-<arch>-<version>.tar.gz` archives for macOS/Linux on AMD64/ARM64, the Windows AMD64 `.exe`, and the release's sha256 checksums file.
-- `bin/excli` is the active binary for this machine. Bootstrap selects the `vendor/excli/` archive for the detected OS/CPU, verifies it against the checksums file, and installs its binary; `bin/excli` is ignored by Git.
-- Replace the `vendor/excli/` directory (and `bin/excli` for the running machine); do not replace repository-root `./excli-interface`.
+- `vendor/excli/` holds only the **pinned source reference**, not binaries:
+  - `source.env` — the upstream `EXCLI_REPO`, immutable `EXCLI_COMMIT`, and `EXCLI_VERSION`.
+  - `excli_<version>_checksums.txt` — the committed sha256 trust anchor.
+- `scripts/fetch-excli.sh` downloads the arch-matched archive from the pinned commit and verifies it against the committed checksums before installing `bin/excli` (ignored by Git). The Docker build, the container entrypoint self-heal, and `scripts/bootstrap.sh` all use it.
 - The broker passes argv through unchanged, injects `EXTRAHOP_*` credentials
   only into the `bin/excli` child process, and streams stdout/stderr/exit
   status back to the interface.
 
 As long as new `excli` releases keep the same command-line and environment
-credential contract, replacing the binary does not require application code
-changes.
+credential contract, moving the pin does not require application code changes.
 
-## Updating the Bundled Release (packaging)
+## Bumping the pinned release (packaging)
 
-New CLI releases arrive as a directory of per-platform archives plus a
-checksums file. Updating the package is a directory swap:
+`dist/` in agent-cli only ever holds the latest version, and the repo has no
+tags/releases, so pin an **immutable commit SHA**:
 
-```bash
-rm -rf vendor/excli
-cp -R /path/to/new/release/excli vendor/excli
-rm -f vendor/excli/*Zone.Identifier   # Windows download metadata, if present
-./scripts/update-excli.sh vendor/excli   # refresh bin/excli on this machine too
-```
+1. Find the agent-cli commit that published the new version:
+   `gh api "repos/ExtraHop/agent-cli/commits?path=dist&per_page=1" --jq '.[0].sha'`
+2. Update `vendor/excli/source.env` — set `EXCLI_COMMIT` to that SHA and
+   `EXCLI_VERSION` to the new `<version>-<hash>` (from the `dist/` filenames).
+3. Replace the checksums trust anchor with the new release's excli lines. `V`
+   must be the **full `EXCLI_VERSION`** (`<version>-<hash>`, e.g.
+   `0.0.111-2fdebedca0`) so the filename matches what `fetch-excli.sh` looks for.
+   Fail closed — validate the download is non-empty before swapping the anchor:
+   ```bash
+   SHA=<new-commit-sha>; V=<version>-<hash>
+   tmp="$(mktemp)"
+   curl -fsSL "https://raw.githubusercontent.com/ExtraHop/agent-cli/$SHA/dist/excli_${V}_checksums.txt" \
+     | grep -E '  excli-' > "$tmp"
+   test -s "$tmp"   # abort if the fetch/grep produced nothing (wrong SHA/version)
+   mv "$tmp" "vendor/excli/excli_${V}_checksums.txt"
+   git rm vendor/excli/excli_<old-version>_checksums.txt
+   ```
+4. Verify the fetch end to end: `bash scripts/fetch-excli.sh /tmp/excli && /tmp/excli -version`.
 
-Commit the new `vendor/excli/` contents. Bootstrap and the updater select the
-right archive for each machine from that directory and verify it against the
-bundled checksums file, so no per-platform steps are needed.
+Commit `source.env` + the new checksums file. Bootstrap and the Docker build
+fetch and verify the right archive for each machine automatically.
 
 ## Updating This Machine
 

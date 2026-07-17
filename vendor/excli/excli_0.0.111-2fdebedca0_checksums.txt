@@ -1,0 +1,5 @@
+f4ad269e5061ce2664c23a6b0b8338c1b59c632148d560c06ec5eb9a004bad51  excli-windows-amd64-0.0.111-2fdebedca0.exe
+42b9d744bf4f61b6702e34b45461c03e1d79612a649cd2a6fce1a86e2931e295  excli-linux-amd64-0.0.111-2fdebedca0.tar.gz
+def21cb4fc04383f1bcd4f29503bfb063925c485d4510d8aff2f480c90d4361a  excli-linux-arm64-0.0.111-2fdebedca0.tar.gz
+be307779c35ed5655ca7a4156258aa497678920307068c3936d2fc9b182ebff0  excli-darwin-amd64-0.0.111-2fdebedca0.tar.gz
+eba437ac4b2b6da8c0d58c89f2ac4af358db00f072918941d5d913bbb726bc95  excli-darwin-arm64-0.0.111-2fdebedca0.tar.gz

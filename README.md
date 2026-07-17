@@ -27,13 +27,14 @@ is open. See [Governed write path](#governed-write-path) below.
 
 This package is intended to be clean deployable scaffolding: source, skills,
 templates, lockfiles, setup scripts, self-hosted Source Sans 3 webfont assets,
-the bundled ExtraHop CLI release under `vendor/excli/` (per-platform archives,
-the Windows binary, and their sha256 checksums), and the repository-root
-`./excli-interface` broker interface. The bootstrap script detects the
-operating system and CPU, verifies the matching archive against the release
-checksums, and installs its binary as `bin/excli`. It intentionally does not
-include installed dependencies, generated investigation workspaces, local
-credentials, logs, or session state.
+the pinned ExtraHop CLI source reference under `vendor/excli/` (`source.env` +
+the release sha256 checksums — **not** the binaries, which are fetched from the
+pinned upstream and checksum-verified at build/install time), and the
+repository-root `./excli-interface` broker interface. The bootstrap script
+detects the operating system and CPU, fetches the matching `excli` release,
+verifies it against the committed checksums, and installs it as `bin/excli`. It
+intentionally does not include installed dependencies, generated investigation
+workspaces, local credentials, logs, or session state.
 
 ## Quickstart — Docker Desktop
 
@@ -110,7 +111,7 @@ Prerequisites:
   API keys) or Claude Code (signed in via `claude` `/login`). If both are
   installed, pick one in Settings; sessions remember the backend that
   created them.
-- A bundled `vendor/excli/` release archive that matches the target platform (macOS and Linux, AMD64 and ARM64, are included), or an ExtraHop CLI (`excli`) release asset for that platform.
+- Network access to fetch the pinned `excli` release (checksum-verified, not bundled) — or, offline, provide it via `EXCLI_PATH`/`EXCLI_ARCHIVE`/a `vendor/excli-<os>-<arch>-*.tar.gz` drop-in, or point `EXCLI_URL` at an internal mirror.
 - Optional but recommended: `tshark` for packet/PCAP analysis.
 - ExtraHop API credentials for RevealX Enterprise or RevealX 360.
 
@@ -126,15 +127,15 @@ the web service in the background by default and prints the PID/log path. Use
 `./start.sh --foreground` if you want logs attached to the current terminal.
 
 Bootstrap repairs execute bits that zip round-trips can strip, detects the
-OS/CPU, and installs the matching bundled ExtraHop CLI archive from
-`vendor/excli/` (checksum-verified) as `bin/excli`. If even `start.sh` lost
+OS/CPU, and fetches + checksum-verifies the matching ExtraHop CLI release,
+installing it as `bin/excli`. If even `start.sh` lost
 its execute bit in transit, run `bash ./start.sh` once; setup restores the
 permissions from there.
 
 If you have an `excli` archive file:
 
 ```bash
-EXCLI_ARCHIVE=/path/to/excli-darwin-arm64-0.0.107.tar.gz ./start.sh
+EXCLI_ARCHIVE=/path/to/excli-darwin-arm64-0.0.111-2fdebedca0.tar.gz ./start.sh
 ```
 
 If `excli` is hosted at an internal URL:
@@ -144,7 +145,7 @@ EXCLI_URL=https://internal.example.com/excli-darwin-arm64.tar.gz ./start.sh
 ```
 
 If you put a matching archive under `vendor/`, for example
-`vendor/excli-linux-amd64-0.0.107.tar.gz`, the bootstrap script can discover it:
+`vendor/excli-linux-amd64-0.0.111-2fdebedca0.tar.gz`, the bootstrap script can discover it:
 
 ```bash
 ./start.sh
@@ -165,20 +166,20 @@ run `./start.sh --foreground`.
 - Run the app on localhost only. It has no built-in user authentication.
 - Use dedicated, least-privilege ExtraHop API credentials for testing.
 - Backend model/provider authentication is separate from ExtraHop credentials; complete Pi login/provider setup or Claude Code `/login` outside this repo as the same non-root user that runs `./start.sh`.
-- The package bundles the full ExtraHop CLI release under `vendor/excli/` (macOS and Linux archives for AMD64/ARM64, plus the Windows binary); setup selects, checksum-verifies, and installs the right one automatically.
+- The ExtraHop CLI is **not committed here** (its upstream repo grants no redistribution rights); setup fetches the platform-matched release from the pinned upstream source, checksum-verifies it, and installs `bin/excli` automatically.
 
 ## What Bootstrap Does
 
 `scripts/bootstrap.sh`:
 
-- restores execute bits on `start.sh`, `scripts/*.sh`, `./excli-interface`, and the bundled binaries, and tightens `.env` to 0600;
+- restores execute bits on `start.sh`, `scripts/*.sh`, `./excli-interface`, and `bin/excli`, and tightens `.env` to 0600;
 - verifies Node.js 22.19+ and npm are available;
 - runs `npm ci --omit=dev`;
 - installs Pi if neither `pi` nor `claude` is already on PATH;
 - verifies the repository-root `./excli-interface` broker interface;
-- verifies `bin/excli`, or installs it from `EXCLI_PATH`, `EXCLI_ARCHIVE`, `EXCLI_URL`, a loose `vendor/` drop-in archive, or the bundled `vendor/excli/` release archive matching the detected OS/CPU;
-- verifies archives against the sha256 checksums file shipped in the release directory;
-- replaces a `bin/excli` that cannot run on this machine (for example a macOS binary on Linux) with the bundled archive's binary for the detected platform;
+- verifies `bin/excli`, or installs it from `EXCLI_PATH`, `EXCLI_ARCHIVE`, `EXCLI_URL`, a loose `vendor/` drop-in archive, or by fetching the pinned upstream release matching the detected OS/CPU;
+- verifies fetched/provided archives against the committed sha256 checksums;
+- replaces a `bin/excli` that cannot run on this machine (for example a macOS binary on Linux) by re-fetching for the detected platform;
 - clears macOS quarantine from `bin/excli` when possible;
 - checks for `tshark` and can install it with `--with-tshark`;
 - optionally prompts for ExtraHop credentials and writes a local `.env`;
@@ -204,21 +205,27 @@ with the templates' light print theme.
 
 ### ExtraHop CLI Platform Selection
 
-The package bundles the ExtraHop CLI release under `vendor/excli/`: archives
-for macOS and Linux on AMD64 and ARM64, the Windows AMD64 binary, and the
-release's sha256 checksums file. Bootstrap detects the OS/CPU, verifies the
-matching archive against the checksums, and installs its binary as
-`bin/excli`; a wrong-platform `bin/excli` left over from another machine is
-replaced automatically. Updating the bundled CLI is a directory swap: replace
-`vendor/excli/` with the new release drop. For a platform without a bundled
-archive, download the correct `excli` from
-[customer.extrahop.com](https://customer.extrahop.com) in the ExtraHop User
-Forums, **Agentic Ops** group, then use `EXCLI_PATH`, `EXCLI_ARCHIVE`, or
-`EXCLI_URL` with bootstrap.
+The ExtraHop CLI is **not redistributed in this repository**. Its upstream repo
+[ExtraHop/agent-cli](https://github.com/ExtraHop/agent-cli) carries no license
+granting redistribution, so instead of committing the binaries, this project
+**fetches** the architecture-matched release from a pinned upstream commit and
+verifies it against the committed sha256 checksums at build/install time. The
+pin (repo, commit, version) lives in `vendor/excli/source.env`. Only the pin
+metadata is tracked — `source.env`, `excli_<version>_checksums.txt`, and this
+directory's `README.md` — never the binaries. Bootstrap detects the OS/CPU,
+fetches the matching archive, verifies it, and installs `bin/excli`; a
+wrong-platform `bin/excli` left over from another machine is re-fetched. To move
+to a newer excli, bump the pin in `source.env` and replace the checksums file
+(see [docs/EXCLI_MAINTENANCE.md](docs/EXCLI_MAINTENANCE.md)).
+
+For **offline / air-gapped** installs, provide the binary or archive yourself via
+`EXCLI_PATH`, `EXCLI_ARCHIVE`, or a loose `vendor/excli-<os>-<arch>-*.tar.gz`
+drop-in. `EXCLI_URL` is a separate option for pulling excli from a reachable
+**internal mirror** instead of the pinned GitHub source.
 
 ### macOS Gatekeeper
 
-If macOS blocks the bundled CLI after unzipping, run:
+If macOS blocks the fetched CLI, run:
 
 ```bash
 chmod +x ./bin/excli
@@ -407,8 +414,9 @@ How it maps to this release:
   match the model (`nomic-embed-text`=768, OpenAI `text-embedding-3-*`=1536), and
   changing them requires re-embedding existing memory (use a fresh namespace or
   reset the graph).
-- **excli:** extracted at build time from the platform archive bundled in
-  `vendor/excli/` (arch auto-detected). No macOS/Linux binary swap needed.
+- **excli:** fetched at build time from the pinned upstream source and
+  checksum-verified (arch auto-detected) — not committed to this repo, since
+  ExtraHop/agent-cli grants no redistribution rights.
 - **PDF export:** the Debian `weasyprint` package is installed, so HTML report
   PDF export works out of the box. `jq` is also installed for the agent's
   evidence-summarizing workflow.
@@ -525,10 +533,11 @@ graphiti/Dockerfile        Graphiti image patches (anthropic pkg, host check, te
 
 scripts/bootstrap.sh       One-command setup/start helper
 scripts/run-eval-live.sh   One command: rebuild + read-only eval instance + live harness run + dashboard
-scripts/update-excli.sh    Refresh the bundled excli release
+scripts/fetch-excli.sh      Fetch + checksum-verify excli from the pinned upstream source
+scripts/update-excli.sh    Refresh the pinned excli release (local override)
 scripts/check-syntax.sh    Syntax check helper
 start.sh                   Operator launcher that runs bootstrap with --start
-vendor/excli/              Bundled ExtraHop CLI release (per-platform archives + checksums)
+vendor/excli/              Pinned excli source ref (source.env + checksums); binaries are fetched, not committed
 bin/excli                  Active ExtraHop CLI binary installed by bootstrap; used only by the broker
 excli-interface            Agent-facing broker interface for excli
 requirements.txt           Optional WeasyPrint dependency for PDF export
@@ -536,7 +545,7 @@ requirements.txt           Optional WeasyPrint dependency for PDF export
 
 docs/AGENT_SETUP_GUIDE.md  Deployment runbook for coding agents
 docs/ALPHA_TESTER_NOTES.md Alpha-tester notes
-docs/EXCLI_MAINTENANCE.md  Maintenance guide for the bundled excli release
+docs/EXCLI_MAINTENANCE.md  Maintenance guide for the pinned excli release
 docs/CHANGES.md            Complete change inventory for the local (26.07.10) build
 docs/DESIGN-graphiti-memory.md       Memory-layer design and rationale
 docs/DESIGN-memory-visualization.md  Memory-graph viz design (v1 built: contextual recall; v2 = sigma real-time)
@@ -595,7 +604,7 @@ Every supported command in one place. All run from a clean clone after
 
 | Command | Purpose |
 | --- | --- |
-| `npm run bootstrap` | First-run setup + repair: verifies Node 22.19+/npm, installs the bundled excli for this platform, restores execute bits. |
+| `npm run bootstrap` | First-run setup + repair: verifies Node 22.19+/npm, fetches + installs excli for this platform, restores execute bits. |
 | `npm ci` | Install locked dependencies. |
 | `npm run check` | Syntax check (`node --check`) across `server.js`, `lib/`, `routes/`, `public/`, `smoke/`. |
 | `npm run lint` | Static analysis: ShellCheck over the shell scripts + Hadolint over the Dockerfiles (both must be installed). |

@@ -37,8 +37,9 @@ excli install inputs, in priority order:
   EXCLI_PATH=/path/to/excli
   EXCLI_ARCHIVE=/path/to/excli-darwin-arm64-*.tar.gz
   EXCLI_URL=https://.../excli-linux-amd64-*.tar.gz
-  vendor/excli-<os>-<arch>-*.tar.gz drop-in archives
-  vendor/excli/ bundled release archives (auto-selected for this OS/CPU)
+  vendor/excli-<os>-<arch>-*.tar.gz drop-in archives (offline)
+  otherwise fetched from the pinned upstream source, checksum-verified
+  (see vendor/excli/source.env)
 
 Examples:
   ./start.sh
@@ -373,8 +374,11 @@ install_excli() {
     if archive="$(detect_excli_archive)" && [[ -n "$archive" ]]; then
       log "bin/excli cannot run on this machine; reinstalling from $(basename "$archive")"
       install_excli_from_archive "$archive"
-      clear_excli_quarantine
+    else
+      log "bin/excli cannot run on this machine; re-fetching from the pinned upstream source"
+      bash "$ROOT_DIR/scripts/fetch-excli.sh" "$EXCLI_BINARY" || true
     fi
+    clear_excli_quarantine
     "$EXCLI_BINARY" -help >/dev/null 2>&1 || die "bin/excli could not run on this machine ($(uname -s) $(uname -m)). On macOS, if Gatekeeper blocked it, run: xattr -dr com.apple.quarantine ./bin/excli. Otherwise set EXCLI_PATH, EXCLI_ARCHIVE, or EXCLI_URL to a binary built for this platform and rerun."
     return
   fi
@@ -394,12 +398,11 @@ install_excli() {
       log "Installing excli from $(basename "$archive")"
       install_excli_from_archive "$archive"
     else
-      local bundled_list
-      # Human-readable error hint only, over our own controlled excli-* release
-      # filenames (no untrusted/odd names), so ls|grep is fine here.
-      # shellcheck disable=SC2010
-      bundled_list="$(ls "$EXCLI_RELEASE_DIR" 2>/dev/null | grep '^excli-' | tr '\n' ' ')"
-      die "No excli matches this platform ($(uname -s) $(uname -m)). Bundled release files: ${bundled_list:-none}. Set EXCLI_URL, EXCLI_ARCHIVE, or EXCLI_PATH, then rerun."
+      # excli is not bundled here: fetch the arch-matched release from the pinned
+      # upstream source (checksum-verified). See vendor/excli/source.env.
+      log "Fetching excli from the pinned upstream source"
+      bash "$ROOT_DIR/scripts/fetch-excli.sh" "$EXCLI_BINARY" \
+        || die "Could not fetch excli (offline?). Provide it via EXCLI_PATH, EXCLI_ARCHIVE, or EXCLI_URL, then rerun."
     fi
   fi
 

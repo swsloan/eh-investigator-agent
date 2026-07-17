@@ -53,22 +53,13 @@ COPY . .
 # entrypoint re-checks the RUN arch to catch a build-arch != run-arch mismatch.
 RUN node scripts/check-claude-native.js --build
 
-# excli: this release bundles every platform's CLI under vendor/excli/ with a
-# checksums file. Instead of the old macOS->Linux binary swap, extract the
-# archive matching THIS image's architecture into bin/excli at build time.
+# excli is NOT redistributed in this repo (ExtraHop/agent-cli grants no
+# redistribution rights). Fetch the arch-matched release from the pinned upstream
+# source and verify it against the committed checksums at build time — see
+# vendor/excli/source.env and scripts/fetch-excli.sh. Needs network + curl.
 RUN set -eux; \
-    arch="$(uname -m)"; \
-    case "$arch" in \
-      aarch64|arm64) exarch=arm64 ;; \
-      x86_64|amd64)  exarch=amd64 ;; \
-      *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
-    esac; \
-    archive="$(ls vendor/excli/excli-linux-${exarch}-*.tar.gz | head -n1)"; \
-    mkdir -p bin; \
-    tar -xzf "$archive" -C /tmp; \
-    cp "$(find /tmp -type f -name excli -perm -111 -print -quit)" bin/excli; \
-    chmod 0755 bin/excli; \
     chmod +x excli-interface start.sh scripts/*.sh; \
+    bash scripts/fetch-excli.sh bin/excli; \
     ./bin/excli -version >/dev/null 2>&1 || ./bin/excli -help >/dev/null
 
 EXPOSE 3100
