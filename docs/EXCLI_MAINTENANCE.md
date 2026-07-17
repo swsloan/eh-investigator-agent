@@ -34,11 +34,17 @@ tags/releases, so pin an **immutable commit SHA**:
    `gh api "repos/ExtraHop/agent-cli/commits?path=dist&per_page=1" --jq '.[0].sha'`
 2. Update `vendor/excli/source.env` — set `EXCLI_COMMIT` to that SHA and
    `EXCLI_VERSION` to the new `<version>-<hash>` (from the `dist/` filenames).
-3. Replace the checksums trust anchor with the new release's excli lines:
+3. Replace the checksums trust anchor with the new release's excli lines. `V`
+   must be the **full `EXCLI_VERSION`** (`<version>-<hash>`, e.g.
+   `0.0.111-2fdebedca0`) so the filename matches what `fetch-excli.sh` looks for.
+   Fail closed — validate the download is non-empty before swapping the anchor:
    ```bash
-   SHA=<new-commit-sha>; V=<new-version-hash>
-   curl -s "https://raw.githubusercontent.com/ExtraHop/agent-cli/$SHA/dist/excli_${V}_checksums.txt" \
-     | grep -E '  excli-' > "vendor/excli/excli_${V}_checksums.txt"
+   SHA=<new-commit-sha>; V=<version>-<hash>
+   tmp="$(mktemp)"
+   curl -fsSL "https://raw.githubusercontent.com/ExtraHop/agent-cli/$SHA/dist/excli_${V}_checksums.txt" \
+     | grep -E '  excli-' > "$tmp"
+   test -s "$tmp"   # abort if the fetch/grep produced nothing (wrong SHA/version)
+   mv "$tmp" "vendor/excli/excli_${V}_checksums.txt"
    git rm vendor/excli/excli_<old-version>_checksums.txt
    ```
 4. Verify the fetch end to end: `bash scripts/fetch-excli.sh /tmp/excli && /tmp/excli -version`.

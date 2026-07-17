@@ -111,7 +111,7 @@ Prerequisites:
   API keys) or Claude Code (signed in via `claude` `/login`). If both are
   installed, pick one in Settings; sessions remember the backend that
   created them.
-- Network access to fetch the pinned `excli` release (or an offline `EXCLI_PATH`/`EXCLI_ARCHIVE`/`EXCLI_URL`/`vendor/excli-<os>-<arch>-*.tar.gz` for the target platform). excli is fetched + checksum-verified, not bundled.
+- Network access to fetch the pinned `excli` release (checksum-verified, not bundled) — or, offline, provide it via `EXCLI_PATH`/`EXCLI_ARCHIVE`/a `vendor/excli-<os>-<arch>-*.tar.gz` drop-in, or point `EXCLI_URL` at an internal mirror.
 - Optional but recommended: `tshark` for packet/PCAP analysis.
 - ExtraHop API credentials for RevealX Enterprise or RevealX 360.
 
@@ -135,7 +135,7 @@ permissions from there.
 If you have an `excli` archive file:
 
 ```bash
-EXCLI_ARCHIVE=/path/to/excli-darwin-arm64-0.0.107.tar.gz ./start.sh
+EXCLI_ARCHIVE=/path/to/excli-darwin-arm64-0.0.111-2fdebedca0.tar.gz ./start.sh
 ```
 
 If `excli` is hosted at an internal URL:
@@ -145,7 +145,7 @@ EXCLI_URL=https://internal.example.com/excli-darwin-arm64.tar.gz ./start.sh
 ```
 
 If you put a matching archive under `vendor/`, for example
-`vendor/excli-linux-amd64-0.0.107.tar.gz`, the bootstrap script can discover it:
+`vendor/excli-linux-amd64-0.0.111-2fdebedca0.tar.gz`, the bootstrap script can discover it:
 
 ```bash
 ./start.sh
@@ -210,15 +210,18 @@ The ExtraHop CLI is **not redistributed in this repository**. Its upstream repo
 granting redistribution, so instead of committing the binaries, this project
 **fetches** the architecture-matched release from a pinned upstream commit and
 verifies it against the committed sha256 checksums at build/install time. The
-pin (repo, commit, version) lives in `vendor/excli/source.env`; only that file
-and `vendor/excli/excli_<version>_checksums.txt` are tracked. Bootstrap detects
-the OS/CPU, fetches the matching archive, verifies it, and installs `bin/excli`;
-a wrong-platform `bin/excli` left over from another machine is re-fetched. To
-move to a newer excli, bump the pin in `source.env` and replace the checksums
-file (see [docs/EXCLI_MAINTENANCE.md](docs/EXCLI_MAINTENANCE.md)). For offline /
-air-gapped installs, provide the binary or archive yourself via `EXCLI_PATH`,
-`EXCLI_ARCHIVE`, `EXCLI_URL`, or a loose `vendor/excli-<os>-<arch>-*.tar.gz`
-drop-in.
+pin (repo, commit, version) lives in `vendor/excli/source.env`. Only the pin
+metadata is tracked — `source.env`, `excli_<version>_checksums.txt`, and this
+directory's `README.md` — never the binaries. Bootstrap detects the OS/CPU,
+fetches the matching archive, verifies it, and installs `bin/excli`; a
+wrong-platform `bin/excli` left over from another machine is re-fetched. To move
+to a newer excli, bump the pin in `source.env` and replace the checksums file
+(see [docs/EXCLI_MAINTENANCE.md](docs/EXCLI_MAINTENANCE.md)).
+
+For **offline / air-gapped** installs, provide the binary or archive yourself via
+`EXCLI_PATH`, `EXCLI_ARCHIVE`, or a loose `vendor/excli-<os>-<arch>-*.tar.gz`
+drop-in. `EXCLI_URL` is a separate option for pulling excli from a reachable
+**internal mirror** instead of the pinned GitHub source.
 
 ### macOS Gatekeeper
 

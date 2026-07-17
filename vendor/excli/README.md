@@ -14,4 +14,6 @@ Tracked in this directory:
 The fetch is performed by [`scripts/fetch-excli.sh`](../../scripts/fetch-excli.sh),
 used by the Dockerfile build, the container entrypoint self-heal, and
 `scripts/bootstrap.sh`. For offline/air-gapped installs, provide a local archive
-or binary via `EXCLI_ARCHIVE`, `EXCLI_PATH`, or `EXCLI_URL` (see bootstrap help).
+or binary via `EXCLI_ARCHIVE`, `EXCLI_PATH`, or a `vendor/excli-<os>-<arch>-*.tar.gz`
+drop-in; `EXCLI_URL` pulls from a reachable internal mirror instead (see bootstrap
+help).
