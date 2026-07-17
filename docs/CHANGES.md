@@ -9,6 +9,20 @@ the complete change inventory.
 All work was done to run the app in Docker on a single host, add a long-term
 temporal-memory layer (Graphiti), and fix issues found along the way.
 
+### Added after 26.07.10 — CPU-architecture guard for the Claude backend (2026-07-17)
+
+- **Arch-native binary check.** The Claude Agent SDK ships its CLI as
+  per-architecture optional packages; an image built for one arch and run on
+  another failed only at the first agent turn with `Native CLI binary for
+  linux-<arch> not found`. New `lib/claude-native.js` (`claudeNativeBinaryStatus`,
+  unit-tested in `lib/claude-native.test.js`) plus `scripts/check-claude-native.js`
+  guard this on three layers: the **Dockerfile** fails the build if the build
+  arch's binary is absent (dropped optional deps); the **entrypoint** warns at
+  container start if the image arch ≠ host arch (Pi backend still runs); and the
+  **Claude backend `detect()`** now gates on the arch-native binary, so the UI
+  reports Claude unavailable with the concrete fix (rebuild for this arch) instead
+  of failing mid-session. Documented in the README, `DEPLOY-WITH-AI-AGENT.md`.
+
 ### Added after 26.07.10 — swappable memory embedder (2026-07-17)
 
 - **Configurable embedder.** The Graphiti embedding model, vector dimensions, and

@@ -85,6 +85,17 @@ rebuilds. After a `git pull`, update in place with
 `docker compose up -d --build eh-investigator`. Deeper detail (backends, auth
 modes, memory, excli) is in the [Docker](#docker) section below.
 
+> **CPU architecture must match.** The Claude Code backend uses an
+> architecture-native binary that the image build installs for the *build*
+> machine only. Build on the same host you run on (the usual case) and this is
+> automatic. If you build on one machine and deploy to a different-arch host,
+> cross-build for the target: `docker buildx build --platform linux/arm64 .` (or
+> `linux/amd64`). If a session ever fails with **"Native CLI binary for
+> linux-\<arch\> not found"**, the image was built for the wrong architecture —
+> rebuild with `docker compose build --no-cache eh-investigator`. The build now
+> fails fast and the container warns at startup so this is caught before you hit
+> it in a session.
+
 Deploying with an AI coding agent? Hand it the ready-made prompt in
 **[docs/DEPLOY-WITH-AI-AGENT.md](docs/DEPLOY-WITH-AI-AGENT.md)**.
 

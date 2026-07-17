@@ -37,6 +37,13 @@ PREREQUISITES (check first; stop and tell me if any fail)
 - Git is available. The repo is public, so `git clone` needs no authentication.
   (If a clone ever fails with an auth error because access changed, stop and tell
   me rather than guessing.)
+- Build on (or for) the SAME CPU architecture you will run on. The Claude Code
+  backend ships an architecture-native binary that `docker build` installs for
+  the build machine only, so an image built for one arch (e.g. amd64/x86_64) will
+  fail on another (e.g. arm64/Apple Silicon, Graviton). Building and running on
+  the same host — the normal case — is correct automatically. Only if you build
+  on one machine and deploy to a different-arch host, build with
+  `docker buildx build --platform linux/<arch> .` for the target arch.
 
 STEPS
 1. Clone and enter the repo:
@@ -74,6 +81,15 @@ TROUBLESHOOTING
 - Build fails on image pulls: confirm Docker Desktop has internet access and
   enough disk; re-run `docker compose build`.
 - Ollama model download is slow: that's expected on first run; let it finish.
+- Build aborts with "Claude Agent SDK native binary for <arch> is not installed":
+  the build dropped optional npm dependencies. Do not set `--omit=optional` /
+  `NODE_ENV` that omits optional deps, and rebuild with `docker compose build
+  --no-cache eh-investigator`.
+- A session fails with "Native CLI binary for linux-<arch> not found": the image
+  was built for a different CPU architecture than it is running on. Rebuild on/for
+  the run host: `docker compose build --no-cache eh-investigator && docker compose
+  up -d` (or `docker buildx build --platform linux/<arch> .` when cross-building).
+  The container logs also print this warning at startup.
 - Do not modify docker-compose.yml, the Dockerfiles, or volume definitions;
   report any error instead of working around it.
 ```
@@ -92,3 +108,9 @@ TROUBLESHOOTING
 - **Data persistence.** Sessions, settings, and the memory graph persist in
   project-managed Docker volumes across restarts and rebuilds. To update after a
   `git pull`, rebuild just the app: `docker compose up -d --build eh-investigator`.
+- **CPU architecture.** The Claude Code backend uses an architecture-native binary
+  bundled by the Claude Agent SDK. The build fails fast if that binary is missing
+  for the build arch, and the container warns at startup if the image's arch does
+  not match the host — so the "Native CLI binary … not found" error is caught up
+  front. Build on the same host you run on (the default), or cross-build for the
+  target with `docker buildx build --platform linux/<arch>`.
