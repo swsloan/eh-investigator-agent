@@ -162,7 +162,9 @@ const actionIndex = new ActionIndex();
 const ACTION_EVENTS = new Set(['action_proposed', 'action_decided', 'action_result']);
 // Resolve a session's current title, or null if it no longer exists (lets the
 // index self-heal deleted sessions).
-const actionSessionTitle = (id) => (sessions.has(id) ? (sessions.get(id).title || 'New session') : null);
+const actionSessionInfo = (id) => (sessions.has(id)
+  ? { title: sessions.get(id).title || 'New session', running: !!sessions.get(id).running }
+  : null);
 
 function broadcast(sessionId, event) {
   const clients = sseClients.get(sessionId);
@@ -175,7 +177,7 @@ function broadcast(sessionId, event) {
   if (ACTION_EVENTS.has(event.type)) {
     actionIndex.apply(event.action);
     if (globalActionClients.size) {
-      const { pendingCount } = actionIndex.snapshot(actionSessionTitle);
+      const { pendingCount } = actionIndex.snapshot(actionSessionInfo);
       const data = `data: ${JSON.stringify(redact({ type: 'action_changed', pendingCount }))}\n\n`;
       for (const res of globalActionClients) res.write(data);
     }
@@ -404,7 +406,7 @@ app.use('/api/actions', actionsRouter({
   executeApproved: (action, opts) => excliBroker.executeApproved(action, opts),
   broadcast, // responses + SSE are redacted centrally (res.json override + broadcast)
   actionIndex,
-  getSessionTitle: actionSessionTitle,
+  getSessionInfo: actionSessionInfo,
   globalActionClients,
   redact, // /stream writes SSE directly (bypasses the res.json redactor)
 }));

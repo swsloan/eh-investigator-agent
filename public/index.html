@@ -168,11 +168,16 @@
     <div id="viewer-scrim" class="viewer-scrim hidden"></div>
 
     <!-- ===== Cross-session approvals panel ===== -->
-    <div id="approvals-modal" class="modal hidden">
+    <div id="approvals-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="approvals-title">
       <div class="modal-card approvals-card">
         <div class="modal-head">
-          <span>Pending approvals</span>
-          <button id="approvals-close" class="icon-btn" title="Close">
+          <span id="approvals-title">Pending approvals</span>
+          <span id="approvals-status" class="approvals-status hidden" title="Reconnecting to the live stream">reconnecting…</span>
+          <span class="modal-head-spacer"></span>
+          <button id="approvals-notify" class="icon-btn approvals-notify" type="button" aria-pressed="false" title="Notify me of new approvals">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
+          </button>
+          <button id="approvals-close" class="icon-btn" title="Close" aria-label="Close">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
           </button>
         </div>

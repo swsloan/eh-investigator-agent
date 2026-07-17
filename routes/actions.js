@@ -17,7 +17,7 @@ export function actionsRouter({
   executeApproved,
   broadcast = () => {},
   actionIndex = null,
-  getSessionTitle = () => '',
+  getSessionInfo = () => ({ title: '', running: false }),
   globalActionClients = new Set(),
   redact = (v) => v,
 }) {
@@ -38,7 +38,7 @@ export function actionsRouter({
    * filesystem scan if no index was wired. Read-only.
    */
   router.get('/pending', (req, res) => {
-    if (actionIndex) return res.json(actionIndex.snapshot(getSessionTitle));
+    if (actionIndex) return res.json(actionIndex.snapshot(getSessionInfo));
     const entries = [...sessions.values()].map((s) => ({
       sessionId: s.id,
       sessionTitle: s.title || 'New session',
@@ -60,7 +60,7 @@ export function actionsRouter({
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
     });
-    const pendingCount = actionIndex ? actionIndex.snapshot(getSessionTitle).pendingCount : 0;
+    const pendingCount = actionIndex ? actionIndex.snapshot(getSessionInfo).pendingCount : 0;
     res.write(`data: ${JSON.stringify(redact({ type: 'snapshot', pendingCount }))}\n\n`);
     globalActionClients.add(res);
     const keepalive = setInterval(() => {
