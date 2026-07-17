@@ -120,7 +120,9 @@ uploads the full JSON reports. It applies a deliberately narrow **merge gate**:
   images (`eh-graphiti-mcp` is built `FROM` an upstream base we do not control).
   These are tracked and remediated via issues rather than blocking merges on
   vulnerabilities we cannot fix directly (e.g. packages baked into an upstream
-  base image, or compiled into the fetched `excli` binary).
+  base image, or compiled into the fetched `excli` binary). Current tracking
+  issues: base-image bundled npm (#41), `excli` go-sdk upstream (#42), and the
+  `eh-graphiti-mcp` upstream base image (#43).
 
 Override with `TRIVY_GATE_IMAGES` / `TRIVY_GATE_SEVERITY`, or set
 `TRIVY_ENFORCE=0` to report without failing. Tighten the gate (e.g. add HIGH, or
