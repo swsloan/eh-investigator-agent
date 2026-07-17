@@ -4,6 +4,9 @@ node_modules/
 dist/
 bin/excli
 bin/backups/
+# Playwright browser-smoke outputs (never commit)
+test-results/
+playwright-report/
 
 # Runtime / local state (never commit)
 .env
