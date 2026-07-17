@@ -79,3 +79,49 @@ insecure setting as an automatic response to a certificate error.
 
 For a direct non-container Node.js run, set `NODE_EXTRA_CA_CERTS` to the PEM CA
 path and configure the relevant command-line client/system trust separately.
+
+### TLS trust matrix (validated)
+
+The app has three outbound TLS clients, each with its own verify/insecure knob.
+The behaviour was validated on 2026-07-17, credential-free, against a real
+RevealX 360 endpoint (`extrahop-se.api.cloud.extrahop.com`, a public
+Amazon-issued cert) — TLS verification happens during the handshake, before any
+OAuth, so no client secret is involved.
+
+| TLS client | Verify knob | verify-on, trusted CA | verify-on, untrusted CA | insecure override | custom/private CA |
+| --- | --- | --- | --- | --- | --- |
+| `excli` → appliance (Go binary) | `EXTRAHOP_INSECURE` (default `false`) | connects | fails closed | `=true` connects | via `SSL_CERT_FILE` (overlay) |
+| Node integrations (e.g. ReversingLabs) | `rejectUnauthorized: !insecure` | connects, `authorized=true` | `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` | `false` connects, `authorized=false` | via `NODE_EXTRA_CA_CERTS` / `ca:[…]` |
+| Memory proxy → Anthropic | no override (Node default) | connects, verify-on | fails closed | n/a (never disabled) | via `NODE_EXTRA_CA_CERTS` |
+
+Key results: verification **fails closed** against an untrusted CA (Node reports
+`UNABLE_TO_GET_ISSUER_CERT_LOCALLY`); the insecure escape hatch connects but
+still reports `authorized=false` (it bypasses rejection, it does not fake
+trust); and an injected custom CA changes the verification outcome, confirming
+the `NODE_EXTRA_CA_CERTS` / `update-ca-certificates` overlay path is honoured.
+
+Caveats: the validation endpoint is a public-CA cloud tenant, so the
+private-CA-on-an-appliance cell is validated by construction (the client honours
+an injected CA) rather than end-to-end against a privately issued cert. Note
+also that macOS system `curl` uses the system keychain and ignores `--cacert`;
+the Debian container's OpenSSL-linked `curl` honours it, so the container is the
+source of truth for the `curl`/`excli` fail-closed behaviour.
+
+## Vulnerability baseline
+
+`scripts/security-scan.sh` (run by the `image-security` workflow) scans every
+built image with Trivy for **fixable** HIGH and CRITICAL vulnerabilities and
+uploads the full JSON reports. It applies a deliberately narrow **merge gate**:
+
+- **Blocks the build** on any fixable **CRITICAL** in our own application image
+  (`eh-investigator-agent`). This image's own dependency tree currently
+  contributes zero fixable HIGH/CRITICAL findings.
+- **Report-only** for **HIGH** severity, and **report-only** for third-party
+  images (`eh-graphiti-mcp` is built `FROM` an upstream base we do not control).
+  These are tracked and remediated via issues rather than blocking merges on
+  vulnerabilities we cannot fix directly (e.g. packages baked into an upstream
+  base image, or compiled into the fetched `excli` binary).
+
+Override with `TRIVY_GATE_IMAGES` / `TRIVY_GATE_SEVERITY`, or set
+`TRIVY_ENFORCE=0` to report without failing. Tighten the gate (e.g. add HIGH, or
+add the third-party image) as the tracked findings are driven down.

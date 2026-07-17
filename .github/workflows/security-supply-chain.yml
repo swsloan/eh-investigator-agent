@@ -32,9 +32,10 @@ jobs:
         run: docker build -t eh-investigator-agent:ci .
       - name: Build Graphiti image
         run: docker build -t eh-graphiti-mcp:ci graphiti
-      - name: Report fixable high and critical vulnerabilities
-        env:
-          TRIVY_EXIT_CODE: "0"
+      - name: Scan images and enforce the CRITICAL merge gate
+        # Reports fixable HIGH+CRITICAL for every image; fails the build only on
+        # CRITICAL in our own application image (see scripts/security-scan.sh and
+        # docs/SECURITY-HARDENING.md -> "Vulnerability baseline").
         run: bash scripts/security-scan.sh
       - name: Generate SPDX SBOMs
         run: bash scripts/generate-sbom.sh
