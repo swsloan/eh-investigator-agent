@@ -6,9 +6,10 @@ committing, reviewing, merging, and releasing changes.
 ## Roadmap sequence
 
 Larger initiatives are planned as an ordered set of GitHub issues, each with its
-own scope, dependencies, and acceptance criteria. Consult the issue tracker for
-the current roadmap and work the phases in the order their recorded dependencies
-require.
+own scope, dependencies, and acceptance criteria. Find the current roadmap by
+filtering the issue tracker for the
+[`roadmap` label](https://github.com/swsloan/eh-investigator-agent/issues?q=is%3Aissue+state%3Aopen+label%3Aroadmap),
+and work the phases in the order their recorded dependencies require.
 
 Respect the dependencies recorded in those issues. Do not combine phases into a
 single pull request.
