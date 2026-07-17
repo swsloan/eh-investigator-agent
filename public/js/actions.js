@@ -23,6 +23,22 @@ function pendingCount(actions) {
   return actions.filter((a) => a.status === 'proposed').length;
 }
 
+// Staleness (C1): a proposed action waiting longer than this is flagged so an
+// approval sitting unnoticed (e.g. from an unattended run) stands out.
+export const STALE_AFTER_MS = 60 * 60 * 1000; // 1 hour
+
+/** Compact relative age, e.g. "just now", "5m", "3h", "2d". */
+export function relativeAge(createdAt, now = Date.now()) {
+  const ms = now - new Date(createdAt).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  return `${Math.floor(hr / 24)}d`;
+}
+
 /** Fetch and render the active session's actions. Guards against a late response
  *  arriving after the user switched sessions. */
 export async function refreshActions(sessionId) {
@@ -83,9 +99,13 @@ function renderActionsTray() {
  * (default: reflect it into the in-chat tray). The dashboard passes its own
  * handler. `showSession` prepends the origin session's title (cross-session view).
  */
-export function actionCard(action, { onResult, showSession = false } = {}) {
+export function actionCard(action, { onResult, showSession = false, showAge = false } = {}) {
+  const stale = action.status === 'proposed'
+    && Number.isFinite(new Date(action.createdAt).getTime())
+    && (Date.now() - new Date(action.createdAt).getTime()) > STALE_AFTER_MS;
+
   const card = document.createElement('div');
-  card.className = `action-card action-${action.status}`;
+  card.className = `action-card action-${action.status}${stale ? ' action-stale' : ''}`;
   card.dataset.actionId = action.id;
 
   if (showSession && action.sessionTitle) {
@@ -109,6 +129,13 @@ export function actionCard(action, { onResult, showSession = false } = {}) {
     destructive.className = 'action-destructive';
     destructive.textContent = 'destructive';
     headRow.appendChild(destructive);
+  }
+  if (showAge && action.createdAt) {
+    const age = document.createElement('span');
+    age.className = `action-age${stale ? ' stale' : ''}`;
+    age.textContent = relativeAge(action.createdAt);
+    age.title = `Proposed ${new Date(action.createdAt).toLocaleString()}`;
+    headRow.appendChild(age);
   }
 
   const label = document.createElement('div');
@@ -138,7 +165,16 @@ export function actionCard(action, { onResult, showSession = false } = {}) {
   card.appendChild(feedback);
 
   if (action.status === 'proposed') {
-    card.appendChild(actionButtons(action, feedback, onResult));
+    if (action.sessionRunning) {
+      // C2: the decide endpoint rejects (409) while the session's agent is
+      // working. Surface that here instead of letting the click fail.
+      const busy = document.createElement('div');
+      busy.className = 'action-busy';
+      busy.textContent = 'Session busy — the agent is working. You can decide this once it finishes.';
+      card.appendChild(busy);
+    } else {
+      card.appendChild(actionButtons(action, feedback, onResult));
+    }
   }
   return card;
 }

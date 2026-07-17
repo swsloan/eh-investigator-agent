@@ -3339,3 +3339,41 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 .approvals-open-session:hover { text-decoration: underline; }
 /* The origin label is redundant inside a grouped panel; group header carries it. */
 .approvals-body .action-origin { display: none; }
+
+/* ===== Phase C: staleness, session-busy, notify toggle, reconnect ===== */
+/* C1 — age chip + stale highlight */
+.action-age {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray);
+  white-space: nowrap;
+}
+.action-age.stale { color: var(--warn); }
+.action-card.action-stale { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 7%, var(--surface)); }
+@supports not (background: color-mix(in srgb, red, blue)) {
+  .action-card.action-stale { background: var(--surface); }
+}
+
+/* C2 — session-busy note (replaces the approve/reject buttons while running) */
+.action-busy {
+  margin-top: 10px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  background: var(--surface-sub);
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+}
+
+/* Panel head layout: spacer pushes the notify/close controls to the right */
+.modal-head-spacer { flex: 1; }
+.approvals-status {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warn);
+}
+
+/* C4 — notify toggle */
+.approvals-notify.on { color: var(--sapphire); }
+.approvals-notify.on svg { fill: color-mix(in srgb, var(--sapphire) 20%, transparent); }
