@@ -1,0 +1,10 @@
+# Hadolint baseline. We lint the Dockerfiles for structural/correctness issues,
+# but ignore a few opinionated or out-of-scope rules with rationale below. The
+# ignored version-pinning rules are the supply-chain hardening track's concern
+# (issue #22), not Phase 1 stabilization.
+ignored:
+  - DL3008  # apt package version pins are brittle across Debian point releases; base image is digest-pinned instead.
+  - DL3016  # npm global (pi / claude-code) version pinning is handled by the supply-chain work (#22).
+  - DL3059  # a few consecutive RUNs are kept intentionally for readable, cache-friendly layers.
+  - DL4006  # pipefail SHELL directive is deferred to the supply-chain Dockerfile rework (#22).
+  - SC2012  # `ls` over our own controlled vendor/excli glob is intentional and safe.

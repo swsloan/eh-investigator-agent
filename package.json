@@ -11,6 +11,7 @@
     "bootstrap": "bash scripts/bootstrap.sh",
     "check": "bash scripts/check-syntax.sh",
     "check:claude-sdk": "node scripts/check-claude-sdk.js",
+    "lint": "bash scripts/lint.sh",
     "smoke": "playwright test --reporter=line",
     "test": "node --test",
     "start": "node server.js",

@@ -598,6 +598,7 @@ Every supported command in one place. All run from a clean clone after
 | `npm run bootstrap` | First-run setup + repair: verifies Node 22.19+/npm, installs the bundled excli for this platform, restores execute bits. |
 | `npm ci` | Install locked dependencies. |
 | `npm run check` | Syntax check (`node --check`) across `server.js`, `lib/`, `routes/`, `public/`, `smoke/`. |
+| `npm run lint` | Static analysis: ShellCheck over the shell scripts + Hadolint over the Dockerfiles (both must be installed). |
 | `npm test` | Unit and module tests (`node --test`). |
 | `npm run smoke` | Minimal browser smoke: boots the app, loads the SPA, asserts `/api/health` is 200 and there are no console errors. Run `npx playwright install chromium` once first. |
 | `npm run check:claude-sdk` | Verify the Claude Agent SDK is importable and its arch-native CLI binary is present. |
