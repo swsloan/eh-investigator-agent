@@ -10,6 +10,21 @@ EXCLI_BINARY="$ROOT_DIR/bin/excli"
 
 log() { printf '\n[entrypoint] %s\n' "$*"; }
 
+install_custom_ca() {
+  local source="${EH_CUSTOM_CA_CERT:-}"
+  local target="/usr/local/share/ca-certificates/eh-investigator-custom-ca.crt"
+  [[ -n "$source" ]] || return 0
+  [[ -f "$source" && -s "$source" ]] || { log "ERROR: EH_CUSTOM_CA_CERT is missing or empty: $source"; return 1; }
+  if [[ "$source" != "$target" ]]; then
+    cp "$source" "$target"
+  fi
+  chmod 0644 "$target"
+  update-ca-certificates >/dev/null
+  export NODE_EXTRA_CA_CERTS="$target"
+  export SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
+  log "Installed the configured private CA for Node.js, excli, and system HTTPS clients."
+}
+
 excli_runs() {
   [[ -x "$EXCLI_BINARY" ]] && { "$EXCLI_BINARY" -version >/dev/null 2>&1 || "$EXCLI_BINARY" -help >/dev/null 2>&1; }
 }
@@ -42,6 +57,8 @@ install_excli_for_arch() {
   rm -rf "$tmp"
   log "Installed excli from $(basename "$archive")"
 }
+
+install_custom_ca || exit 1
 
 if excli_runs; then
   log "excli ready ($("$EXCLI_BINARY" -version 2>/dev/null | head -n1 || echo present))"

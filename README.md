@@ -276,9 +276,10 @@ cp .env.example .env      # then edit; keep it 0600, never commit it
 `.env.example` documents every supported variable, grouped into sections:
 
 - **RevealX connection** — `EXTRAHOP_HOST` plus either `EXTRAHOP_API_KEY`
-  (Enterprise) or `EXTRAHOP_CLIENT_ID`/`EXTRAHOP_CLIENT_SECRET` (360), and
-  `EXTRAHOP_INSECURE` for self-signed certs. This block is the only one required
-  to start.
+  (Enterprise) or `EXTRAHOP_CLIENT_ID`/`EXTRAHOP_CLIENT_SECRET` (360). TLS
+  verification stays enabled by default; private-CA appliances can use the
+  documented CA overlay, with `EXTRAHOP_INSECURE` retained only as an explicit
+  compatibility escape hatch. This block is the only one required to start.
 - **Claude / Anthropic** — `ANTHROPIC_API_KEY`, used by the Claude Code agent
   (apiKey sign-in) and by Graphiti memory extraction via the in-app proxy. Leave
   it blank to set it in Settings, or to run on a Claude Pro/Max subscription
@@ -286,7 +287,10 @@ cp .env.example .env      # then edit; keep it 0600, never commit it
   section).
 - **Long-term memory (Graphiti)** — `EH_MEMORY_GROUP_ID` (per-environment graph
   namespace; blank = derived from the RevealX host) and `EH_MEMORY_PROXY_TOKEN`
-  (guards the app's internal memory-LLM proxy). `MEMORY_ENABLED` and
+  (a routing guard for the local app-to-Graphiti proxy). The local default is
+  intentional; remote/shared deployments must use
+  `npm run compose:hardened -- up -d` to generate and synchronize a strong token.
+  `MEMORY_ENABLED` and
   `MEMORY_MCP_URL` are already set for you in `docker-compose.yml`.
 - **Graphiti stack tuning** and **local (non-Docker) overrides** — advanced,
   with sensible defaults; usually left untouched.
@@ -394,7 +398,10 @@ How it maps to this release:
   embeddings, wired into both backends so investigations recall prior context.
   Namespaced per monitored environment via `EH_MEMORY_GROUP_ID`. Memory
   extraction always uses the Anthropic API key through the app's `/memory-llm`
-  proxy. See [docs/DESIGN-graphiti-memory.md](docs/DESIGN-graphiti-memory.md).
+  proxy. The proxy accepts only the required Anthropic Messages operation and
+  applies bounded body, timeout, rate, and concurrency limits. See
+  [docs/DESIGN-graphiti-memory.md](docs/DESIGN-graphiti-memory.md) and
+  [docs/SECURITY-HARDENING.md](docs/SECURITY-HARDENING.md).
 - **Embedder (swappable):** the embedding model, its vector size, and the
   endpoint are configurable in **Settings → Memory → Embedder** (model /
   dimensions / OpenAI-compatible URL). The app writes them to
@@ -431,6 +438,11 @@ How it maps to this release:
   (`EH_MEMORY_GROUP_ID`, `EH_MEMORY_PROXY_TOKEN`) as needed. See
   [Configuration](#configuration) for the full breakdown. Anything left blank
   can be set in the in-app Settings gear, which takes precedence.
+
+For dependency pins, automated updates, image scanning, and SBOM artifacts, see
+[docs/DEPENDENCY-MAINTENANCE.md](docs/DEPENDENCY-MAINTENANCE.md). Security issues
+should follow [SECURITY.md](SECURITY.md); bundled artifact provenance is tracked
+in [docs/THIRD-PARTY-PROVENANCE.md](docs/THIRD-PARTY-PROVENANCE.md).
 
 ## Governed write path
 

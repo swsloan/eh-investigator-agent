@@ -1,0 +1,8 @@
+# Optional private-CA overlay for enterprise appliances. Set an absolute host
+# path in EH_CUSTOM_CA_HOST_PATH before applying this file.
+services:
+  eh-investigator:
+    environment:
+      EH_CUSTOM_CA_CERT: /run/eh-custom-ca/ca.crt
+    volumes:
+      - ${EH_CUSTOM_CA_HOST_PATH:?Set EH_CUSTOM_CA_HOST_PATH to a PEM CA certificate}:/run/eh-custom-ca/ca.crt:ro

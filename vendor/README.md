@@ -20,6 +20,11 @@ bundled CLI means replacing this directory with the new release drop (see
 `../docs/EXCLI_MAINTENANCE.md`). The Windows binary is not used by the web
 app; it ships for operators who need the CLI on Windows.
 
+Run `npm run verify:vendor` to verify every committed artifact. Integrity is
+not the same as provenance: the original source, retrieval date, and public
+redistribution permission still require owner confirmation. See
+`../docs/THIRD-PARTY-PROVENANCE.md` before publishing or replacing the bundle.
+
 ## Loose drop-in archives
 
 Archives placed directly in `vendor/`, for example

@@ -1,4 +1,4 @@
-FROM node:22-slim
+FROM node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
@@ -39,8 +39,8 @@ RUN echo "wireshark-common wireshark-common/install-setuid boolean false" | debc
 # Pi installs cleanly with --ignore-scripts. Claude Code must run its
 # postinstall to fetch its platform-native binary, so install it separately
 # without --ignore-scripts.
-RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent \
-    && npm install -g @anthropic-ai/claude-code \
+RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.80.10 \
+    && npm install -g @anthropic-ai/claude-code@2.1.212 \
     && claude --version
 
 COPY package.json package-lock.json ./
@@ -55,7 +55,9 @@ RUN node scripts/check-claude-native.js --build
 
 # excli: this release bundles every platform's CLI under vendor/excli/ with a
 # checksums file. Instead of the old macOS->Linux binary swap, extract the
-# archive matching THIS image's architecture into bin/excli at build time.
+# archive matching THIS image's architecture into bin/excli at build time. The
+# multi-platform release archives are removed from the final Linux image after
+# verification; they remain in the source distribution for host bootstrap.
 RUN set -eux; \
     arch="$(uname -m)"; \
     case "$arch" in \
@@ -64,12 +66,14 @@ RUN set -eux; \
       *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
     esac; \
     archive="$(ls vendor/excli/excli-linux-${exarch}-*.tar.gz | head -n1)"; \
+    extract_dir="$(mktemp -d)"; \
     mkdir -p bin; \
-    tar -xzf "$archive" -C /tmp; \
-    cp "$(find /tmp -type f -name excli -perm -111 -print -quit)" bin/excli; \
+    tar -xzf "$archive" -C "$extract_dir"; \
+    cp "$(find "$extract_dir" -type f -name excli -perm -111 -print -quit)" bin/excli; \
     chmod 0755 bin/excli; \
     chmod +x excli-interface start.sh scripts/*.sh; \
-    ./bin/excli -version >/dev/null 2>&1 || ./bin/excli -help >/dev/null
+    ./bin/excli -version >/dev/null 2>&1 || ./bin/excli -help >/dev/null; \
+    rm -rf "$extract_dir" vendor/excli
 
 EXPOSE 3100
 

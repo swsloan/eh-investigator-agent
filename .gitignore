@@ -2,6 +2,8 @@
 node_modules/
 .venv/
 dist/
+.runtime/
+artifacts/
 bin/excli
 bin/backups/
 # Playwright browser-smoke outputs (never commit)

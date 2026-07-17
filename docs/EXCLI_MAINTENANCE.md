@@ -19,6 +19,11 @@ changes.
 
 ## Updating the Bundled Release (packaging)
 
+Before accepting or redistributing a release, record its official source,
+retrieval date, trusted checksum/signature source, and redistribution terms in
+`THIRD-PARTY-PROVENANCE.md`. A checksum bundled beside a binary detects later
+changes but does not independently authenticate the publisher.
+
 New CLI releases arrive as a directory of per-platform archives plus a
 checksums file. Updating the package is a directory swap:
 
@@ -32,6 +37,9 @@ rm -f vendor/excli/*Zone.Identifier   # Windows download metadata, if present
 Commit the new `vendor/excli/` contents. Bootstrap and the updater select the
 right archive for each machine from that directory and verify it against the
 bundled checksums file, so no per-platform steps are needed.
+
+Run `npm run verify:vendor` before committing to verify every platform artifact,
+not only the archive selected for the maintainer's machine.
 
 ## Updating This Machine
 
