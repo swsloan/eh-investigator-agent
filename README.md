@@ -600,6 +600,13 @@ The server binds to `127.0.0.1` and defaults to port `3100`. Override with:
 PORT=3200 npm start
 ```
 
+## Contributing
+
+Changes are planned in GitHub issues and merged to `main` through pull requests.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the contributor entry point and
+[docs/GIT-WORKFLOW.md](docs/GIT-WORKFLOW.md) for the complete branch, commit,
+validation, review, merge, and release process.
+
 ## Security Notes
 
 This is a localhost tool. The web UI has no authentication, and the agent gets
