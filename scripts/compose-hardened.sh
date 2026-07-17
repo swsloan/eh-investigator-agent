@@ -43,10 +43,19 @@ compose_env=()
 if [[ -f "$ROOT_DIR/.env" ]]; then
   compose_env+=(--env-file "$ROOT_DIR/.env")
 fi
-compose_env+=(--env-file "$TOKEN_ENV")
+# Only load the generated token file when it exists. When EH_MEMORY_PROXY_TOKEN
+# is supplied via the environment we deliberately don't write it, and Compose
+# reads it straight from the shell env — passing --env-file for a missing file
+# would make `docker compose` abort.
+if [[ -s "$TOKEN_ENV" ]]; then
+  compose_env+=(--env-file "$TOKEN_ENV")
+fi
 
 cd "$ROOT_DIR"
-exec docker compose "${compose_env[@]}" \
+# ${arr[@]+"${arr[@]}"} expands to nothing when the array is empty, instead of
+# tripping `set -u` on bash < 4.4 (e.g. macOS's default bash 3.2) when neither
+# a .env nor a generated token file was added.
+exec docker compose ${compose_env[@]+"${compose_env[@]}"} \
   -f docker-compose.yml \
   -f docker-compose.hardened.yml \
   "$@"
