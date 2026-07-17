@@ -1,34 +1,34 @@
 # Third-party provenance and redistribution decisions
 
-## Bundled ExtraHop CLI
+## ExtraHop CLI (excli) — fetched, not redistributed
 
-The repository currently contains this release family under `vendor/excli/`:
+**Redistribution rights: none granted.** The upstream repo
+[ExtraHop/agent-cli](https://github.com/ExtraHop/agent-cli) is published with no
+license — GitHub detects none, there is no `LICENSE`/`NOTICE`, and the
+README/CHANGELOG carry no redistribution grant (a sibling repo, `agent-skills`,
+*is* MIT, so the gap is deliberate). Under default copyright that is
+all-rights-reserved, so this repository does **not** commit or redistribute the
+binaries.
 
-- version/build identifier: `0.0.107-c8d63d1bce`;
-- Darwin AMD64 and ARM64 archives;
-- Linux AMD64 and ARM64 archives;
-- Windows AMD64 executable;
-- publisher-supplied-looking SHA-256 checksum manifest.
+- **Official source:** `ExtraHop/agent-cli`, `dist/`, pinned to an immutable
+  commit in `vendor/excli/source.env` (`EXCLI_REPO` / `EXCLI_COMMIT` /
+  `EXCLI_VERSION`).
+- **Retrieval:** `scripts/fetch-excli.sh` downloads the arch-matched archive
+  from the pinned commit at build/install time and verifies it against the
+  committed `excli_<version>_checksums.txt` (the sha256 trust anchor). The Docker
+  build, the container entrypoint self-heal, and `scripts/bootstrap.sh` all use
+  it; offline installs can supply the binary via `EXCLI_PATH`/`EXCLI_ARCHIVE`/a
+  `vendor/` drop-in, or `EXCLI_URL` for an internal mirror.
+- **Integrity check:** `npm run verify:vendor` fetches every release archive from
+  the pinned source and confirms it matches the committed checksums, so a bad pin
+  or a tampered anchor fails CI. This detects change/corruption but does not
+  independently authenticate the publisher (the checksums come from the same
+  source), which is an accepted limitation absent an upstream signature.
 
-`npm run verify:vendor` verifies every artifact present in the repository
-against that manifest. This detects corruption or an accidental replacement,
-but it does not authenticate who produced the manifest.
-
-The following provenance fields are not established by repository evidence:
-
-- official download URL or internal release source;
-- retrieval date and person/system that retrieved it;
-- signature, attestation, or independently trusted checksum source;
-- license terms and permission to redistribute the binaries publicly.
-
-Repository owner/legal review must resolve those fields. Until then, do not
-describe the binaries as open source or confirmed redistributable, and do not
-remove them in a way that silently breaks the documented offline install.
-
-If redistribution is approved, record the grant/license and trusted source here
-and retain checksum validation. If it is not approved, first implement and test
-a controlled download from an official authenticated source, including an
-offline-deployment decision, before deleting the artifacts.
+Not established by repository evidence (and not required for the fetch model,
+but noted): an independent signature/attestation, and a formal redistribution
+license. If ExtraHop later publishes a license or signed releases, record the
+grant and trusted source here.
 
 ## Other bundled material
 

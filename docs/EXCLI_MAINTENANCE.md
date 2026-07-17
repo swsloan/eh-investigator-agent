@@ -57,8 +57,9 @@ tags/releases, so pin an **immutable commit SHA**:
 Commit `source.env` + the new checksums file. Bootstrap and the Docker build
 fetch and verify the right archive for each machine automatically.
 
-Run `npm run verify:vendor` before committing to verify every platform artifact,
-not only the archive selected for the maintainer's machine.
+Run `npm run verify:vendor` after bumping the pin: it fetches every release
+archive from the pinned source and confirms each matches the committed checksums
+(so a wrong SHA/version or a tampered anchor fails).
 
 ## Updating This Machine
 
