@@ -11,7 +11,7 @@
     "bootstrap": "bash scripts/bootstrap.sh",
     "check": "bash scripts/check-syntax.sh",
     "check:claude-sdk": "node scripts/check-claude-sdk.js",
-    "smoke": "playwright test smoke/spa-smoke.spec.js --reporter=line",
+    "smoke": "playwright test --reporter=line",
     "test": "node --test",
     "start": "node server.js",
     "setup:python": "python3 -m venv .venv && .venv/bin/python -m pip install --upgrade pip setuptools wheel && .venv/bin/python -m pip install -r requirements.txt",
