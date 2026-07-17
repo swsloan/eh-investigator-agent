@@ -1,0 +1,72 @@
+name: Planned task
+description: Define a scoped improvement with acceptance criteria and validation.
+title: ""
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for planned product, security, evaluation, documentation, or operational work. Do not include credentials, customer data, or vulnerability details that should be reported privately.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or outcome
+      description: What user/operator problem should be solved, and what outcome matters?
+      placeholder: Describe the current behavior and desired outcome.
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk
+      description: Use the definitions in docs/GIT-WORKFLOW.md.
+      options:
+        - Low
+        - Medium
+        - High
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: List in-scope work and explicit non-goals.
+      placeholder: |
+        In scope:
+        - [ ]
+
+        Out of scope:
+        -
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Use observable, testable outcomes.
+      placeholder: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation plan
+      description: Tests, manual checks, failure cases, and environments required.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and rollout constraints
+      description: Link prerequisite issues and describe migration, compatibility, or sequencing constraints.
+  - type: checkboxes
+    id: hygiene
+    attributes:
+      label: Hygiene
+      options:
+        - label: I searched for overlapping issues and pull requests.
+          required: true
+        - label: This issue contains no credentials, customer data, or private vulnerability details.
+          required: true

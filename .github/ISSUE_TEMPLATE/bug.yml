@@ -1,0 +1,76 @@
+name: Bug report
+description: Report a reproducible defect without sensitive data.
+title: "fix: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste credentials, customer traffic, investigation evidence, or private security findings. Use the private security-advisory link for vulnerabilities.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Provide the smallest safe sequence that reproduces the problem.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      options:
+        - Docker Compose
+        - Local start.sh
+        - Development / tests
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: VERSION value or git commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Agent backend
+      options:
+        - Pi
+        - Claude Code
+        - Both
+        - Not applicable
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description: Logs, screenshots, or errors with all secrets, customer identifiers, hosts, and traffic removed.
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact and workaround
+      description: Frequency, severity, data impact, and any safe workaround.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched for an existing report.
+          required: true
+        - label: I removed credentials, customer data, and private environment details.
+          required: true
