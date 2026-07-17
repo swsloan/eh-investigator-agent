@@ -104,7 +104,7 @@ Deploying with an AI coding agent? Hand it the ready-made prompt in
 Prerequisites:
 
 - macOS or Linux.
-- Node.js 20+ with npm.
+- Node.js 22.19+ with npm (required by current Pi releases; enforced by `engines`).
 - Network access for npm packages and agent-backend install.
 - At least one agent backend: Pi (with a provider configuration or provider
   API keys) or Claude Code (signed in via `claude` `/login`). If both are
@@ -172,7 +172,7 @@ run `./start.sh --foreground`.
 `scripts/bootstrap.sh`:
 
 - restores execute bits on `start.sh`, `scripts/*.sh`, `./excli-interface`, and the bundled binaries, and tightens `.env` to 0600;
-- verifies Node.js 20+ and npm are available;
+- verifies Node.js 22.19+ and npm are available;
 - runs `npm ci --omit=dev`;
 - installs Pi if neither `pi` nor `claude` is already on PATH;
 - verifies the repository-root `./excli-interface` broker interface;
@@ -588,41 +588,37 @@ Pi provider auth. Do not invent or store provider credentials in the repo.
 
 ## Development
 
-Run syntax checks:
+### Developer commands
 
-```bash
-npm run check
-```
+Every supported command in one place. All run from a clean clone after
+`npm ci` (or `./start.sh` / `npm run bootstrap` for first-run setup).
 
-Run tests:
+| Command | Purpose |
+| --- | --- |
+| `npm run bootstrap` | First-run setup + repair: verifies Node 22.19+/npm, installs the bundled excli for this platform, restores execute bits. |
+| `npm ci` | Install locked dependencies. |
+| `npm run check` | Syntax check (`node --check`) across `server.js`, `lib/`, `routes/`, `public/`, `smoke/`. |
+| `npm test` | Unit and module tests (`node --test`). |
+| `npm run smoke` | Minimal browser smoke: boots the app, loads the SPA, asserts `/api/health` is 200 and there are no console errors. Run `npx playwright install chromium` once first. |
+| `npm run check:claude-sdk` | Verify the Claude Agent SDK is importable and its arch-native CLI binary is present. |
+| `npm start` | Start the server (binds `127.0.0.1:3100`; override with `PORT=…`). |
+| `npm run setup:python` | Create the Python venv used by memory-extraction tooling. |
+| `npm run setup:weasyprint` | Install WeasyPrint (HTML→PDF export) plus the Python venv. |
+| `./start.sh` | Operator launcher: runs bootstrap, then starts the server in the background (`--foreground` to attach). |
+| `docker compose up -d --build` | Build and run the full stack (see [Quickstart — Docker Desktop](#quickstart--docker-desktop)). |
 
-```bash
-npm test
-```
-
-Run focused browser smoke coverage for the SPA:
-
-```bash
-npm run smoke
-```
-
-If Playwright's Chromium browser has not been installed on the machine yet, run
-`npx playwright install chromium` once. The smoke test serves the real frontend
-files with fixture API responses and covers app load console errors, session
-switching, settings save, workspace file preview, evidence summarization, and
-the readiness light.
-
-Start the server after setup:
-
-```bash
-npm start
-```
-
-The server binds to `127.0.0.1` and defaults to port `3100`. Override with:
+Override the port for `npm start`:
 
 ```bash
 PORT=3200 npm start
 ```
+
+### Application version
+
+The repo-root **`VERSION`** file is the single canonical application (bundle)
+version — it drives `docs/CHANGES.md`, the release/packaging convention, and the
+`version` field of `GET /api/health`. `package.json`'s `version` is not
+authoritative (it can't mirror the date-based value as valid semver).
 
 ## Contributing
 

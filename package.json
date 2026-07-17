@@ -1,14 +1,16 @@
 {
-  "name": "extrahop-demo-agent",
+  "name": "eh-investigator-agent",
   "version": "1.0.0",
   "description": "Web chat interface for an ExtraHop investigation agent, backed by the Pi coding agent or Claude Code",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.19"
+  },
   "scripts": {
     "bootstrap": "bash scripts/bootstrap.sh",
     "check": "bash scripts/check-syntax.sh",
     "check:claude-sdk": "node scripts/check-claude-sdk.js",
-    "package:dist": "bash scripts/package.sh",
     "smoke": "playwright test smoke/spa-smoke.spec.js --reporter=line",
     "test": "node --test",
     "start": "node server.js",
