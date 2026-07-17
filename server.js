@@ -344,6 +344,9 @@ app.use('/memory-llm', createMemoryLlmProxyHandler({
   getAnthropicApiKey: () => secretStore.get?.().anthropicApiKey || process.env.ANTHROPIC_API_KEY || '',
   proxyConfig: memoryProxyConfig,
   redactError: (message) => redactText(message, secretStore),
+  logBlockedOperation: (method, pathname) => console.warn(
+    `[memory-proxy] blocked disallowed operation ${method} ${pathname} — if Graphiti now requires it, add it to the allowlist in lib/memory-llm-proxy.js.`,
+  ),
 }));
 
 app.use('/api', localOriginGuard);
