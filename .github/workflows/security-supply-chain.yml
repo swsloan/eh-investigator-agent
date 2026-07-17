@@ -1,0 +1,48 @@
+name: security-supply-chain
+
+on:
+  pull_request: {}
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+
+  image-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Verify vendored ExtraHop artifacts
+        run: bash scripts/verify-vendored-artifacts.sh
+      - name: Validate local and hardened Compose profiles
+        run: |
+          docker compose config --quiet
+          npm run compose:hardened -- config --quiet
+      - name: Build application image
+        run: docker build -t eh-investigator-agent:ci .
+      - name: Build Graphiti image
+        run: docker build -t eh-graphiti-mcp:ci graphiti
+      - name: Report fixable high and critical vulnerabilities
+        env:
+          TRIVY_EXIT_CODE: "0"
+        run: bash scripts/security-scan.sh
+      - name: Generate SPDX SBOMs
+        run: bash scripts/generate-sbom.sh
+      - name: Upload security reports and SBOMs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-2-supply-chain-reports
+          path: |
+            artifacts/security/*.trivy.json
+            artifacts/sbom/*.spdx.json
+          if-no-files-found: error

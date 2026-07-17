@@ -459,8 +459,10 @@ Solution — an Anthropic proxy in the app (`server.js`, `/memory-llm`):
   the OpenAI LLM client.)
 - The proxy validates the token, swaps in the real key from the app secret
   store (fallback: `ANTHROPIC_API_KEY` env), forwards to `api.anthropic.com`,
-  and streams the response back. Mounted before `express.json`; outside the
-  `/api` origin guard.
+  and streams the response back. It allows only the observed
+  `POST /v1/messages` operation, uses constant-time token comparison, and
+  enforces configurable request-size, timeout, rate, and concurrency bounds.
+  Mounted before `express.json`; outside the `/api` origin guard.
 - Result: the real Anthropic key lives only in the app. Setting it in the UI
   takes effect for Graphiti extraction immediately — no `.env`, no restart. One
   key powers both the Claude backend (injected into sessions) and extraction.
@@ -468,6 +470,13 @@ Solution — an Anthropic proxy in the app (`server.js`, `/memory-llm`):
 Validated: token gate (correct → 200, wrong → 403); a real episode extracted
 with graphiti's LLM calls hitting `POST /memory-llm/v1/messages 200` (confirmed
 via httpx logs) and landing in FalkorDB.
+
+The known `eh-memory-proxy-local` value remains intentional for the loopback-only
+Compose profile. It is a routing guard, not protection from malicious local
+processes. `docker-compose.hardened.yml`, launched through
+`scripts/compose-hardened.sh`, generates and synchronizes a strong token and the
+server fails closed if a hardened/remote/shared profile receives the local
+default or a token shorter than 32 characters.
 
 ### Caveat
 In the Linux container the secret store is memory-only (no Keychain/Secret

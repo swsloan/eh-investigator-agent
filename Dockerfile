@@ -1,4 +1,4 @@
-FROM node:22-slim
+FROM node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
@@ -39,8 +39,8 @@ RUN echo "wireshark-common wireshark-common/install-setuid boolean false" | debc
 # Pi installs cleanly with --ignore-scripts. Claude Code must run its
 # postinstall to fetch its platform-native binary, so install it separately
 # without --ignore-scripts.
-RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent \
-    && npm install -g @anthropic-ai/claude-code \
+RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.80.10 \
+    && npm install -g @anthropic-ai/claude-code@2.1.212 \
     && claude --version
 
 COPY package.json package-lock.json ./

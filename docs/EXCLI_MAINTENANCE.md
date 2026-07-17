@@ -27,6 +27,11 @@ credential contract, moving the pin does not require application code changes.
 
 ## Bumping the pinned release (packaging)
 
+Provenance for the pinned release (source, retrieval, checksum authority) is
+recorded in [THIRD-PARTY-PROVENANCE.md](THIRD-PARTY-PROVENANCE.md). A checksum
+committed beside the pin detects later changes but does not independently
+authenticate the publisher.
+
 `dist/` in agent-cli only ever holds the latest version, and the repo has no
 tags/releases, so pin an **immutable commit SHA**:
 
@@ -51,6 +56,9 @@ tags/releases, so pin an **immutable commit SHA**:
 
 Commit `source.env` + the new checksums file. Bootstrap and the Docker build
 fetch and verify the right archive for each machine automatically.
+
+Run `npm run verify:vendor` before committing to verify every platform artifact,
+not only the archive selected for the maintainer's machine.
 
 ## Updating This Machine
 

@@ -2,6 +2,8 @@
 node_modules/
 .venv/
 dist/
+.runtime/
+artifacts/
 bin/excli
 bin/backups/
 # excli release binaries are NOT redistributed here — they are fetched from the
