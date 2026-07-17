@@ -4,6 +4,11 @@ node_modules/
 dist/
 bin/excli
 bin/backups/
+# excli release binaries are NOT redistributed here — they are fetched from the
+# pinned upstream source and checksum-verified at build/install time. Never
+# commit them; only vendor/excli/source.env + the checksums file are tracked.
+vendor/excli/*.tar.gz
+vendor/excli/*.exe
 # Playwright browser-smoke outputs (never commit)
 test-results/
 playwright-report/
@@ -22,6 +27,6 @@ eval/reports/
 .claude/
 .DS_Store
 
-# NOTE: vendor/excli/ archives ARE committed — the Dockerfile extracts the
-# platform-matched excli binary from them at build time. .env.example is the
-# template (no secrets) and IS committed.
+# NOTE: excli archives are fetched + checksum-verified at build/install time
+# (see vendor/excli/source.env and scripts/fetch-excli.sh), not committed.
+# .env.example is the template (no secrets) and IS committed.
