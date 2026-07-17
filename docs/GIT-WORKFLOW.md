@@ -5,12 +5,10 @@ committing, reviewing, merging, and releasing changes.
 
 ## Roadmap sequence
 
-The current hardening roadmap is tracked as four ordered GitHub issues:
-
-1. [#21 — Stabilize commands, CI, and versioning](https://github.com/swsloan/eh-investigator-agent/issues/21)
-2. [#22 — Harden proxy, dependencies, TLS, and repository security](https://github.com/swsloan/eh-investigator-agent/issues/22)
-3. [#23 — Verify governed writes and preserve audit evidence](https://github.com/swsloan/eh-investigator-agent/issues/23)
-4. [#24 — Isolate the agent runtime and add authenticated deployment](https://github.com/swsloan/eh-investigator-agent/issues/24)
+Larger initiatives are planned as an ordered set of GitHub issues, each with its
+own scope, dependencies, and acceptance criteria. Consult the issue tracker for
+the current roadmap and work the phases in the order their recorded dependencies
+require.
 
 Respect the dependencies recorded in those issues. Do not combine phases into a
 single pull request.
@@ -142,9 +140,9 @@ npm test
 | Secrets/auth/network boundaries | Negative security tests plus threat-model review |
 | Documentation only | Link/path review and any referenced generator/check |
 
-Until [#21](https://github.com/swsloan/eh-investigator-agent/issues/21) restores
-the advertised browser-smoke and packaging commands, record those missing checks
-openly rather than treating them as successful.
+If an advertised check is not currently wired up (for example, the browser-smoke
+or packaging commands), record that gap openly in the pull request rather than
+treating the check as successful.
 
 ## 6. Open a pull request
 
@@ -180,8 +178,8 @@ stale; never force-push `main`.
 Releases are deliberate changes, not a side effect of merging:
 
 1. Confirm `main` is green and the target commit is known.
-2. Update the single canonical version and release notes once #21 establishes
-   them.
+2. Update the single canonical version and release notes once the project
+   establishes them.
 3. Build from a clean checkout using pinned inputs.
 4. Record artifacts, checksums, SBOM/provenance, migration steps, and rollback.
 5. Tag the reviewed commit and publish the release.
