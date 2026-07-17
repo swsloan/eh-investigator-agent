@@ -9,6 +9,23 @@ the complete change inventory.
 All work was done to run the app in Docker on a single host, add a long-term
 temporal-memory layer (Graphiti), and fix issues found along the way.
 
+### Added after 26.07.10 — swappable memory embedder (2026-07-17)
+
+- **Configurable embedder.** The Graphiti embedding model, vector dimensions, and
+  OpenAI-compatible endpoint are now editable in **Settings → Memory → Embedder**
+  instead of being fixed in `graphiti/config.yaml`. The app persists them
+  (`memory.embedder` in `config.json`) and writes an app-managed
+  `graphiti/runtime/embedder.env` (new `lib/embedder-env.js`), which the
+  `graphiti-mcp` service reads via `env_file` (`required: false`). Absent
+  values fall back to `config.yaml`'s `${EMBEDDER_MODEL:…}` /
+  `${EMBEDDER_DIMENSIONS:768}` / `${OPENAI_API_URL:…}` defaults, so a fresh clone
+  is unchanged. Values are sanitized (safe charset, bounded dimensions,
+  http/https URL only) to prevent env-file injection. This is a **startup**
+  setting: after saving, `docker compose up -d graphiti-mcp` applies it; changing
+  dimensions requires re-embedding existing memory. `.env`'s former
+  `EMBEDDER_MODEL`/`EMBEDDER_DIMENSIONS` knobs are superseded by this file.
+  Tests: `lib/embedder-env.test.js`.
+
 ### Added after 26.07.10 — governed write path + cross-session approvals (2026-07-16)
 
 Ported from the Agent Studio feature review; all merged to `main` and validated

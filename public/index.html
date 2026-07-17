@@ -328,6 +328,21 @@
                 <input id="set-anthropic-key" type="password" placeholder="leave blank to keep current" autocomplete="off">
               </label>
               <div class="modal-note">Powers the Claude Code backend and memory extraction. A change here applies to new sessions immediately; the memory extraction sidecar picks up a new key on its next restart.</div>
+              <div class="panel-title" style="margin-top:1.1rem">Embedder</div>
+              <div class="panel-sub">The embedding model the memory graph uses. Any OpenAI-compatible endpoint works (local Ollama by default).</div>
+              <label class="field">
+                <span>Model <em>— must match the endpoint</em></span>
+                <input id="set-embedder-model" type="text" placeholder="nomic-embed-text" autocomplete="off" spellcheck="false">
+              </label>
+              <label class="field">
+                <span>Vector dimensions <em>— must match the model</em></span>
+                <input id="set-embedder-dimensions" type="number" min="1" max="16384" step="1" placeholder="768" autocomplete="off">
+              </label>
+              <label class="field">
+                <span>Endpoint <em>— OpenAI-compatible base URL</em></span>
+                <input id="set-embedder-endpoint" type="text" placeholder="http://ollama:11434/v1" autocomplete="off" spellcheck="false">
+              </label>
+              <div class="modal-note"><strong>Applies on memory-stack restart</strong>, not live: the embedder is read by the Graphiti sidecar at startup. After saving, run <code>docker compose up -d graphiti-mcp</code>. Changing <strong>dimensions</strong> also requires re-embedding existing memory (the vector size is fixed in the graph index), so switch to a fresh namespace or reset the graph.</div>
             </section>
 
             <section class="settings-panel hidden" data-panel="integrations" role="tabpanel">

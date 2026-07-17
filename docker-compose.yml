@@ -45,6 +45,10 @@ services:
       # Shared token the graphiti sidecar uses to authenticate to the app's
       # /memory-llm proxy (must match the sidecar's value).
       EH_MEMORY_PROXY_TOKEN: ${EH_MEMORY_PROXY_TOKEN:-eh-memory-proxy-local}
+      # Where the app writes the Graphiti embedder overrides (Settings → Memory →
+      # Embedder). Bind-mounted below so the graphiti-mcp service reads the same
+      # file via its env_file on restart.
+      EH_EMBEDDER_ENV_PATH: /app/graphiti/runtime/embedder.env
       # RevealX Enterprise
       EXTRAHOP_HOST: ${EXTRAHOP_HOST:-}
       EXTRAHOP_API_KEY: ${EXTRAHOP_API_KEY:-}
@@ -61,6 +65,10 @@ services:
       - claude_home:/root/.claude
       # Persisted app settings (config.json). See EH_CONFIG_PATH above.
       - config_data:/app/data
+      # App-managed embedder overrides, shared with graphiti-mcp's env_file. A
+      # directory bind (not a single file) so a fresh clone with no file yet
+      # doesn't get a directory created in its place.
+      - ./graphiti/runtime:/app/graphiti/runtime
     restart: unless-stopped
 
   # --- Graphiti temporal-memory stack (Phase 0 PoC) ---
@@ -118,10 +126,20 @@ services:
       ANTHROPIC_API_URL: "http://eh-investigator:3100/memory-llm"
       ANTHROPIC_BASE_URL: "http://eh-investigator:3100/memory-llm"
       ANTHROPIC_API_KEY: ${EH_MEMORY_PROXY_TOKEN:-eh-memory-proxy-local}
-      # Embedder → Ollama (OpenAI-compatible)
-      EMBEDDER_MODEL: ${EMBEDDER_MODEL:-nomic-embed-text}
-      OPENAI_API_URL: ${OPENAI_API_URL:-http://ollama:11434/v1}
+      # Embedder → any OpenAI-compatible endpoint (Ollama by default). The tunable
+      # bits (EMBEDDER_MODEL / EMBEDDER_DIMENSIONS / OPENAI_API_URL) come from the
+      # app-managed env_file below — edit them in Settings → Memory → Embedder, or
+      # by hand in graphiti/runtime/embedder.env. When the file (or a var) is
+      # absent, config.yaml's ${VAR:default} fallbacks apply. Dimensions must match
+      # the model (nomic-embed-text=768, OpenAI text-embedding-3-*=1536); changing
+      # it requires re-embedding existing memory.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-ollama}
+    # App-managed embedder overrides. Written by the app when Settings → Memory →
+    # Embedder changes; picked up on the next start of this service. Optional, so
+    # a fresh clone (no file yet) falls back to config.yaml defaults.
+    env_file:
+      - path: ./graphiti/runtime/embedder.env
+        required: false
     volumes:
       - ./graphiti/config.yaml:/app/mcp/config/config.yaml:ro
     ports:

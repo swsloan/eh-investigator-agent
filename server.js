@@ -24,6 +24,7 @@ import {
   loadConfig, loadDotEnv, resolveConfig, reversingLabsEnabled, saveConfig,
 } from './lib/settings.js';
 import { createSecretStore } from './lib/secrets.js';
+import { writeEmbedderEnv } from './lib/embedder-env.js';
 import { runEvalInApp } from './lib/eval-runner.js';
 import { runInjectionProbes } from './lib/injection-probe.js';
 import { buildDashboard } from './eval/dashboard/build.js';
@@ -86,6 +87,11 @@ if (!config.backend) {
 /** The stored config flattened to the active backend's model preferences. */
 const prefs = () => resolveConfig(config);
 const activeBackend = () => getBackend(prefs().backend);
+
+// Sync the app-managed embedder env file the Graphiti sidecar reads at startup,
+// so a persisted embedder config is reflected even after a hand-edit of
+// config.json. Best-effort; never fatal to boot.
+writeEmbedderEnv(prefs().memory?.embedder);
 
 const catalogs = new Map(); // backend id -> model catalog
 function catalogFor(backendId) {
@@ -280,6 +286,9 @@ async function generateTitle(session, userText) {
  */
 function onConfigChanged() {
   const settings = prefs();
+  // Re-emit the embedder env file so a Settings → Memory change lands where the
+  // Graphiti sidecar will read it on its next restart.
+  writeEmbedderEnv(settings.memory?.embedder);
   for (const session of [...sessions.values()]) {
     if (session.promptCount !== 0 || session.running) continue;
     let target = session;

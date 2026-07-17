@@ -9,6 +9,8 @@ bin/backups/
 .env
 config.json
 secrets.json
+# App-managed Graphiti embedder overrides (written from Settings → Memory).
+graphiti/runtime/
 *.log
 app.pid
 workspaces/
