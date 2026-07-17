@@ -39,6 +39,40 @@ a UI deploy.
 
 ---
 
+## 1b. Governed write path + cross-session approvals (2026-07-16 cycle)
+
+Newer than the 26.07.10 work below. Ported from the Agent Studio review; all
+merged to `main` and validated against the live appliance (`eh-lab`).
+
+- **Governed write path (propose → approve → execute).** The agent proposes
+  write-class excli actions via `./propose-action`; a human approves/rejects in
+  the UI; only the server-side `ExcliBroker.executeApproved()` runs the write.
+  The agent socket stays read-only always. New: `lib/action-store.js`,
+  `lib/action-broker.js`, `propose-action`, `routes/actions.js`, and the
+  `<pending-actions>` context block. See README → "Governed write path". (PR #12)
+- **Annotation-driven read/write classification.** `lib/excli-readonly.js` now
+  classifies tools by their MCP `readOnlyHint`/`destructiveHint` (`excli
+  -jsonschema`), denylist as fallback. Verified: matches the old denylist exactly
+  across all 20 tools. (PR #12)
+- **Cross-session approval dashboard** (`public/js/approvals.js`,
+  `lib/action-index.js`): header badge + panel listing pending approvals across
+  all sessions, real-time via a global SSE stream (`GET /api/actions/stream`),
+  with staleness flagging, a session-busy indicator, opt-in desktop
+  notifications, and a11y. (PRs #17 A, #18 B, #19 C)
+- **`main` branch protection** applied (require PR + `test` check, block
+  force-push/deletion; admin escape hatch on).
+- **Validation finding** (`docs/NOTES-write-path-validation.md`):
+  `update_detection` can report success without persisting `ticket_id` when
+  ticket tracking isn't configured — accepted ≠ persisted.
+- **Deferred, tracked:** #14 (Phase 3 discovery meta-tools — gated on measured
+  context cost); team approval queues (gated on auth). Phase 5 context hygiene
+  was evaluated and found redundant with the harness (see INTEGRATION-PLAN).
+
+Plan of record: `docs/INTEGRATION-PLAN-agent-studio-features.md` and
+`docs/PLAN-cross-session-approvals.md`.
+
+---
+
 ## 2. Completed this session
 
 **Deployment & platform** (all live, in bundle)

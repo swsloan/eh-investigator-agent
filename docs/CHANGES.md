@@ -9,6 +9,37 @@ the complete change inventory.
 All work was done to run the app in Docker on a single host, add a long-term
 temporal-memory layer (Graphiti), and fix issues found along the way.
 
+### Added after 26.07.10 — governed write path + cross-session approvals (2026-07-16)
+
+Ported from the Agent Studio feature review; all merged to `main` and validated
+against the live appliance. Full rationale in
+`INTEGRATION-PLAN-agent-studio-features.md` and `PLAN-cross-session-approvals.md`.
+
+- **Governed write path (propose → approve → execute).** The read-only agent can
+  now request changes: it proposes a write-class excli action via
+  `./propose-action`; a human approves/rejects in the UI; only the server-side
+  `ExcliBroker.executeApproved()` executes it (re-validated as write-class). The
+  agent's excli socket stays read-only always. New `lib/action-store.js` (records
+  + one-shot state machine + `<pending-actions>` context), `lib/action-broker.js`,
+  `propose-action`, `routes/actions.js`. (PR #12)
+- **Annotation-driven read/write gating.** `lib/excli-readonly.js` classifies
+  tools from their MCP `readOnlyHint`/`destructiveHint` (`excli -jsonschema`),
+  with the denylist + verb-prefix heuristic as fallback — so new write tools are
+  gated correctly by default. Matches the prior denylist exactly across all 20
+  tools. (PR #12)
+- **Approval UI.** In-chat approval tray per session (`public/js/actions.js`) plus
+  a real-time **cross-session dashboard** (`public/js/approvals.js`,
+  `lib/action-index.js`): header badge + panel over a global SSE stream
+  (`GET /api/actions/stream`, `GET /api/actions/pending`), with staleness
+  flagging, session-busy indicator, opt-in desktop notifications, and
+  accessibility. (PRs #17/#18/#19)
+- **`main` branch protection** (require PR + `test`; block force-push/deletion).
+- **Docs:** `NOTES-write-path-validation.md` (the `ticket_id` accepted-≠-persisted
+  finding), the two plan docs above, and this inventory.
+- **Deferred/tracked:** #14 Phase 3 discovery meta-tools (gated on measured
+  context cost); team approval queues (gated on auth). Phase 5 context hygiene
+  evaluated and dropped as redundant with the harness.
+
 ### Added in the 26.07.10 packaging
 - **Injection-probe harness (Warrant Phase 3) — the measurement vehicle, shipped.**
   The boundary was hardened (§A+§B) but resistance stayed *unmeasured*: the
