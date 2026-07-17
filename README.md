@@ -17,6 +17,14 @@ CLI, and exposes a browser chat UI with workspace file viewing, uploads,
 streaming tool activity, HTML investigation reports, and inline summaries for
 supported JSON evidence files.
 
+The agent's ExtraHop access is **read-only**: write-class REST operations are
+refused on the broker. To make a change it uses a **governed write path** — it
+*proposes* a write (`./propose-action`), and a human approves or rejects it in
+the UI, after which the server (never the agent) executes it. Pending approvals
+surface in an in-chat tray and a real-time **cross-session approval dashboard**
+(header badge + panel) so a proposal is never missed regardless of which session
+is open. See [Governed write path](#governed-write-path) below.
+
 This package is intended to be clean deployable scaffolding: source, skills,
 templates, lockfiles, setup scripts, self-hosted Source Sans 3 webfont assets,
 the bundled ExtraHop CLI release under `vendor/excli/` (per-platform archives,
@@ -401,6 +409,36 @@ How it maps to this release:
   [Configuration](#configuration) for the full breakdown. Anything left blank
   can be set in the in-app Settings gear, which takes precedence.
 
+## Governed write path
+
+The agent can investigate freely but cannot change your ExtraHop environment on
+its own. Writes follow a **propose → approve → execute** flow:
+
+1. **Propose.** Write-class excli tools are refused on the read-only broker. To
+   request a change the agent calls `./propose-action` with a `capabilityId`,
+   `params`, and a plain-language `label`. The proposal is validated against the
+   live capability catalog (unknown or read-only tools are rejected) and
+   persisted as a per-session record under `<workspace>/.actions/`. It does **not**
+   execute.
+2. **Approve.** A human approves or rejects it in the UI — an in-chat tray for
+   the active session, and a **cross-session dashboard** (header badge + panel)
+   that lists pending approvals across every session in real time, so a proposal
+   from a background or unattended run is never missed. Approvals show each
+   action's age (stale ones are flagged), a "session busy" state while that
+   session's agent is mid-turn, and optional desktop notifications.
+3. **Execute.** Only `POST /api/actions/:id/decide` (behind the local-origin
+   guard) can approve an action, and only the server-side executor
+   (`ExcliBroker.executeApproved`) runs the write — re-validating that it is a
+   write capability and that the session isn't read-only. The agent's own socket
+   stays read-only always; it can never execute a write directly.
+
+Read/write classification is annotation-driven: excli is an MCP server under the
+hood, so each tool self-describes via `readOnlyHint`/`destructiveHint`
+(`excli -jsonschema`), with a denylist + verb-prefix heuristic as a fail-safe
+fallback. Every action's live status is fed back into the agent's context
+(`<pending-actions>`), so it never reports a change as done unless it actually
+executed.
+
 ## Repository Layout
 
 ```text
@@ -418,8 +456,11 @@ lib/eval-cases.js          Merge analyst label overrides (edit/sign-off) over ba
 lib/eval-runner.js         In-app eval runner: run cases through the session machinery, capture cost, score
 lib/evidence-summary.js    JSON evidence summary classification, inline HTML, CSV export
 lib/evidence-backfill.js   Background device-metadata enrichment for evidence views
-lib/excli-broker.js        Local socket broker that injects ExtraHop creds only for excli
-lib/excli-readonly.js      excli tool classifier + read-only guard (EH_BROKER_READONLY, eval safety)
+lib/excli-broker.js        Local socket broker: injects creds for excli; privileged executeApproved() for approved writes
+lib/excli-readonly.js      Annotation-driven read/write classifier (readOnlyHint) + denylist fallback + read-only guard
+lib/action-store.js        File-based proposed-action records + one-shot state machine + <pending-actions> render
+lib/action-broker.js       Agent-facing ./propose-action socket (validates + persists a proposed write; never executes)
+lib/action-index.js        In-memory open-action index for the real-time cross-session approval dashboard
 lib/excli-cassette.js      excli record/replay store (cassettes) for offline eval runs
 lib/falkor-client.js       Dependency-free read-only FalkorDB (RESP) client (GRAPH.RO_QUERY)
 lib/memory-graph.js        Memory-graph queries (overview/search/neighbors/quality) + untyped-drift watch
@@ -434,8 +475,12 @@ lib/settings.js            Local settings, memory config, safe session env const
 lib/system-preflight.js    Local readiness checks for Pi, excli broker, packet tools, credentials
 lib/uploads.js             Upload naming and attachment validation helpers
 lib/wireshark.js           Wireshark detection for the "Open in Wireshark" action
-routes/                    Express route modules (settings, models, sessions, files, health, eval, memory-graph)
+routes/                    Express route modules (settings, models, sessions, files, health, eval, memory-graph, actions)
+routes/actions.js          Approval API: GET /pending + /stream (cross-session), POST /:id/decide (approve/reject → execute)
+propose-action             Agent interface (repo root): propose a write-class action for human approval
 public/                    Browser UI (incl. eval tab, memory-graph overlay, self-hosted Source Sans 3)
+public/js/actions.js       In-chat approval tray + shared action-card/decide (per-session pending writes)
+public/js/approvals.js     Cross-session approval dashboard: header badge + panel, live SSE stream, staleness/notify
 public/js/memory.js        Memory-graph overlay: SVG ego-network + inspector ("What do we know?")
 skills/                    Project-local skills (excli, architecture, reporting, workspace, investigation-memory, evidence-ladder)
 pi-extensions/graphiti-memory.ts  Pi memory tools (memory_search/memory_add) over the Graphiti MCP endpoint
@@ -574,6 +619,17 @@ expose the port beyond the local machine without adding authentication and
 sandboxing appropriate to your environment. Mutating API requests are
 restricted to local same-origin browser requests using host, origin/referrer,
 and fetch metadata checks.
+
+**Governed writes.** The agent cannot mutate ExtraHop: write-class excli tools
+are refused on its broker socket, so a write only ever happens server-side in
+`ExcliBroker.executeApproved()`, reached exclusively by a human approving a
+proposal via `POST /api/actions/:id/decide` (behind the local-origin guard) and
+re-validated as write-class before it runs. The agent proposes; a separate,
+human-gated path disposes. This keeps investigation read-only by default while
+still allowing remediation, and the classification is annotation-driven so a new
+write tool is gated correctly by default. Note the approval UI, like the rest of
+the app, has no authentication — reachability of the localhost port equals the
+ability to approve, so keep the port local (see above) until you add auth.
 
 **Secrets at rest.** With the file secret backend (the Docker deployment sets
 `EH_SECRETS_PATH`), credentials and API keys are stored as plaintext in a 0600
