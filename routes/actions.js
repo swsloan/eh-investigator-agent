@@ -113,8 +113,12 @@ export function actionsRouter({
 
       // Approve → execute. Persist the approval, then flip to executing before
       // dispatching so a crash mid-execution leaves a recoverable, non-'proposed'
-      // record (it will never silently re-run).
-      transitionAction(session.workspace, id, 'approved', { decidedAt, decidedBy: 'user' });
+      // record (it will never silently re-run). Broadcast BOTH transitions so the
+      // open-action index reflects every persisted state — otherwise, if the
+      // 'executing' write throws after 'approved' persisted, the index would keep
+      // reporting 'proposed' (stale badge) until restart.
+      const approved = transitionAction(session.workspace, id, 'approved', { decidedAt, decidedBy: 'user' });
+      broadcast(session.id, { type: 'action_decided', action: approved });
       const executing = transitionAction(session.workspace, id, 'executing', {});
       broadcast(session.id, { type: 'action_decided', action: executing });
 

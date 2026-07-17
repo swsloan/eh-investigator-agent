@@ -30,13 +30,21 @@ function openApprovals() {
   refreshApprovals(); // freshen on open
 }
 
-/** Fetch the cross-session aggregate; update the badge and (if open) the panel. */
+let refreshSeq = 0;
+
+/** Fetch the cross-session aggregate; update the badge and (if open) the panel.
+ *  Burst SSE pokes can overlap fetches — a sequence guard discards a superseded
+ *  (stale) response so it can't restore an older count/list over a newer one. */
 export async function refreshApprovals() {
+  const seq = ++refreshSeq;
+  let data;
   try {
-    lastData = await listPendingActions();
+    data = await listPendingActions();
   } catch {
-    lastData = { pendingCount: 0, actions: [] };
+    data = { pendingCount: 0, actions: [] };
   }
+  if (seq !== refreshSeq) return; // a newer refresh started; drop this stale result
+  lastData = data;
   updateBadge(lastData.pendingCount);
   if (isApprovalsOpen()) renderApprovalsBody(lastData);
 }
