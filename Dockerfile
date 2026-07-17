@@ -56,8 +56,11 @@ RUN node scripts/check-claude-native.js --build
 # excli: this release bundles every platform's CLI under vendor/excli/ with a
 # checksums file. Instead of the old macOS->Linux binary swap, extract the
 # archive matching THIS image's architecture into bin/excli at build time. The
-# multi-platform release archives are removed from the final Linux image after
-# verification; they remain in the source distribution for host bootstrap.
+# OTHER platforms' archives (and the checksums file) are dropped to slim the
+# image, but the matching-arch archive is KEPT so the entrypoint's self-heal
+# (scripts/docker-entrypoint.sh:install_excli_for_arch) can re-extract bin/excli
+# if it is ever lost. The full set remains in the source distribution for host
+# bootstrap.
 RUN set -eux; \
     arch="$(uname -m)"; \
     case "$arch" in \
@@ -73,7 +76,8 @@ RUN set -eux; \
     chmod 0755 bin/excli; \
     chmod +x excli-interface start.sh scripts/*.sh; \
     ./bin/excli -version >/dev/null 2>&1 || ./bin/excli -help >/dev/null; \
-    rm -rf "$extract_dir" vendor/excli
+    find vendor/excli -type f ! -name "$(basename "$archive")" -delete; \
+    rm -rf "$extract_dir"
 
 EXPOSE 3100
 
