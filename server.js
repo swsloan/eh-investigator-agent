@@ -11,6 +11,8 @@ import { createMemoryCoordinator } from './lib/memory-coordinator.js';
 import { BackendUpdateManager } from './lib/backend-updates.js';
 import { ExcliBroker } from './lib/excli-broker.js';
 import { ActionBroker } from './lib/action-broker.js';
+import { ActionIndex } from './lib/action-index.js';
+import { listActionsAcrossWorkspaces } from './lib/action-store.js';
 import { ReversingLabsBroker } from './lib/reversinglabs-broker.js';
 import { ResearchBroker } from './lib/research-broker.js';
 import { localOriginGuard } from './lib/local-origin.js';
@@ -153,11 +155,31 @@ const backendUpdates = new BackendUpdateManager({
   ),
 });
 
+// Cross-session approval dashboard (Phase B): an in-memory index of open actions
+// + a global SSE fan-out, so the badge/panel update in real time without polling.
+const globalActionClients = new Set(); // res objects subscribed to /api/actions/stream
+const actionIndex = new ActionIndex();
+const ACTION_EVENTS = new Set(['action_proposed', 'action_decided', 'action_result']);
+// Resolve a session's current title, or null if it no longer exists (lets the
+// index self-heal deleted sessions).
+const actionSessionTitle = (id) => (sessions.has(id) ? (sessions.get(id).title || 'New session') : null);
+
 function broadcast(sessionId, event) {
   const clients = sseClients.get(sessionId);
-  if (!clients) return;
-  const data = `data: ${JSON.stringify(redact(event))}\n\n`;
-  for (const res of clients) res.write(data);
+  if (clients) {
+    const data = `data: ${JSON.stringify(redact(event))}\n\n`;
+    for (const res of clients) res.write(data);
+  }
+  // Mirror action lifecycle events onto the global stream (all subscribers,
+  // regardless of which session they're viewing).
+  if (ACTION_EVENTS.has(event.type)) {
+    actionIndex.apply(event.action);
+    if (globalActionClients.size) {
+      const { pendingCount } = actionIndex.snapshot(actionSessionTitle);
+      const data = `data: ${JSON.stringify(redact({ type: 'action_changed', pendingCount }))}\n\n`;
+      for (const res of globalActionClients) res.write(data);
+    }
+  }
 }
 
 /**
@@ -220,6 +242,12 @@ function recoverState(workspace, opts) {
   return null;
 }
 restoreSessionsFromWorkspaces(WORKSPACES, createSession, { recoverState, redact });
+
+// Seed the open-action index once from the restored sessions (source of truth is
+// the file store; the index is kept current thereafter by the broadcast fan-out).
+actionIndex.seed(listActionsAcrossWorkspaces(
+  [...sessions.values()].map((s) => ({ sessionId: s.id, sessionTitle: s.title || 'New session', workspace: s.workspace })),
+).actions);
 
 /** One-shot throwaway backend call to name the session after its first message. */
 async function generateTitle(session, userText) {
@@ -375,6 +403,10 @@ app.use('/api/actions', actionsRouter({
   sessions,
   executeApproved: (action, opts) => excliBroker.executeApproved(action, opts),
   broadcast, // responses + SSE are redacted centrally (res.json override + broadcast)
+  actionIndex,
+  getSessionTitle: actionSessionTitle,
+  globalActionClients,
+  redact, // /stream writes SSE directly (bypasses the res.json redactor)
 }));
 app.use('/api/sessions', filesRouter({ sessions }));
 app.use('/api', healthRouter({
@@ -508,6 +540,8 @@ function listen(port, attemptsLeft) {
 listen(BASE_PORT, PORT_ATTEMPTS);
 
 function shutdown() {
+  for (const res of globalActionClients) { try { res.end(); } catch { /* already closed */ } }
+  globalActionClients.clear();
   for (const s of sessions.values()) s.dispose();
   excliBroker.stop();
   actionBroker.stop();
