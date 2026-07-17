@@ -146,6 +146,9 @@ detect_excli_archive() {
   pattern="excli-${platform}-*.tar.gz"
 
   shopt -s nullglob
+  # Deliberate globbing: $pattern must stay unquoted so the shell expands the
+  # excli-<platform>-*.tar.gz wildcard into the array (nullglob drops no-matches).
+  # shellcheck disable=SC2206
   local matches=( "$ROOT_DIR"/vendor/$pattern "$ROOT_DIR"/$pattern "$ROOT_DIR"/../ExtraHop\ CLI*"/"$pattern "$EXCLI_RELEASE_DIR"/$pattern )
   shopt -u nullglob
   if [[ "${#matches[@]}" -gt 0 ]]; then
@@ -392,6 +395,9 @@ install_excli() {
       install_excli_from_archive "$archive"
     else
       local bundled_list
+      # Human-readable error hint only, over our own controlled excli-* release
+      # filenames (no untrusted/odd names), so ls|grep is fine here.
+      # shellcheck disable=SC2010
       bundled_list="$(ls "$EXCLI_RELEASE_DIR" 2>/dev/null | grep '^excli-' | tr '\n' ' ')"
       die "No excli matches this platform ($(uname -s) $(uname -m)). Bundled release files: ${bundled_list:-none}. Set EXCLI_URL, EXCLI_ARCHIVE, or EXCLI_PATH, then rerun."
     fi

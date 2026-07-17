@@ -259,7 +259,7 @@ if [[ "$CREATE_BACKUP" -eq 1 && -e "$EXCLI_BINARY" ]]; then
   mkdir -p "$BACKUP_DIR"
   BACKUP_FILE="$BACKUP_DIR/excli-$(date +%Y%m%d-%H%M%S)"
   cp -p "$EXCLI_BINARY" "$BACKUP_FILE"
-  log "Backed up current binary to ${BACKUP_FILE#$ROOT_DIR/}"
+  log "Backed up current binary to ${BACKUP_FILE#"$ROOT_DIR"/}"
 fi
 
 TMP_INSTALL="$(mktemp "$ROOT_DIR/bin/excli.XXXXXX")"
@@ -269,7 +269,7 @@ clear_quarantine "$TMP_INSTALL"
 mv "$TMP_INSTALL" "$EXCLI_BINARY"
 TMP_INSTALL=""
 
-log "Installed ${EXCLI_BINARY#$ROOT_DIR/}"
+log "Installed ${EXCLI_BINARY#"$ROOT_DIR"/}"
 if [[ -n "$VERSION" ]]; then
   printf 'Detected version: %s\n' "$VERSION"
 fi
