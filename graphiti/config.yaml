@@ -27,7 +27,7 @@ llm:
 embedder:
   provider: "openai"                       # OpenAI-compatible client, pointed at Ollama
   model: ${EMBEDDER_MODEL:nomic-embed-text}
-  dimensions: 768                          # nomic-embed-text = 768 dims (not 1536)
+  dimensions: ${EMBEDDER_DIMENSIONS:768}   # must match the model (nomic-embed-text=768, OpenAI text-embedding-3-*=1536)
   providers:
     openai:
       api_key: ${OPENAI_API_KEY:ollama}    # Ollama ignores the key; dummy value

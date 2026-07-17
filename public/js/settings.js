@@ -631,6 +631,10 @@ export async function openSettings() {
   $('hint-clientsecret').textContent = settings.extrahop.clientSecretSet ? savedHint : '— not set';
   $('set-memory-enabled').checked = Boolean(settings.memory?.enabled);
   $('set-memory-url').value = settings.memory?.url || '';
+  const embedder = settings.memory?.embedder || {};
+  $('set-embedder-model').value = embedder.model || '';
+  $('set-embedder-dimensions').value = embedder.dimensions ?? '';
+  $('set-embedder-endpoint').value = embedder.endpoint || '';
   const wr = settings.integrations?.webResearch || {};
   $('set-research-provider').value = wr.provider || 'auto';
   $('set-brave-key').value = '';
@@ -728,6 +732,11 @@ async function saveSettings() {
     memory: {
       enabled: $('set-memory-enabled').checked,
       url: $('set-memory-url').value,
+      embedder: {
+        model: $('set-embedder-model').value,
+        dimensions: $('set-embedder-dimensions').value,
+        endpoint: $('set-embedder-endpoint').value,
+      },
     },
     integrations: {
       webResearch: {

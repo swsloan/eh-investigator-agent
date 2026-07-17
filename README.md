@@ -384,6 +384,18 @@ How it maps to this release:
   Namespaced per monitored environment via `EH_MEMORY_GROUP_ID`. Memory
   extraction always uses the Anthropic API key through the app's `/memory-llm`
   proxy. See [docs/DESIGN-graphiti-memory.md](docs/DESIGN-graphiti-memory.md).
+- **Embedder (swappable):** the embedding model, its vector size, and the
+  endpoint are configurable in **Settings → Memory → Embedder** (model /
+  dimensions / OpenAI-compatible URL). The app writes them to
+  `graphiti/runtime/embedder.env`, which `graphiti-mcp` reads via `env_file`;
+  when that file (or a value) is absent, `graphiti/config.yaml`'s
+  `${EMBEDDER_MODEL:…}` / `${EMBEDDER_DIMENSIONS:768}` / `${OPENAI_API_URL:…}`
+  defaults apply. This is a **startup**, not live, setting: after saving, run
+  `docker compose up -d graphiti-mcp` to apply. Point `OPENAI_API_URL` at any
+  OpenAI-compatible embedding server to move off local Ollama. Dimensions must
+  match the model (`nomic-embed-text`=768, OpenAI `text-embedding-3-*`=1536), and
+  changing them requires re-embedding existing memory (use a fresh namespace or
+  reset the graph).
 - **excli:** extracted at build time from the platform archive bundled in
   `vendor/excli/` (arch auto-detected). No macOS/Linux binary swap needed.
 - **PDF export:** the Debian `weasyprint` package is installed, so HTML report
@@ -497,6 +509,7 @@ docker-compose.eval.yml    Overlay for a read-only eval instance (eh-eval projec
 .dockerignore              Build-context excludes (host state, secrets)
 scripts/docker-entrypoint.sh  Self-heals bin/excli on container start
 graphiti/config.yaml       Graphiti LLM/embedder/store config + ExtraHop ontology
+graphiti/runtime/embedder.env  App-managed embedder overrides (gitignored; from Settings → Memory)
 graphiti/Dockerfile        Graphiti image patches (anthropic pkg, host check, temperature)
 
 scripts/bootstrap.sh       One-command setup/start helper
