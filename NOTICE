@@ -8,9 +8,10 @@ does not grant rights to vendor names, trademarks, logos, or binaries.
 Project license
 ---------------
 
-The repository owner has not yet selected a root project license. A LICENSE
-file must be added only after that owner decision; this NOTICE does not create
-an implied open-source license.
+This repository's own source is licensed under the MIT License; see the root
+LICENSE file. That grant covers this repository's code only — the third-party
+material listed in this NOTICE retains its own terms and is not relicensed by
+it.
 
 Source Sans 3
 -------------
@@ -34,11 +35,14 @@ ExtraHop and ReversingLabs names, logos, and other vendor artwork are the
 property of their respective owners. Their presence identifies integrations
 and does not transfer trademark rights.
 
-Bundled ExtraHop CLI artifacts
+Fetched ExtraHop CLI artifacts
 ------------------------------
 
-The excli artifacts under vendor/excli/ are integrity-checked against the
-bundled release checksum manifest. Their original download location, retrieval
-date, and redistribution grant are not recorded in the repository. The owner
-must confirm those facts before representing the binaries as redistributable.
-See docs/THIRD-PARTY-PROVENANCE.md.
+The excli binaries are not committed to or redistributed by this repository.
+Upstream ExtraHop/agent-cli grants no redistribution rights, so instead of
+bundling the binaries this project pins an upstream source in
+vendor/excli/source.env (EXCLI_REPO, immutable EXCLI_COMMIT, EXCLI_VERSION) and
+fetches the architecture-matched release at build/install time, verifying it
+against the committed vendor/excli/excli_<version>_checksums.txt trust anchor
+before use. The pinned commit records the exact upstream source and retrieval
+point. See docs/THIRD-PARTY-PROVENANCE.md and docs/EXCLI_MAINTENANCE.md.
