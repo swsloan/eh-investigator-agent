@@ -1,29 +1,31 @@
 # Vendor
 
-## excli/ — bundled ExtraHop CLI release
+## excli/ — pinned ExtraHop CLI source (fetched, not bundled)
 
-`excli/` is the CLI release drop shipped with the package, tracked in Git
-exactly as ExtraHop provides it:
+The `excli` binaries are **not** committed to this repository. Upstream
+[ExtraHop/agent-cli](https://github.com/ExtraHop/agent-cli) grants no
+redistribution rights, so `excli/` holds only the pinned upstream **source
+reference** — not the binaries:
 
 ```text
-excli-darwin-amd64-<version>.tar.gz
-excli-darwin-arm64-<version>.tar.gz
-excli-linux-amd64-<version>.tar.gz
-excli-linux-arm64-<version>.tar.gz
-excli-windows-amd64-<version>.exe
-excli_<version>_checksums.txt
+excli/source.env                     # pinned EXCLI_REPO / EXCLI_COMMIT / EXCLI_VERSION
+excli/excli_<version>_checksums.txt  # sha256 trust anchor for the fetch
 ```
 
-Bootstrap selects the archive matching the host OS/CPU, verifies it against
-the checksums file, and installs its binary as `bin/excli`. Updating the
-bundled CLI means replacing this directory with the new release drop (see
-`../docs/EXCLI_MAINTENANCE.md`). The Windows binary is not used by the web
-app; it ships for operators who need the CLI on Windows.
+Bootstrap, the Docker build, and the container entrypoint fetch the
+architecture-matched release from the pinned commit, verify it against the
+committed checksums, and install the binary as `bin/excli`. See
+[`excli/README.md`](excli/README.md) for the mechanism and
+`../docs/EXCLI_MAINTENANCE.md` for moving the pin.
+
+Run `npm run verify:vendor` to re-fetch each pinned archive and confirm it
+matches the committed checksums. Integrity is not the same as provenance: the
+upstream source and redistribution status are recorded in
+`../docs/THIRD-PARTY-PROVENANCE.md`.
 
 ## Loose drop-in archives
 
 Archives placed directly in `vendor/`, for example
-`vendor/excli-linux-amd64-0.0.108.tar.gz`, are local, uncommitted drop-ins.
-They take precedence over the bundled `excli/` release, so this is the
-easiest way to test a newer excli build without touching the packaged
-release. `vendor/excli-*.tar.gz` is ignored by Git.
+`vendor/excli-linux-amd64-0.0.111-2fdebedca0.tar.gz`, are local, uncommitted
+drop-ins for offline/air-gapped installs: bootstrap installs the matching one
+instead of fetching from upstream. `vendor/excli-*.tar.gz` is ignored by Git.

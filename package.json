@@ -13,6 +13,10 @@
     "check": "bash scripts/check-syntax.sh",
     "check:claude-sdk": "node scripts/check-claude-sdk.js",
     "lint": "bash scripts/lint.sh",
+    "compose:hardened": "bash scripts/compose-hardened.sh",
+    "sbom": "bash scripts/generate-sbom.sh",
+    "security:scan": "bash scripts/security-scan.sh",
+    "verify:vendor": "bash scripts/verify-vendored-artifacts.sh",
     "smoke": "playwright test --reporter=line",
     "test": "node --test",
     "start": "node server.js",
@@ -20,16 +24,16 @@
     "setup:weasyprint": "(/opt/homebrew/bin/brew install weasyprint || /usr/local/bin/brew install weasyprint || brew install weasyprint) && npm run setup:python"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.198",
-    "@highlightjs/cdn-assets": "^11.10.0",
-    "dompurify": "^3.2.0",
-    "express": "^4.21.0",
-    "ipaddr.js": "^2.2.0",
-    "linkedom": "^0.18.12",
-    "marked": "^15.0.0",
-    "multer": "^2.2.0"
+    "@anthropic-ai/claude-agent-sdk": "0.3.198",
+    "@highlightjs/cdn-assets": "11.11.1",
+    "dompurify": "3.4.11",
+    "express": "4.22.2",
+    "ipaddr.js": "2.2.0",
+    "linkedom": "0.18.12",
+    "marked": "15.0.12",
+    "multer": "2.2.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1"
+    "@playwright/test": "1.61.1"
   }
 }

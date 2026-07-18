@@ -1,0 +1,48 @@
+Third-party notices for ExtraHop Investigation Agent
+====================================================
+
+This file records third-party material included by or referenced from this
+repository. It does not replace the license text supplied by any dependency and
+does not grant rights to vendor names, trademarks, logos, or binaries.
+
+Project license
+---------------
+
+This repository's own source is licensed under the MIT License; see the root
+LICENSE file. That grant covers this repository's code only — the third-party
+material listed in this NOTICE retains its own terms and is not relicensed by
+it.
+
+Source Sans 3
+-------------
+
+The locally served Source Sans 3 font assets under
+public/vendor/source-sans-3/ retain their upstream license, included at
+public/vendor/source-sans-3/LICENSE.
+
+Package dependencies and container images
+------------------------------------------
+
+Node and Python packages retain the license metadata and notices distributed
+with those packages. Container base images and their contents retain their
+respective upstream licenses. Exact reviewed inputs are recorded in
+docs/DEPENDENCY-MAINTENANCE.md and generated SBOMs.
+
+Vendor marks and integration artwork
+-------------------------------------
+
+ExtraHop and ReversingLabs names, logos, and other vendor artwork are the
+property of their respective owners. Their presence identifies integrations
+and does not transfer trademark rights.
+
+Fetched ExtraHop CLI artifacts
+------------------------------
+
+The excli binaries are not committed to or redistributed by this repository.
+Upstream ExtraHop/agent-cli grants no redistribution rights, so instead of
+bundling the binaries this project pins an upstream source in
+vendor/excli/source.env (EXCLI_REPO, immutable EXCLI_COMMIT, EXCLI_VERSION) and
+fetches the architecture-matched release at build/install time, verifying it
+against the committed vendor/excli/excli_<version>_checksums.txt trust anchor
+before use. The pinned commit records the exact upstream source and retrieval
+point. See docs/THIRD-PARTY-PROVENANCE.md and docs/EXCLI_MAINTENANCE.md.

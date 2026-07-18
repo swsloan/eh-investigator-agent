@@ -1,0 +1,11 @@
+# Hardened-token overlay. Use scripts/compose-hardened.sh so a strong token is
+# generated once under .runtime/ and supplied identically to both services.
+services:
+  eh-investigator:
+    environment:
+      EH_DEPLOYMENT_PROFILE: "hardened"
+      EH_MEMORY_PROXY_TOKEN: ${EH_MEMORY_PROXY_TOKEN:?Use scripts/compose-hardened.sh to generate the hardened proxy token}
+
+  graphiti-mcp:
+    environment:
+      ANTHROPIC_API_KEY: ${EH_MEMORY_PROXY_TOKEN:?Use scripts/compose-hardened.sh to generate the hardened proxy token}

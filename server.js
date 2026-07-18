@@ -4,7 +4,6 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Readable } from 'node:stream';
 import { BACKENDS, detectBackends, getBackend, resolveBackendId } from './lib/backends/index.js';
 import { createChallengerCoordinator } from './lib/challenger-coordinator.js';
 import { createMemoryCoordinator } from './lib/memory-coordinator.js';
@@ -30,6 +29,7 @@ import { runInjectionProbes } from './lib/injection-probe.js';
 import { buildDashboard } from './eval/dashboard/build.js';
 import { createFalkorClient } from './lib/falkor-client.js';
 import { startDriftWatch } from './lib/memory-graph.js';
+import { createMemoryLlmProxyHandler, resolveMemoryProxyConfig } from './lib/memory-llm-proxy.js';
 import { evalRouter } from './routes/eval.js';
 import { memoryGraphRouter } from './routes/memory-graph.js';
 import { filesRouter } from './routes/files.js';
@@ -59,6 +59,16 @@ let config = loadConfig(undefined, {
   secretStore,
 });
 activateEnvSecrets(secretStore, envSecrets.secrets, 'env');
+
+function warnOnInsecureTls(settings) {
+  if (settings.extrahop?.insecure) {
+    console.warn('[security] WARNING: ExtraHop TLS certificate verification is disabled by explicit configuration.');
+  }
+  if (settings.integrations?.reversingLabs?.insecure) {
+    console.warn('[security] WARNING: ReversingLabs TLS certificate verification is disabled by explicit configuration.');
+  }
+}
+warnOnInsecureTls(config);
 
 // Memory (Graphiti) is opt-in and can be toggled via env for headless/container
 // installs, mirroring how ExtraHop creds accept env config.
@@ -289,6 +299,7 @@ function onConfigChanged() {
   // Re-emit the embedder env file so a Settings → Memory change lands where the
   // Graphiti sidecar will read it on its next restart.
   writeEmbedderEnv(settings.memory?.embedder);
+  warnOnInsecureTls(settings);
   for (const session of [...sessions.values()]) {
     if (session.promptCount !== 0 || session.running) continue;
     let target = session;
@@ -318,7 +329,7 @@ function onConfigChanged() {
   }
 }
 
-const MEMORY_PROXY_TOKEN = process.env.EH_MEMORY_PROXY_TOKEN || 'eh-memory-proxy-local';
+const memoryProxyConfig = resolveMemoryProxyConfig();
 
 const app = express();
 app.use(securityHeaders);
@@ -329,47 +340,14 @@ app.use(securityHeaders);
 // This lets the Anthropic key be set/rotated in Settings → Memory without
 // editing .env or restarting the sidecar. Mounted before express.json so the
 // request/response bodies stream through untouched.
-app.use('/memory-llm', async (req, res) => {
-  if ((req.headers['x-api-key'] || '') !== MEMORY_PROXY_TOKEN) {
-    return res.status(403).json({ error: 'forbidden' });
-  }
-  const realKey = secretStore.get?.().anthropicApiKey || process.env.ANTHROPIC_API_KEY || '';
-  if (!realKey) {
-    return res.status(503).json({ error: 'No Anthropic API key configured. Set it in Settings → Memory.' });
-  }
-  try {
-    const body = ['GET', 'HEAD'].includes(req.method)
-      ? undefined
-      : await new Promise((resolve, reject) => {
-          const chunks = [];
-          req.on('data', (c) => chunks.push(c));
-          req.on('end', () => resolve(Buffer.concat(chunks)));
-          req.on('error', reject);
-        });
-    const target = 'https://api.anthropic.com' + req.originalUrl.slice('/memory-llm'.length);
-    const upstream = await fetch(target, {
-      method: req.method,
-      headers: {
-        'content-type': req.headers['content-type'] || 'application/json',
-        accept: req.headers.accept || 'application/json',
-        'anthropic-version': req.headers['anthropic-version'] || '2023-06-01',
-        ...(req.headers['anthropic-beta'] ? { 'anthropic-beta': req.headers['anthropic-beta'] } : {}),
-        'x-api-key': realKey,
-      },
-      body,
-    });
-    res.status(upstream.status);
-    upstream.headers.forEach((v, k) => {
-      if (!['content-encoding', 'content-length', 'transfer-encoding', 'connection'].includes(k.toLowerCase())) {
-        res.setHeader(k, v);
-      }
-    });
-    if (upstream.body) Readable.fromWeb(upstream.body).pipe(res);
-    else res.end();
-  } catch (err) {
-    if (!res.headersSent) res.status(502).json({ error: redactText(err.message || 'memory LLM proxy failed', secretStore) });
-  }
-});
+app.use('/memory-llm', createMemoryLlmProxyHandler({
+  getAnthropicApiKey: () => secretStore.get?.().anthropicApiKey || process.env.ANTHROPIC_API_KEY || '',
+  proxyConfig: memoryProxyConfig,
+  redactError: (message) => redactText(message, secretStore),
+  logBlockedOperation: (method, pathname) => console.warn(
+    `[memory-proxy] blocked disallowed operation ${method} ${pathname} — if Graphiti now requires it, add it to the allowlist in lib/memory-llm-proxy.js.`,
+  ),
+}));
 
 app.use('/api', localOriginGuard);
 app.use(express.json({ limit: '2mb' }));

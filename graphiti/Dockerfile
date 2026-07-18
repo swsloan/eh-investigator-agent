@@ -10,11 +10,12 @@
 #     `graphiti-mcp`. This service is only reachable on the internal compose
 #     network and loopback-published (127.0.0.1:8000), consistent with the
 #     app's localhost-only model, so disabling the check here is safe.
-FROM zepai/knowledge-graph-mcp:standalone
+FROM zepai/knowledge-graph-mcp:standalone@sha256:460bafb39439d99ff001ea6ef03efbe0bd5d9e6afe2655edf926da4fd9df97c5
 
 # (1) Anthropic extra
 RUN VIRTUAL_ENV=/app/mcp/.venv /root/.local/bin/uv pip install \
-      --python /app/mcp/.venv/bin/python --no-cache anthropic \
+      --python /app/mcp/.venv/bin/python --no-cache \
+      anthropic==0.117.0 docstring-parser==0.18.0 \
     && /app/mcp/.venv/bin/python -c "from graphiti_core.llm_client.anthropic_client import AnthropicClient; import anthropic; print('anthropic', anthropic.__version__)"
 
 # (2) Disable DNS-rebinding Host validation on the FastMCP instance
