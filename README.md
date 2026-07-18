@@ -676,3 +676,14 @@ protect the volume accordingly. The memory-extraction path proxies Anthropic
 calls through the app (`/memory-llm`) so the graph containers never hold the raw
 key. Rotate any key that has passed through a shared channel (pasted into a
 chat, a ticket, or shell history).
+
+## License
+
+This project's own source is released under the [MIT License](LICENSE).
+
+The MIT grant covers **this repository's code only**. Third-party components
+that the build fetches or installs separately are **not** relicensed by it and
+retain their own terms — most notably the ExtraHop CLI (`excli`), which is
+fetched at build/install time and carries no redistribution grant of its own
+(see [docs/EXCLI_MAINTENANCE.md](docs/EXCLI_MAINTENANCE.md)), plus the base
+container images and the globally installed agent CLIs.
