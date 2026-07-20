@@ -4,8 +4,9 @@ A self-contained prompt you can hand to an AI coding agent (Claude Code, Cursor,
 etc.) to clone this repository and bring the whole stack up in Docker Desktop.
 
 It builds everything from source — the app and `graphiti-mcp` images build from
-committed Dockerfiles; `falkordb` and `ollama` pull public images; the ExtraHop
-CLI is extracted from the bundled archives under `vendor/excli/` at build time.
+committed Dockerfiles; `falkordb` and the llama.cpp `embeddings` server pull
+public images; the ExtraHop CLI is extracted from the bundled archives under
+`vendor/excli/` at build time.
 Nothing needs to be created beforehand, and no credentials are required just to
 start the containers.
 
@@ -31,9 +32,9 @@ the web UI is reachable. Report back the URL and health status when done.
 PREREQUISITES (check first; stop and tell me if any fail)
 - Docker Desktop is installed and running (`docker version` succeeds and shows a
   Server section; `docker compose version` shows Compose v2).
-- Docker Desktop has ~8 GB RAM and ~15 GB free disk available — the stack
-  includes an Ollama service that pulls a large image plus a local embedding
-  model on first build.
+- Docker Desktop has ~8 GB RAM and ~12 GB free disk available — the stack
+  includes a small llama.cpp embedding server image plus a ~274 MB local
+  embedding model downloaded on first run.
 - Git is available. The repo is public, so `git clone` needs no authentication.
   (If a clone ever fails with an auth error because access changed, stop and tell
   me rather than guessing.)
@@ -52,17 +53,18 @@ STEPS
 2. Read the "Quickstart — Docker Desktop" section of README.md and follow it. In
    short:
      docker compose build      # builds the app + graphiti-mcp images from source
-     docker compose up -d       # starts app, graphiti-mcp, falkordb, ollama
+     docker compose up -d       # starts app, graphiti-mcp, falkordb, embeddings
    The first build takes several minutes (npm install, image pulls, model
    download). Do not pass an .env file — every compose variable has a safe
    default, and credentials are configured in the UI afterward.
 3. Wait for the app to become healthy, then verify:
-     docker compose ps          # expect 4 services running; app maps 127.0.0.1:3100
+     docker compose ps          # expect 4 services running (+ embeddings-init exited); app maps 127.0.0.1:3100
      curl -s http://localhost:3100/api/health   # expect JSON with "ok":true
 
 SUCCESS CRITERIA
 - `docker compose ps` shows all four services up (eh-investigator, graphiti-mcp,
-  falkordb, ollama).
+  falkordb, embeddings). A fifth, `embeddings-init`, runs once to download the
+  model and then exits (state "Exited (0)") — that is expected, not a failure.
 - `curl http://localhost:3100/api/health` returns {"ok":true,...}.
 - http://localhost:3100 loads the Investigator web UI.
 
@@ -80,7 +82,9 @@ TROUBLESHOOTING
   existing instance before starting another.
 - Build fails on image pulls: confirm Docker Desktop has internet access and
   enough disk; re-run `docker compose build`.
-- Ollama model download is slow: that's expected on first run; let it finish.
+- Embedding model download is slow: the `embeddings-init` container fetches a
+  ~274 MB model on first run; that's expected — let it finish. The `embeddings`
+  service waits for it before starting.
 - Build aborts with "Claude Agent SDK native binary for <arch> is not installed":
   the build dropped optional npm dependencies. Do not set `--omit=optional` /
   `NODE_ENV` that omits optional deps, and rebuild with `docker compose build

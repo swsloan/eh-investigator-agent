@@ -11,11 +11,12 @@ the working session hit context limits. Read this first; deep detail is in
 - Docker stack, project **`eh-investigator`**, launched from
   `~/Downloads/v26.07.07/eh-investigator-agent-cd9fae2e6d14/` (the live source
   dir; the `.env` with creds lives here). 4 services: **eh-investigator** (app,
-  `127.0.0.1:3100`), **graphiti-mcp**, **falkordb**, **ollama**.
+  `127.0.0.1:3100`), **graphiti-mcp**, **falkordb**, **embeddings** (llama.cpp;
+  plus a run-once **embeddings-init** that downloads the model and exits).
 - Production is running the **latest image** (rebuilt + recreated this session).
   Volumes persist across recreates: `workspaces`, `pi_home` (external),
   `config_data` (`/app/data` — config.json, secrets.json, **and the eval store
-  at `/app/data/eval`**), `falkordb_data`, `ollama_models`.
+  at `/app/data/eval`**), `falkordb_data`, `embed_models`.
 - Distributable bundle: `~/git-repo/ExtraHop Investigation Agent/v26.07.09/`
   (`eh-investigator-agent/` folder + `.tar.gz`). Kept in sync with source; every
   rebuild verified **secret-free** (no `.env`/`config.json`/`secrets.json`).
@@ -79,7 +80,7 @@ Plan of record: `docs/INTEGRATION-PLAN-agent-studio-features.md` and
 - Docker packaging (Dockerfile, compose, entrypoint), loopback-only, `IS_SANDBOX=1`.
 - Both backends installed (Pi + Claude Code); Claude subscription/API-key auth.
 - Settings/secrets persistence (`config_data`), file secret backend.
-- Graphiti temporal-memory layer (FalkorDB + Ollama embeddings), wired into both backends.
+- Graphiti temporal-memory layer (FalkorDB + local llama.cpp embeddings), wired into both backends.
 
 **Investigation quality (Warrant Phase 1)**
 - `skills/evidence-ladder/SKILL.md` — metrics→records→packets discipline,

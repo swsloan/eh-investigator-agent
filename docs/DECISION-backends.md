@@ -72,22 +72,29 @@ default is a deliberate choice, not an accident of history.
 
 Today the local-LLM story is **partial**. The pieces that already run locally:
 
-- **Embeddings** — Ollama `nomic-embed-text` (in the base `docker-compose.yml`).
-- **Memory extraction** — the `docker-compose.qwen.yml` overlay flips *only the
-  Graphiti extraction LLM* to local Ollama `qwen2.5:14b`.
+- **Embeddings** — nomic-embed-text v1.5 served by the local llama.cpp
+  `embeddings` service (in the base `docker-compose.yml`).
+- **Memory extraction** — can be pointed at any OpenAI-compatible endpoint by
+  setting `LLM_PROVIDER=openai` + `OPENAI_LLM_API_URL`/`MODEL_NAME`. (A local
+  `qwen2.5:14b` comparison overlay was evaluated and retired — see
+  [DESIGN-graphiti-memory.md](DESIGN-graphiti-memory.md), Phase 0 part 2: on
+  CPU-only Docker it was ~45× slower than cloud and dropped the highest-value
+  facts.)
 
-What that overlay does **not** touch: **the investigator agent itself.** Whichever
-backend runs the investigation still uses Anthropic. So "fully on-prem" is not yet
-achievable, because the agent doing the actual RevealX analysis is the largest
-data-exposure surface, and it's still cloud-bound.
+What local extraction does **not** touch: **the investigator agent itself.**
+Whichever backend runs the investigation still uses Anthropic. So "fully on-prem"
+is not yet achievable, because the agent doing the actual RevealX analysis is the
+largest data-exposure surface, and it's still cloud-bound.
 
 To close the gap, roughly in order:
 
 1. **Point Pi's investigator at a local model.** Configure Pi's provider to an
-   OpenAI-compatible local endpoint (Ollama) and select a local `provider/id`
-   model as `mainModel`. Persist that provider config in the `pi_home` volume so
-   it survives restarts. This is the core missing wiring — the investigator, not
-   just extraction, must run locally.
+   OpenAI-compatible local endpoint and select a local `provider/id` model as
+   `mainModel`. Persist that provider config in the `pi_home` volume so it
+   survives restarts. This is the core missing wiring — the investigator, not
+   just extraction, must run locally. Note the bundled `embeddings` service is
+   embedding-only; running an investigator locally needs a separate general LLM
+   server (e.g. Ollama or llama.cpp with a chat model).
 2. **Add a first-class deployment mode, not an overlay.** Promote the local path
    to a documented configuration (e.g. `docker-compose.onprem.yml` or a Settings
    toggle) that sets Pi + local extraction + local embeddings together, with a

@@ -14,7 +14,7 @@ pull request.
 | Node base image | `node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3` |
 | Graphiti base image | `zepai/knowledge-graph-mcp:standalone@sha256:460bafb39439d99ff001ea6ef03efbe0bd5d9e6afe2655edf926da4fd9df97c5` |
 | FalkorDB image | `falkordb/falkordb:latest@sha256:9042fdc4e53f5390ca5a3993aa71506523970efb40ffb9a98e6a4b1a9a4f8862` |
-| Ollama image | `ollama/ollama:latest@sha256:6345fbc18bd73a1e16404be681dbc6fd291a027cab43ed541abe78c4c81051b0` |
+| Embedding server image | `ghcr.io/ggml-org/llama.cpp:server@sha256:e10504c7f5c5bacece7e7e5957760eee53868642d853fe5ecfe8611065929a24` |
 | Pi CLI | `@earendil-works/pi-coding-agent@0.80.10` |
 | Claude Code CLI | `@anthropic-ai/claude-code@2.1.212` |
 | Graphiti Anthropic Python SDK | `anthropic==0.117.0` |
@@ -25,6 +25,25 @@ pull request.
 The image digests are multi-architecture manifest digests supporting the
 project's AMD64/ARM64 Docker paths. The package lockfile remains authoritative
 for transitive Node dependencies and installations use `npm ci`.
+
+**Runtime-downloaded input — embedding model (pinned + verified).** The
+`embeddings-init` service in `docker-compose.yml` downloads
+`nomic-embed-text-v1.5.f16.gguf` (~274 MB) into the `embed_models` volume on
+first run. It is pinned to an immutable HuggingFace commit revision (not `main`)
+and its sha256 is verified before install; a mismatch fails the container. The
+pin lives in that service's environment:
+
+| Field | Value |
+| --- | --- |
+| `MODEL_REPO` | `nomic-ai/nomic-embed-text-v1.5-GGUF` |
+| `MODEL_REVISION` | `0188c9bf409793f810680a5a431e7b899c46104c` |
+| `MODEL_SHA256` | `f7af6f66802f4df86eda10fe9bbcfc75c39562bed48ef6ace719a251cf1c2fdb` |
+
+To advance: bump `MODEL_REVISION`, download once, and replace `MODEL_SHA256`
+with the new file's `sha256sum` (equals the file's Git-LFS `oid` at that
+revision). Replaced the Ollama image (removed 2026-07-20): it was 7.03 GB, of
+which 3.5 GB was GPU (CUDA/JetPack) runtimes that cannot execute on this
+project's CPU-only Docker paths.
 
 ## Automated review
 

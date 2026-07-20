@@ -96,12 +96,93 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # Local extraction embeddings (nomic-embed-text) via Ollama's OpenAI-compatible
-  # endpoint, so embeddings never leave the host. The model is pulled after start.
-  ollama:
-    image: ollama/ollama:latest@sha256:6345fbc18bd73a1e16404be681dbc6fd291a027cab43ed541abe78c4c81051b0
+  # One-shot model fetch. Downloads the nomic-embed-text GGUF into the shared
+  # volume on first run, then exits; subsequent `up` calls find the file and
+  # skip the download. Keeps the 274 MB weight file out of the repo while still
+  # making a fresh clone work with no manual step.
+  #
+  # Supply-chain pin: fetched by immutable commit revision (not `main`) and
+  # verified against the expected sha256 before it is put in place. A hash
+  # mismatch fails the container (and thus `up`) rather than serving unexpected
+  # weights. To advance: bump MODEL_REVISION, download once, and replace
+  # MODEL_SHA256 with the new file's `sha256sum`. The sha256 is the LFS `oid` of
+  # the file at that revision and equals 768-dim nomic-embed-text-v1.5 f16.
+  embeddings-init:
+    image: alpine:3.20
+    environment:
+      MODEL_REPO: nomic-ai/nomic-embed-text-v1.5-GGUF
+      MODEL_FILE: nomic-embed-text-v1.5.f16.gguf
+      MODEL_REVISION: 0188c9bf409793f810680a5a431e7b899c46104c
+      MODEL_SHA256: f7af6f66802f4df86eda10fe9bbcfc75c39562bed48ef6ace719a251cf1c2fdb
     volumes:
-      - ollama_models:/root/.ollama
+      - embed_models:/models
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        f="/models/$$MODEL_FILE"
+        verify() { echo "$$MODEL_SHA256  $$1" | sha256sum -c - >/dev/null 2>&1; }
+        if [ -s "$$f" ] && verify "$$f"; then
+          echo "model present and verified, skipping download"; exit 0
+        fi
+        [ -s "$$f" ] && echo "existing model failed checksum — re-downloading"
+        echo "fetching $$MODEL_FILE @ $$MODEL_REVISION (~274 MB)..."
+        apk add --no-cache curl
+        curl -fsSL -o "$$f.part" \
+          "https://huggingface.co/$$MODEL_REPO/resolve/$$MODEL_REVISION/$$MODEL_FILE"
+        if ! verify "$$f.part"; then
+          echo "CHECKSUM MISMATCH — refusing to install; expected $$MODEL_SHA256"
+          echo "got: $$(sha256sum "$$f.part" | cut -d' ' -f1)"
+          rm -f "$$f.part"; exit 1
+        fi
+        mv "$$f.part" "$$f"
+        echo "model ready (sha256 verified)"
+    restart: "no"
+
+  # Local embeddings (nomic-embed-text v1.5) via llama.cpp's OpenAI-compatible
+  # /v1/embeddings endpoint, so embeddings never leave the host. Replaced Ollama
+  # (2026-07-20): Ollama's image is 7.03 GB, of which 3.5 GB is CUDA that can
+  # never execute here (Docker on macOS has no GPU passthrough) — llama.cpp is
+  # 1.17 GB. Verified bit-identical output vs Ollama on the same weights
+  # (max elementwise delta 8.8e-08); see docs/DESIGN-graphiti-memory.md.
+  #
+  # -c/-b/-ub 2048 all match the model's real training context. nomic-bert is
+  # trained at 2048 tokens; Ollama ran it at num_ctx 8192 and silently truncated
+  # anything longer, so long inputs were being embedded from a fraction of their
+  # text. llama.cpp instead rejects oversized input with a clear 500. Practical
+  # ceiling is ~6000 chars; the largest real episode observed is ~2465.
+  embeddings:
+    image: ghcr.io/ggml-org/llama.cpp:server@sha256:e10504c7f5c5bacece7e7e5957760eee53868642d853fe5ecfe8611065929a24
+    depends_on:
+      embeddings-init:
+        condition: service_completed_successfully
+    volumes:
+      - embed_models:/models:ro
+    command:
+      - -m
+      - /models/nomic-embed-text-v1.5.f16.gguf
+      - --embedding
+      - --pooling
+      - mean
+      - -c
+      - "2048"
+      - -b
+      - "2048"
+      - -ub
+      - "2048"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+    # Not published to the host: llama.cpp's server allows all CORS origins and
+    # takes no API key, so it stays on the compose network only.
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
 
   # Graphiti MCP server (HTTP transport on :8000/mcp/). Anthropic does the
@@ -115,6 +196,8 @@ services:
     depends_on:
       falkordb:
         condition: service_healthy
+      embeddings:
+        condition: service_healthy
     environment:
       CONFIG_PATH: /app/mcp/config/config.yaml
       FALKORDB_URI: redis://falkordb:6379
@@ -127,18 +210,24 @@ services:
       # UI-managed key. Graphiti authenticates to the proxy with the shared
       # token (not the real key), so the real key lives only in the app.
       # The MCP factory drops the config api_url for the Anthropic client, so
-      # redirect via the SDK's own env var (as with OPENAI_BASE_URL for Ollama).
+      # redirect via the SDK's own env var (as with OPENAI_BASE_URL for the
+      # local embedding server).
       ANTHROPIC_API_URL: "http://eh-investigator:3100/memory-llm"
       ANTHROPIC_BASE_URL: "http://eh-investigator:3100/memory-llm"
       ANTHROPIC_API_KEY: ${EH_MEMORY_PROXY_TOKEN:-eh-memory-proxy-local}
-      # Embedder → any OpenAI-compatible endpoint (Ollama by default). The tunable
-      # bits (EMBEDDER_MODEL / EMBEDDER_DIMENSIONS / OPENAI_API_URL) come from the
-      # app-managed env_file below — edit them in Settings → Memory → Embedder, or
-      # by hand in graphiti/runtime/embedder.env. When the file (or a var) is
-      # absent, config.yaml's ${VAR:default} fallbacks apply. Dimensions must match
-      # the model (nomic-embed-text=768, OpenAI text-embedding-3-*=1536); changing
-      # it requires re-embedding existing memory.
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-ollama}
+      # Embedder → any OpenAI-compatible endpoint (the local llama.cpp
+      # `embeddings` service by default). The tunable bits (EMBEDDER_MODEL /
+      # EMBEDDER_DIMENSIONS / OPENAI_API_URL) come from the app-managed env_file
+      # below — edit them in Settings → Memory → Embedder, or by hand in
+      # graphiti/runtime/embedder.env. When the file (or a var) is absent,
+      # config.yaml's ${VAR:default} fallbacks apply. Dimensions must match the
+      # model (nomic-embed-text=768, OpenAI text-embedding-3-*=1536); changing it
+      # requires re-embedding existing memory.
+      #
+      # NOTE: graphiti_core's OpenAI embedder truncates to embedding_dim rather
+      # than erroring, so a dimensions mismatch degrades retrieval silently
+      # instead of failing loudly. Check this value when changing models.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-local}
     # App-managed embedder overrides. Written by the app when Settings → Memory →
     # Embedder changes; picked up on the next start of this service. Optional, so
     # a fresh clone (no file yet) falls back to config.yaml defaults.
@@ -166,4 +255,5 @@ volumes:
   config_data:
   # Graphiti memory stack volumes.
   falkordb_data:
-  ollama_models:
+  # Local embedding weights (nomic-embed-text GGUF), populated by embeddings-init.
+  embed_models:
