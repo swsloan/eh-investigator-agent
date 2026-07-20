@@ -376,9 +376,11 @@ An alternative to `./start.sh` for running on one machine inside a container.
 This isolates the agent's shell access from the host OS. These files
 (`Dockerfile`, `docker-compose.yml`, `.dockerignore`,
 `scripts/docker-entrypoint.sh`, and the `graphiti/` stack) are local additions,
-not part of the upstream release. `docker compose up` starts a four-service
-stack: the app, a Graphiti memory server, FalkorDB, and a llama.cpp `embeddings`
-server (local embeddings). Deep detail lives in [docs/CHANGES.md](docs/CHANGES.md).
+not part of the upstream release. `docker compose up` starts four long-running
+services — the app, a Graphiti memory server, FalkorDB, and a llama.cpp
+`embeddings` server (local embeddings) — plus a one-shot `embeddings-init` that
+downloads the embedding model on first run and then exits. Deep detail lives in
+[docs/CHANGES.md](docs/CHANGES.md).
 
 ```bash
 docker compose build
@@ -419,8 +421,9 @@ How it maps to this release:
   `docker compose up -d graphiti-mcp` to apply. Point `OPENAI_API_URL` at any
   OpenAI-compatible embedding server to move off the local llama.cpp default.
   Dimensions must match the model (`nomic-embed-text`=768, OpenAI
-  `text-embedding-3-*`=1536), and changing them requires re-embedding existing
-  memory (use a fresh namespace or reset the graph). The default local server
+  `text-embedding-3-small`=1536, `text-embedding-3-large`=3072 — both also accept
+  a lower `dimensions` override), and changing them requires re-embedding
+  existing memory (use a fresh namespace or reset the graph). The default local server
   (llama.cpp serving nomic-embed-text v1.5) rejects inputs beyond the model's
   2048-token training context with a clear error rather than silently
   truncating them.
@@ -537,7 +540,7 @@ eval/dashboard/            Eval results dashboard — schemas + fixtures + valid
 
 # Docker + memory stack (operator additions)
 Dockerfile                 App image (Node 22; Pi + Claude CLIs, excli, weasyprint, jq, tshark)
-docker-compose.yml         Four-service stack: app, graphiti-mcp, falkordb, embeddings (llama.cpp)
+docker-compose.yml         app, graphiti-mcp, falkordb, embeddings (llama.cpp) + one-shot embeddings-init
 docker-compose.eval.yml    Overlay for a read-only eval instance (eh-eval project, port 3101)
 .dockerignore              Build-context excludes (host state, secrets)
 scripts/docker-entrypoint.sh  Self-heals bin/excli on container start
