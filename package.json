@@ -30,7 +30,7 @@
     "express": "4.22.2",
     "ipaddr.js": "2.4.0",
     "linkedom": "0.18.13",
-    "marked": "15.0.12",
+    "marked": "18.0.6",
     "multer": "2.2.0"
   },
   "devDependencies": {
