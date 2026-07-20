@@ -25,7 +25,10 @@ WORK="$(mktemp -d)"
 STUB_PID=""
 FAILURES=0
 
-# shellcheck disable=SC2329  # invoked indirectly by the EXIT trap below
+# Invoked indirectly by the EXIT trap below, which ShellCheck cannot see. Older
+# versions flag the body as unreachable (SC2317), newer ones flag the function
+# as uncalled (SC2329); suppress both so this lints the same in CI and locally.
+# shellcheck disable=SC2317,SC2329
 cleanup() {
   [[ -n "$STUB_PID" ]] && kill "$STUB_PID" 2>/dev/null
   rm -rf "$WORK"
