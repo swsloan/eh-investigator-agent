@@ -9,6 +9,35 @@ the complete change inventory.
 All work was done to run the app in Docker on a single host, add a long-term
 temporal-memory layer (Graphiti), and fix issues found along the way.
 
+### Added after 26.07.10 — embedder moved from Ollama to llama.cpp (2026-07-20)
+
+- **Smaller local embedding server.** Replaced the `ollama` service with
+  `ghcr.io/ggml-org/llama.cpp:server` (digest-pinned) serving the same
+  `nomic-embed-text-v1.5` weights over the same OpenAI-compatible
+  `/v1/embeddings` contract. The Ollama image was 7.03 GB, ~3.5 GB of it CUDA/
+  JetPack GPU runtimes that cannot execute on this project's CPU-only Docker
+  paths; llama.cpp's image is 1.17 GB. A run-once `embeddings-init` container
+  downloads the ~274 MB GGUF into the new `embed_models` volume (replacing
+  `ollama_models`); the `embeddings` service serves it and is a healthcheck
+  dependency of `graphiti-mcp`. The download is pinned to an immutable
+  HuggingFace commit revision and sha256-verified before install (a mismatch
+  fails startup); pin details in
+  [DEPENDENCY-MAINTENANCE.md](DEPENDENCY-MAINTENANCE.md).
+- **Verified drop-in, no re-embed.** On identical weights, llama.cpp output was
+  bit-identical to Ollama (max elementwise delta 8.8e-08) and query vectors
+  retrieved correctly against embeddings Ollama had already written, so existing
+  memory stayed valid. Default endpoint moved to `http://embeddings:8080/v1` in
+  `lib/settings.js`, `graphiti/config.yaml`, and the app-managed
+  `graphiti/runtime/embedder.env`. See
+  [DESIGN-graphiti-memory.md](DESIGN-graphiti-memory.md) §12b.
+- **Behaviour change.** llama.cpp runs the model at its real 2048-token training
+  context and returns a clear error on oversized input, instead of Ollama's
+  silent truncation at `num_ctx 8192`. Largest real episode ≈2465 chars vs a
+  ~6000-char ceiling.
+- **Retired the qwen overlay.** `docker-compose.qwen.yml` (the concluded local-
+  LLM extraction comparison) was removed; local extraction remains reachable via
+  `LLM_PROVIDER=openai` + `OPENAI_LLM_API_URL`/`MODEL_NAME`.
+
 ### Added after 26.07.10 — CPU-architecture guard for the Claude backend (2026-07-17)
 
 - **Arch-native binary check.** The Claude Agent SDK ships its CLI as

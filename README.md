@@ -38,16 +38,16 @@ workspaces, local credentials, logs, or session state.
 
 ## Quickstart — Docker Desktop
 
-The fastest way to run the full stack (app + Graphiti memory + FalkorDB + Ollama)
-on one machine. **Everything builds from this repository** — no images or volumes
-need to be created beforehand, so a fresh clone works as-is.
+The fastest way to run the full stack (app + Graphiti memory + FalkorDB +
+embeddings) on one machine. **Everything builds from this repository** — no
+images or volumes need to be created beforehand, so a fresh clone works as-is.
 
 **Prerequisites**
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) running, with
   Compose v2 (the `docker compose` subcommand). Give it roughly **8 GB RAM** and
-  **15 GB disk** — the memory stack pulls the Ollama image and a local embedding
-  model on first build.
+  **12 GB disk** — the memory stack pulls a small llama.cpp server image and
+  downloads a ~274 MB local embedding model on first run.
 
 **Build and run**
 
@@ -55,7 +55,7 @@ need to be created beforehand, so a fresh clone works as-is.
 git clone https://github.com/swsloan/eh-investigator-agent.git
 cd eh-investigator-agent
 docker compose build      # builds the app + graphiti-mcp images from source
-docker compose up -d      # starts app, graphiti-mcp, falkordb, ollama
+docker compose up -d      # starts app, graphiti-mcp, falkordb, embeddings
 ```
 
 Then open **[http://localhost:3100](http://localhost:3100)**. The first build takes
@@ -374,11 +374,11 @@ workspace files use the same local Highlight.js styling as JSON source previews.
 
 An alternative to `./start.sh` for running on one machine inside a container.
 This isolates the agent's shell access from the host OS. These files
-(`Dockerfile`, `docker-compose.yml`, `docker-compose.qwen.yml`, `.dockerignore`,
+(`Dockerfile`, `docker-compose.yml`, `.dockerignore`,
 `scripts/docker-entrypoint.sh`, and the `graphiti/` stack) are local additions,
 not part of the upstream release. `docker compose up` starts a four-service
-stack: the app, a Graphiti memory server, FalkorDB, and Ollama (local
-embeddings). Deep detail lives in [docs/CHANGES.md](docs/CHANGES.md).
+stack: the app, a Graphiti memory server, FalkorDB, and a llama.cpp `embeddings`
+server (local embeddings). Deep detail lives in [docs/CHANGES.md](docs/CHANGES.md).
 
 ```bash
 docker compose build
@@ -401,7 +401,7 @@ How it maps to this release:
   `claude setup-token` on a machine with a browser and paste the token into
   Settings → Agent, then switch sign-in to Subscription.
 - **Memory (Graphiti):** enabled by default. The `graphiti-mcp`, `falkordb`, and
-  `ollama` services provide a long-term temporal knowledge graph with local
+  `embeddings` services provide a long-term temporal knowledge graph with local
   embeddings, wired into both backends so investigations recall prior context.
   Namespaced per monitored environment via `EH_MEMORY_GROUP_ID`. Memory
   extraction always uses the Anthropic API key through the app's `/memory-llm`
@@ -417,10 +417,13 @@ How it maps to this release:
   `${EMBEDDER_MODEL:…}` / `${EMBEDDER_DIMENSIONS:768}` / `${OPENAI_API_URL:…}`
   defaults apply. This is a **startup**, not live, setting: after saving, run
   `docker compose up -d graphiti-mcp` to apply. Point `OPENAI_API_URL` at any
-  OpenAI-compatible embedding server to move off local Ollama. Dimensions must
-  match the model (`nomic-embed-text`=768, OpenAI `text-embedding-3-*`=1536), and
-  changing them requires re-embedding existing memory (use a fresh namespace or
-  reset the graph).
+  OpenAI-compatible embedding server to move off the local llama.cpp default.
+  Dimensions must match the model (`nomic-embed-text`=768, OpenAI
+  `text-embedding-3-*`=1536), and changing them requires re-embedding existing
+  memory (use a fresh namespace or reset the graph). The default local server
+  (llama.cpp serving nomic-embed-text v1.5) rejects inputs beyond the model's
+  2048-token training context with a clear error rather than silently
+  truncating them.
 - **excli:** fetched at build time from the pinned upstream source and
   checksum-verified (arch auto-detected) — not committed to this repo, since
   ExtraHop/agent-cli grants no redistribution rights.
@@ -438,7 +441,7 @@ How it maps to this release:
   `workspaces` and `pi_home` (declared `external`, reused from the prior
   deployment) keep investigations and Pi auth; `config_data` persists in-app
   Settings (`config.json`) and secrets (`secrets.json`, 0600) at `/app/data`;
-  `falkordb_data` and `ollama_models` keep the memory graph and the downloaded
+  `falkordb_data` and `embed_models` keep the memory graph and the downloaded
   embedding model.
 - **Credentials / `.env`:** `docker compose` reads a sibling `.env` for
   `${VAR}` interpolation. Copy `.env.example` to `.env` and set at least
@@ -534,8 +537,7 @@ eval/dashboard/            Eval results dashboard — schemas + fixtures + valid
 
 # Docker + memory stack (operator additions)
 Dockerfile                 App image (Node 22; Pi + Claude CLIs, excli, weasyprint, jq, tshark)
-docker-compose.yml         Four-service stack: app, graphiti-mcp, falkordb, ollama
-docker-compose.qwen.yml    Overlay for the local-LLM (qwen) memory comparison
+docker-compose.yml         Four-service stack: app, graphiti-mcp, falkordb, embeddings (llama.cpp)
 docker-compose.eval.yml    Overlay for a read-only eval instance (eh-eval project, port 3101)
 .dockerignore              Build-context excludes (host state, secrets)
 scripts/docker-entrypoint.sh  Self-heals bin/excli on container start

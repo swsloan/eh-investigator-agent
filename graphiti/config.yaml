@@ -1,9 +1,9 @@
 # Graphiti MCP config for the ExtraHop Investigation Agent (Phase 0 PoC).
 # LLM  = Anthropic (extraction) — only derived text leaves the host.
-# Embedder = local Ollama (nomic-embed-text) via the OpenAI-compatible endpoint,
-#            so embeddings stay on-box. The MCP server has no in-process
-#            sentence-transformers option, so we route the "openai" embedder at
-#            Ollama instead. Supports ${VAR:default} expansion.
+# Embedder = local llama.cpp (nomic-embed-text v1.5) via its OpenAI-compatible
+#            endpoint, so embeddings stay on-box. The MCP server has no
+#            in-process sentence-transformers option, so we route the "openai"
+#            embedder at the local server instead. Supports ${VAR:default}.
 
 server:
   transport: "http"
@@ -11,27 +11,30 @@ server:
   port: 8000
 
 llm:
-  provider: ${LLM_PROVIDER:anthropic}   # 'anthropic' (default) or 'openai' (→ Ollama, for local comparison)
+  provider: ${LLM_PROVIDER:anthropic}   # 'anthropic' (default) or 'openai' (any OpenAI-compatible endpoint)
   model: ${MODEL_NAME:claude-sonnet-5}
-  temperature: 0          # deterministic extraction (dropped for Anthropic via image patch; used by openai/Ollama)
+  temperature: 0          # deterministic extraction (dropped for Anthropic via image patch; used by openai)
   max_tokens: 4096
   providers:
     anthropic:
       api_key: ${ANTHROPIC_API_KEY}
       api_url: ${ANTHROPIC_API_URL:https://api.anthropic.com}
       max_retries: 3
-    openai:                              # OpenAI-compatible client pointed at Ollama for local LLM extraction
-      api_key: ${OPENAI_API_KEY:ollama}
-      api_url: ${OPENAI_API_URL:http://ollama:11434/v1}
+    # OpenAI-compatible client. Set LLM_PROVIDER=openai plus OPENAI_API_URL /
+    # MODEL_NAME to route extraction at a hosted or self-run endpoint. Note the
+    # local `embeddings` service is embedding-only and cannot serve this.
+    openai:
+      api_key: ${OPENAI_API_KEY:local}
+      api_url: ${OPENAI_LLM_API_URL:https://api.openai.com/v1}
 
 embedder:
-  provider: "openai"                       # OpenAI-compatible client, pointed at Ollama
+  provider: "openai"                       # OpenAI-compatible client, pointed at the local `embeddings` service
   model: ${EMBEDDER_MODEL:nomic-embed-text}
   dimensions: ${EMBEDDER_DIMENSIONS:768}   # must match the model (nomic-embed-text=768, OpenAI text-embedding-3-*=1536)
   providers:
     openai:
-      api_key: ${OPENAI_API_KEY:ollama}    # Ollama ignores the key; dummy value
-      api_url: ${OPENAI_API_URL:http://ollama:11434/v1}
+      api_key: ${OPENAI_API_KEY:local}     # llama.cpp ignores the key; dummy value
+      api_url: ${OPENAI_API_URL:http://embeddings:8080/v1}
 
 database:
   provider: "falkordb"

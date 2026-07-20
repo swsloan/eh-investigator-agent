@@ -75,8 +75,9 @@ The excli/credential boundary is untouched. Graphiti never receives ExtraHop
 API credentials — only derived facts. All state persists in Docker volumes.
 
 New Compose services: `graphiti` (MCP server), `falkordb` (graph store, its own
-volume), and `ollama` (default local extraction/embeddings; skipped or idle
-when a cloud provider is configured).
+volume), and `embeddings` (local llama.cpp embedding server; see §12b — was
+`ollama` until 2026-07-20). Extraction defaults to cloud Anthropic; local
+extraction is opt-in via `LLM_PROVIDER=openai`.
 
 ---
 
@@ -280,7 +281,6 @@ core library's in-process sentence-transformers. To keep embeddings local
 endpoint (`nomic-embed-text`, 768-dim). Only extraction text reaches Anthropic.
 
 ### Still open
-- Local-Ollama **LLM** extraction comparison (Phase 0 part 2) — pending.
 - Model-id currency: `claude-sonnet-5` worked; confirm the best/cheapest
   extraction model (haiku-class) for cost.
 - App-side MCP wiring (Phase 1) — not started; validated via the `claude` CLI
@@ -311,9 +311,59 @@ Findings:
   (disposition, analyst preference) and used ad-hoc edge types.
 
 Conclusion: default to **cloud extraction (Anthropic)** for fidelity + latency;
-local Ollama is a data-residency fallback that realistically needs GPU + a
+local extraction is a data-residency fallback that realistically needs GPU + a
 larger model (32B+) to approach parity. Confirms the value of pluggable
 extraction (D2).
+
+**Retired (2026-07-20):** with the comparison concluded, the `docker-compose.qwen.yml`
+overlay and the 9 GB `qwen2.5:14b` model were removed. The findings above and the
+`pocqwen` graph in FalkorDB are the durable record. Local extraction is still
+reachable ad hoc via `LLM_PROVIDER=openai` + `OPENAI_LLM_API_URL`/`MODEL_NAME`
+against any OpenAI-compatible endpoint.
+
+---
+
+## 12b. Embedder: Ollama → llama.cpp (2026-07-20)
+
+Replaced the Ollama service with `ghcr.io/ggml-org/llama.cpp:server` running the
+same `nomic-embed-text-v1.5` weights over the same OpenAI-compatible
+`/v1/embeddings` contract. Motivation: the Ollama image is 7.03 GB, of which
+~3.5 GB is CUDA/JetPack GPU runtimes that cannot execute on this project's
+CPU-only Docker paths (Docker on macOS/Linux here has no GPU passthrough).
+llama.cpp's server image is 1.17 GB. There is no CPU-only Ollama build, so
+slimming Ollama in place was not an option.
+
+**Equivalence validation (the gate).** graphiti_core's OpenAI embedder sends raw
+text with no task prefixing (`embedder/openai.py`), so the swap reduced to "does
+llama.cpp produce the same vectors as Ollama on identical weights?" To isolate
+server behaviour from weight differences, the A/B reused Ollama's own GGUF blob:
+
+- **Short domain probes (10):** cosine **1.000000** on every probe; identical
+  neighbour ordering; both L2-normalised. Max elementwise delta **8.8e-08**
+  (float serialization noise) — i.e. bit-identical.
+- **Cross-server retrieval:** query vectors from llama.cpp retrieved correctly
+  against the 137 entity vectors *already written by Ollama* in `pocextrahop`
+  (e.g. "lateral movement" → *Lateral Movement* 0.84). **No re-embedding was
+  required**; existing memory stayed valid.
+- **HuggingFace-sourced GGUF** (what a fresh clone downloads) produced vectors
+  identical to Ollama's blob (max delta 8.8e-08), so the shipped file is safe.
+
+**Behaviour change worth noting.** nomic-bert trains at 2048 tokens. Ollama ran
+it at `num_ctx 8192` and *silently truncated* longer inputs — embedding long
+episodes from a fraction of their text. llama.cpp instead returns a clear 500
+above its batch/context size. We set `-c/-b/-ub 2048` to match the training
+context. Practical ceiling ~6000 chars; the largest real episode observed is
+~2465, giving ~2.4× headroom. This is arguably a correctness improvement, but if
+very long episodes appear they must be chunked upstream rather than silently
+clipped.
+
+**Topology.** A run-once `embeddings-init` container downloads the ~274 MB GGUF
+into the `embed_models` volume (replacing `ollama_models`), pinned to an
+immutable HuggingFace commit revision and sha256-verified before install; the
+`embeddings` service serves it and is a healthcheck dependency of `graphiti-mcp`.
+The
+app-managed endpoint default moved to `http://embeddings:8080/v1` in
+`lib/settings.js`, `graphiti/config.yaml`, and `graphiti/runtime/embedder.env`.
 
 ---
 
