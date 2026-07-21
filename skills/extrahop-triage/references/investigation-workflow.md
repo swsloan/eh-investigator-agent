@@ -22,7 +22,8 @@ Keep this checklist in scratch notes for larger investigations.
 
 ## Step 0: Consume The L1 Escalation Packet
 
-When L1 escalated the item, reuse what it already resolved:
+When L1 escalated the item, load `escalation.md` and reuse what it already
+resolved:
 
 - detection IDs and grouping;
 - preliminary verdict and confidence;
@@ -142,6 +143,13 @@ Common filters:
 Use `.ipaddr` for IP-only pivots. Numeric operands may still need to be strings;
 follow the current tool help and examples.
 
+Discover fields once per record type by querying a single result and inspecting
+its shape. For multi-page searches that begin with relative time, reuse the
+absolute `from` and `until` echoed by the first response when available so later
+pages do not drift into a changing population. Sort by the event time field and
+start with a small limit; paginate only after the first page proves that the
+query tests the hypothesis.
+
 Do not dump all records for a host over days. If a broad search is tempting,
 return to metrics or tighten the hypothesis.
 
@@ -190,6 +198,14 @@ search related detections and note any already linked to an open investigation
 or ticket when that field is available. Do not create duplicates. If action is
 warranted, present the Detection Set and wait for approval before calling any
 state-changing tool.
+
+When the approved create-investigation tool supports it, set the case
+`assessment` to `malicious_true_positive`, `benign_true_positive`,
+`false_positive`, or `undecided`. Keep that case-level assessment distinct from
+each detection's `ai_disposition`; set both only when supported and approved,
+and never overwrite a human assessment or disposition silently. Use `undecided`
+for an active case whose conclusion is not yet established, not as a euphemism
+for benign.
 
 For durable output, use the SOC investigation report type unless the user's work
 is a proactive hunt, in which case use threat hunting.

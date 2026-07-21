@@ -13,12 +13,14 @@ interactive app card; it is structured prose the user can audit and approve.
 
 - **Verdict:** <False Positive | Benign True Positive | Malicious True Positive | Inconclusive>
 - **Confidence:** <Low | Medium | High>
-- **Disposition:** <false_positive | benign_true_positive | malicious_true_positive | indeterminate | not recorded>
+- **AI disposition:** <false_positive | benign_true_positive | malicious_true_positive | indeterminate | not recorded>
 - **Recommended action:** <Close | Leave open | Escalate to L2 | Create Investigation | Operator action in RevealX>
 - **Detections:** #<full-id> <type>, #<full-id> <type>
 - **Participants:**
   - Offender: <name or IP> (device/<OID> or ipaddr)
   - Victim: <name or IP> (device/<OID> or ipaddr)
+- **Human outcome:** <existing human resolution or investigation assessment; show agreement/disagreement with the AI read; omit when none>
+- **Similar past detections:** #<full-id>, #<full-id> <omit when none>
 - **Evidence:** <workspace evidence paths and the key fact each supports>
 - **Open questions:** <omit if none>
 
@@ -35,6 +37,13 @@ interactive app card; it is structured prose the user can audit and approve.
 Use full detection IDs returned by the API/CLI. Do not abbreviate to a console
 display short ID when the full ID is available.
 
+Load `console-links.md` when a verified console FQDN is available. Link final
+Detection Set IDs to `/extrahop/#/detections/detail/<full-id>`, device
+participants only when a valid appliance UUID and discovery ID are also
+available, and a created investigation only after the successful call returns
+its ID. Keep bulk close lists and internal escalation queues unlinked. Never
+fabricate a hostname, UUID, ID, or URL.
+
 ## Batch Close Summary
 
 For a homogeneous safe-close group, present one batch summary and wait for
@@ -47,7 +56,7 @@ approval:
 
 - **Verdict:** <False Positive | Benign True Positive>
 - **Confidence:** High
-- **Disposition:** <false_positive | benign_true_positive>
+- **AI disposition:** <false_positive | benign_true_positive>
 - **Resolution:** no_action_taken
 - **Homogeneity:** <same type/shared participant/same benign explanation>
 - **Closing (<N>):** #<id>, #<id>, #<id>
@@ -78,20 +87,14 @@ escalation queue:
 ```
 
 Keep the queue in chat by default. Write `scratch/escalation-queue.json` only
-when it is large enough that context loss is a real risk.
+when it is large enough that context loss is a real risk. Follow
+`escalation.md` for the complete handoff and investigation-grouping contract.
 
 ## Console Links
 
-RevealX links are useful, but only when grounded:
-
-- use a console FQDN returned by appliance metadata or a console URL the user
-  pasted in this conversation;
-- use a device discovery ID and appliance UUID from real device/appliance
-  metadata for device links;
-- never invent hostnames, UUIDs, discovery IDs, or URLs.
-
-If the FQDN is unknown, leave identifiers as plain text. A correct unlinked
-Detection Set is better than a fabricated link.
+Follow `console-links.md` for exact sources, path forms, and placement. If the
+FQDN is unknown, leave identifiers as plain text. A correct unlinked Detection
+Set is better than a fabricated link.
 
 ## Tuning Recommendations
 

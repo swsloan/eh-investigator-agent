@@ -33,8 +33,12 @@ behavior, pivot back to this triage workflow.
 - `references/investigation-workflow.md` - load for a single detection,
   suspected compromise, device/IP investigation, record pivots, packet proof,
   and attack-chain reconstruction.
+- `references/escalation.md` - load when L1 findings must pass into L2. Contains
+  the queue, handoff packet, prioritization, and investigation-grouping contract.
 - `references/detection-set-output.md` - load before presenting actionable
   detection conclusions in chat.
+- `references/console-links.md` - load when appliance metadata or a user-supplied
+  RevealX URL makes exact detection, participant, or investigation links possible.
 - `references/reporting.md` - load when deciding whether triage should stay in
   chat, become Detection Sets, or hand off to the authoritative
   `investigation-reporting` skill for a durable report.
@@ -43,8 +47,8 @@ behavior, pivot back to this triage workflow.
 
 This project uses `./excli-interface`, not an ExtraHop MCP server.
 
-1. Use the `workspace-organization` skill before writing files.
-2. Use the `extrahop-excli` skill for command syntax, evidence selection, pivot
+1. Use `workspace-organization` before writing files.
+2. Use `extrahop-excli` for command syntax, evidence selection, pivot
    IDs, metric empty-result handling, and PCAP behavior.
 3. Run `./excli-interface -listtools` if tool availability is uncertain.
 4. Run `./excli-interface TOOL -help` before first use of a tool in a session.
@@ -52,8 +56,8 @@ This project uses `./excli-interface`, not an ExtraHop MCP server.
 6. Use detections and metadata for triage, metrics for broad corroboration,
    records for narrow transaction confirmation, and packets only when byte-level
    proof matters.
-7. Use the `investigation-reporting` skill for durable HTML reports.
-8. Use the `security-research` skill when an unfamiliar IOC, filename, product,
+7. Use `investigation-reporting` for durable HTML reports.
+8. Use `security-research` when an unfamiliar IOC, filename, product,
    CVE, campaign, or current vendor fact could change the disposition. External
    research corroborates context; it does not replace ExtraHop evidence.
 
@@ -73,6 +77,17 @@ tool help over examples in this skill. Expected tool families are:
 Do not preserve MCP tool names as project guidance. Translate any older
 `extrahop_*` or `exmcp:*` examples into the actual `./excli-interface` tools
 available in the current session.
+
+Work pivots sequentially. Paginate until the retrieved population is sufficient
+for the claim, or state the exact sample/limit. When a result is unexpectedly
+empty, verify filters and identifiers, widen the time range within retention,
+and relax one constraint at a time. After three or four defensible attempts,
+report what was tried and stop rather than fabricating a result.
+
+If a wrapped read operation is unavailable, continue at the strongest available
+evidence layer and state the limitation once. Missing records or packets
+narrows the conclusion; it never licenses invented transaction or payload
+evidence.
 
 ## Mode Router
 
@@ -103,9 +118,26 @@ chat, then wait for explicit user approval before calling any state-changing
 tool, recommend the action for the operator to perform in RevealX instead.
 
 Non-destructive labels or AI dispositions may still alter RevealX state when
-the CLI supports them. Treat them as lower risk, but do not overwrite human
-ground truth. If a person already closed, resolved, or assessed a detection,
-surface any agreement or disagreement instead of clobbering it.
+the CLI supports them. Treat them as lower risk but still preview and approve
+the exact writes in this interactive app. Do not overwrite human ground truth.
+If a person already closed, resolved, or assessed a detection, surface any
+agreement or disagreement instead of clobbering it.
+
+Keep these fields distinct when the live tool exposes them:
+
+- `status` is queue workflow state; `closed` removes an item from the open queue.
+- `ai_disposition` is the agent's verdict: `false_positive`,
+  `benign_true_positive`, `malicious_true_positive`, or `indeterminate`.
+- `resolution` describes whether a real response occurred and is valid only on
+  a closed detection: `action_taken` or `no_action_taken`.
+- investigation `assessment` is the case-level conclusion:
+  `malicious_true_positive`, `benign_true_positive`, `false_positive`, or
+  `undecided`.
+
+Use `action_taken` only when the user or evidence identifies the completed
+response. Use `no_action_taken` for a benign/false-positive close. Use
+`indeterminate` or `undecided` for unresolved work, and never translate those
+values into a benign conclusion.
 
 Recurring schedules and autonomous unattended closes are not part of this
 project-local skill. If the user asks for automation, describe the safe triage
@@ -115,9 +147,18 @@ criteria and ask how they want scheduling handled outside this workflow.
 - If results are truncated, sampled, paginated, or scoped, state that clearly.
 - A scary detection is a hypothesis, not a verdict. Confirm it with correlated
   evidence and consider the strongest benign explanation.
+- Narrow detection searches with live server-side filters, then rank by risk,
+  participant criticality, correlation, and recency client-side unless the live
+  schema proves those server-side capabilities exist.
+- Cache detection-type metadata once per type. Reserve full-detail calls for
+  outliers, homogeneity breakers, and escalation candidates.
 - Records and packets are L2 tools. Do not use them for broad L1 queue sweeps.
 - Search detections by the filters the CLI actually supports, then rank and
   match participants client-side when needed.
 - Recommend tuning rules only as operator/UI actions. Do not claim to create or
   apply tuning or suppression rules unless the current CLI help proves that tool
   exists and the user approved its use.
+- Before creating an investigation, check whether an open case or ticket already
+  covers the same detections, participants, and time window.
+- Never claim a detection was closed, classified, assigned, or added to an
+  investigation unless the corresponding interface call succeeded.
