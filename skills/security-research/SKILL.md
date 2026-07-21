@@ -14,7 +14,9 @@ web search.
 
 Follow the session-specific web research provider in the system prompt. It
 will direct Claude Code to use its built-in web capability when that provider
-is selected; all other provider choices use `./research-interface`.
+is selected; all other provider choices use `./research-interface`. Canonical
+resolvers always use `./research-interface`, independent of the selected
+open-web provider.
 
 If the permitted path does not work, say that current external research was
 unavailable. Do not fill the gap from memory or present an unsupported identity.
@@ -25,6 +27,13 @@ The interface fallback supports:
 ./research-interface status
 ./research-interface search -json '{"query":"\"example.exe\" malware","count":8}'
 ./research-interface fetch -json '{"url":"https://vendor.example/advisory"}'
+./research-interface cve -json '{"cve":"CVE-2024-3400"}'
+./research-interface kev -json '{"cve":"CVE-2024-3400"}'
+./research-interface epss -json '{"cve":"CVE-2024-3400"}'
+./research-interface attack -json '{"id":"T1059.001"}'
+./research-interface rfc -json '{"rfc":"RFC 9000"}'
+./research-interface iana -json '{"registry":"service","query":"443","protocol":"tcp"}'
+./research-interface rdap -json '{"query":"example.com"}'
 ```
 
 Automatic uses Brave when its key is available, then Claude Code's built-in
@@ -53,20 +62,33 @@ a search query.
 ## Method
 
 1. Preserve the exact observed value and its ExtraHop context before searching.
-2. Start with an exact quoted query, then broaden one dimension at a time:
+2. Route exact identifiers to canonical resolvers before open-web search:
+   - for a CVE, collect the CVE record and check KEV and EPSS when exploitation
+     likelihood or prioritization matters;
+   - resolve exact ATT&CK IDs through `attack`; use open-web search only for
+     names or ambiguous mappings;
+   - resolve an exact RFC or RFC title through `rfc`, and service names, ports,
+     IP protocol numbers, or media types through `iana`;
+   - resolve public domains, public IP addresses, and ASNs through `rdap`.
+3. Start open-web work with an exact quoted query, then broaden one dimension at a time:
    remove a path, add the apparent vendor/product, or add a security term.
-3. Use search snippets only to discover candidate sources. Fetch and read the
+4. Use search snippets only to discover candidate sources. Fetch and read the
    source before relying on it for a material claim.
-4. Prefer original vendor advisories, CISA/NVD/CVE records, standards,
+5. Prefer original vendor advisories, CISA/NVD/CVE records, standards,
    authoritative repositories, and original research. Use aggregators and
    forums as leads, not sole proof.
-5. Corroborate maliciousness, exploitation, attribution, and remediation claims
+6. Corroborate maliciousness, exploitation, attribution, and remediation claims
    with two independent sources when practical. One authoritative primary
    source can establish a product fact or vendor advisory.
-6. Test the strongest benign identity or explanation as actively as the
+7. Test the strongest benign identity or explanation as actively as the
    malicious one.
-7. State what the sources establish, what is inferred, and what remains
+8. State what the sources establish, what is inferred, and what remains
    unknown. No results or no reputation hits never means benign.
+
+Canonical results are normalized snapshots, not substitutes for reasoning:
+absence from KEV does not mean a CVE is unexploited, EPSS is a probability and
+not evidence of compromise, ATT&CK describes behaviors rather than attribution,
+and RDAP registration does not prove operator identity.
 
 Load `references/identifier-playbooks.md` for the relevant identifier type and
 query/source patterns.
@@ -79,6 +101,11 @@ observed ExtraHop evidence:
 
 - `search-<subject>.json` for normalized `research-interface search` output;
 - `source-<subject>-<n>.json` for fetched external content used in analysis;
+- `cve-<id>.json`, `kev-<id>.json`, and `epss-<id>.json` for vulnerability
+  context;
+- `attack-<id>.json`, `rfc-<number-or-subject>.json`,
+  `iana-<registry>-<subject>.json`, and `rdap-<subject>.json` for canonical
+  terminology, protocol, and registration context;
 - `research-<subject>.md` for the compiled research memo.
 
 Start every compiled research memo with this artifact marker so the workspace UI
