@@ -56,6 +56,12 @@ If the scoped pull returns more than a few hundred detections, report the count
 and ask whether to narrow by type, category, status, or time before enriching.
 This keeps triage from turning into an uncontrolled investigation.
 
+If the scoped pull is unexpectedly empty, verify the status/category/type
+filters and time units, widen the window, and relax one constraint at a time.
+Try alternate relevant categories or types only when the user's intent supports
+them. After three or four defensible attempts, report every attempted scope and
+stop; an empty response is not evidence for an invented clean bill of health.
+
 ## Step 2: Rank And Group
 
 Rank client-side by:
@@ -187,7 +193,8 @@ or assessed by a person, report whether your read agrees or disagrees.
 ## Step 7: Escalate To L2
 
 Everything not safely closeable and worth deeper work becomes an escalation
-queue. Each entry should include:
+queue. Follow `escalation.md` for the full handoff, prioritization, persistence,
+and investigation-boundary contract. Each entry should include:
 
 - detection IDs;
 - escalation reason;
