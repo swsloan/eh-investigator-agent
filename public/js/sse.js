@@ -188,6 +188,12 @@ export function handleEvent(ev) {
       setRunning(false);
       break;
 
+    // Emitted when a restored transcript had older events pruned, so the gap in
+    // the replayed conversation is explained rather than silently missing.
+    case 'history_notice':
+      addSysNote(ev.message || 'Older chat details were pruned.');
+      break;
+
     case 'action_proposed':
     case 'action_decided':
     case 'action_result':
