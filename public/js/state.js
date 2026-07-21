@@ -1,3 +1,5 @@
+import { BoundedLruCache } from './bounded-lru.js';
+
 export function newUsage() {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 };
 }
@@ -45,7 +47,10 @@ export const state = {
   summaryPaneLayout: 'split',
   evidenceDefaultView: 'rendered',
   webResearchProvider: '', // resolved provider from public settings: 'brave' | 'duckduckgo'
-  summaryCache: new Map(),
+  // Evidence summaries are large and previously accumulated for the life of the
+  // page. Bounded by entry count and total bytes so browsing a long
+  // investigation cannot grow this without limit.
+  summaryCache: new BoundedLruCache({ maxEntries: 24, maxBytes: 4 * 1024 * 1024 }),
   currentAgentMsg: null,
   pendingReplayAssistantBoundary: false,
   blocks: new Map(),
