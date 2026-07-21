@@ -1,5 +1,15 @@
 FROM node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 
+# The base image ships npm 10.9.8, whose bundled node-tar (7.5.11) carries
+# CVE-2026-59873 (CRITICAL, gzip-bomb DoS) — this trips the image-security merge
+# gate. There is no fixed node:22-slim to bump to: the tag still resolves to the
+# digest pinned above, so the vulnerable npm has to be replaced here. npm 11.18.0
+# is the earliest maintained line bundling the patched tar 7.5.19; it is applied
+# before `npm ci` so the build and the shipped image use the same npm. npm 11
+# requires Node >= 22.9 (base is 22.23.1). Revisit when a node:22-slim carrying
+# fixed npm is published — see docs/DEPENDENCY-MAINTENANCE.md.
+RUN npm install -g npm@11.18.0 && npm --version
+
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3100 \
