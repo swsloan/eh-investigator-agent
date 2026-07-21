@@ -10,14 +10,14 @@ Default interactive answer:
 ```markdown
 ## Health Check: <target>
 
-**<Verdict>** | <time window> | <scope qualifier>
+**<Verdict>** · <time window> · <scope qualifier>
 
 <One sentence plain-English problem statement.>
 
 **Findings**
 
-- **<Verdict>** - *<Category>.* <one-sentence finding with one or two numbers that matter.>
-- **<Verdict>** - *<Category>.* <one-sentence finding.>
+- **<Verdict>** — *<Category>.* <one-sentence finding with one or two numbers that matter.>
+- **<Verdict>** — *<Category>.* <one-sentence finding.>
 
 **Key insight.** <Short paragraph: what is happening, what was ruled out, what remains healthy, and any important caveat.>
 
@@ -34,6 +34,23 @@ Use the exact visible verdict words: `Normal`, `Warning`, `Degraded`,
 `Insufficient Evidence`. Add `(new)`, `(chronic)`, or `(recovered)` only when
 baseline evidence supports it.
 
+Keep the default answer to one screen. Cap the Findings section at four to six
+verdict-first bullets; include every Warning/Degraded category and only the
+Normal categories that materially rule out an alternative. Keep one or two
+numbers that drive each conclusion and move supporting detail to the evidence
+files or durable report.
+
+Use human magnitudes in prose (`1.4 s`, `142 GB`, `2.3%`). Use display names
+instead of raw metric names unless the exact stat is needed for reproducibility.
+Do not show HSI, a standalone confidence line, threshold quotations, or a
+machine-readable footer in the default chat answer. Fold a material confidence
+caveat into **Key insight.**
+
+Render device names, hostnames, IP addresses, and IDs as code-form identifiers.
+When an identifier has a verified console link, keep that typography inside the
+link—for example, [`web-app-01`](https://console.example.invalid/path)—rather
+than turning the raw hostname into ordinary prose.
+
 For quick-look prompts such as "TL;DR" or "is everything okay?", return only the
 title, verdict line, and one sentence.
 
@@ -42,7 +59,7 @@ For stale data, the answer is the freshness warning. Do not bury it as a caveat:
 ```markdown
 ## Health Check: <target>
 
-**Insufficient Evidence** | Data stale
+**Insufficient Evidence** · Data stale
 
 ExtraHop telemetry for this target is <X minutes> stale. A health verdict on stale data would be misleading.
 
@@ -52,9 +69,23 @@ ExtraHop telemetry for this target is <X minutes> stale. A health verdict on sta
 - Rerun the health check after data freshness recovers.
 ```
 
+For a non-Normal default answer with at least two useful chat-actionable
+follow-ups, end with a short choice using the top one or two **Drill in
+further** items and an explicit stop option. Skip this on stale-data refusals,
+low-activity refusals, quick-look answers, and any non-interactive workflow.
+
+## Fleet Shape
+
+Do not hide a split fleet behind one average. When HSI standard deviation is
+greater than `0.10`, or MAD is greater than `0.05` with at least one device more
+than `2 * MAD` below the median, lead with the population shape: for example,
+"Most servers are healthy; three are newly degraded." Rank outliers worst first
+and distinguish new issues from chronic performance debt.
+
 ## Console Links
 
-Only create RevealX console links when you have real metadata:
+Load `console-links.md` for exact URL construction. Only create RevealX console
+links when you have real metadata:
 
 - FQDN from appliance metadata or a user-provided console URL.
 - Device URL appliance UUID from appliance metadata or a parsed device URL.
