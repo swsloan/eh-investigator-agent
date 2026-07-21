@@ -26,7 +26,15 @@ export function settingsRouter({ getConfig, setConfig, secretStore, onConfigChan
 
   router.put('/', async (req, res) => {
     const previous = getConfig();
-    const config = applyUpdate(previous, req.body || {}, { secretStore });
+    let config;
+    try {
+      config = applyUpdate(previous, req.body || {}, { secretStore });
+    } catch (err) {
+      if (err?.code === 'INVALID_RX360_TENANT_ID') {
+        return res.status(400).json({ error: err.message });
+      }
+      throw err;
+    }
     setConfig(config);
     saveConfigFn(config);
     onConfigChanged?.(previous, config);

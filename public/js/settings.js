@@ -14,6 +14,8 @@ import { refreshPreflight } from './status.js';
 import { getThemePref, syncThemeButtons } from './theme.js';
 
 const EVIDENCE_VIEW_MODES = new Set(['code', 'split', 'rendered']);
+// Mirrors RX360_TENANT_ID_RE in lib/settings.js — client-side guard before save.
+const RX360_TENANT_ID_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 function normalizeEvidenceView(value) {
   return EVIDENCE_VIEW_MODES.has(value) ? value : 'rendered';
@@ -614,7 +616,8 @@ export async function openSettings() {
   syncCustomSelectById('set-evidence-view');
   $('set-challenger-enabled').checked = Boolean(settings.challenger?.enabled);
   $('set-challenger-auto').checked = Boolean(settings.challenger?.automatic);
-  $('set-host').value = settings.extrahop.host || '';
+  $('set-host').value = settings.extrahop.family === 'rx360' ? '' : (settings.extrahop.host || '');
+  $('set-tenant').value = settings.extrahop.tenantId || '';
   $('set-insecure').checked = Boolean(settings.extrahop.insecure);
   $('set-apikey').value = '';
   $('set-clientid').value = '';
@@ -755,13 +758,20 @@ async function saveSettings() {
     claudeOauthToken: $('set-claude-oauth').value,
     extrahop: {
       family: state.settingsFamily,
-      host: $('set-host').value,
+      ...(state.settingsFamily === 'rx360'
+        ? { tenantId: $('set-tenant').value.trim() }
+        : { host: $('set-host').value }),
       insecure: $('set-insecure').checked,
       apiKey: $('set-apikey').value,
       clientId: $('set-clientid').value,
       clientSecret: $('set-clientsecret').value,
     },
   };
+  const rx360Tenant = body.extrahop.tenantId;
+  if (state.settingsFamily === 'rx360' && rx360Tenant && !RX360_TENANT_ID_RE.test(rx360Tenant)) {
+    $('settings-status').textContent = 'Tenant ID must be just the tenant name (e.g. "tenant"), not a URL or host.';
+    return;
+  }
   const res = await putSettings(body);
   if (res.ok) {
     state.evidenceDefaultView = normalizeEvidenceView($('set-evidence-view').value);
