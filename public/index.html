@@ -413,11 +413,11 @@
                   <button data-value="rx360" class="seg-btn">RevealX 360</button>
                 </div>
               </div>
-              <label class="field">
-                <span>Host</span>
-                <input id="set-host" type="text" placeholder="eda.example.com or tenant.api.cloud.extrahop.com">
-              </label>
               <div id="fields-enterprise">
+                <label class="field">
+                  <span>Host</span>
+                  <input id="set-host" type="text" placeholder="eda.example.com">
+                </label>
                 <label class="field">
                   <span>API key <em id="hint-apikey"></em></span>
                   <input id="set-apikey" type="password" placeholder="leave blank to keep current" autocomplete="off">
@@ -428,6 +428,11 @@
                 </label>
               </div>
               <div id="fields-rx360" class="hidden">
+                <label class="field">
+                  <span>Tenant ID</span>
+                  <input id="set-tenant" type="text" placeholder="tenant" autocomplete="off">
+                  <em class="field-hint">Enter only the tenant name; the API host (tenant.api.cloud.extrahop.com) is built automatically.</em>
+                </label>
                 <label class="field">
                   <span>Client ID <em id="hint-clientid"></em></span>
                   <input id="set-clientid" type="text" placeholder="leave blank to keep current" autocomplete="off">
