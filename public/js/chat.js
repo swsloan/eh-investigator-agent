@@ -249,11 +249,27 @@ export function ensureBlock(index, kind) {
     const det = document.createElement('details');
     det.className = 'thinking';
     det.innerHTML = `<summary>Reasoning</summary><div class="thinking-body md"></div>`;
-    agentBody().appendChild(det);
-    block = { el: det.querySelector('.thinking-body'), raw: '', kind };
+    // Hold the block off-DOM behind a marker until it proves it has non-whitespace
+    // content. Some backends emit whitespace-only reasoning, which would otherwise
+    // render as an empty "Reasoning" disclosure.
+    const marker = document.createComment('reasoning-block');
+    agentBody().appendChild(marker);
+    block = { el: det.querySelector('.thinking-body'), container: det, marker, raw: '', kind };
   }
   state.blocks.set(index, block);
   return block;
+}
+
+function revealReasoningBlock(block) {
+  if (block.kind !== 'thinking' || block.container.isConnected) return;
+  if (block.marker?.isConnected) block.marker.replaceWith(block.container);
+}
+
+/** Drop a reasoning block that finished with nothing but whitespace. */
+export function discardEmptyReasoningBlock(block) {
+  if (block.kind !== 'thinking') return;
+  block.container?.remove();
+  block.marker?.remove();
 }
 
 export function queueRender() {
@@ -264,6 +280,8 @@ export function queueRender() {
     for (const block of state.blocks.values()) {
       if (block.dirty) {
         renderMarkdown(block.el, block.raw, { workspaceFiles: [...state.workspaceFiles.values()] });
+        // Only surface a reasoning block once it actually has visible content.
+        if (/\S/.test(block.raw || '')) revealReasoningBlock(block);
         block.dirty = false;
       }
     }

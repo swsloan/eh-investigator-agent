@@ -247,6 +247,8 @@ export function switchSession(session) {
   if (state.session && session.id === state.session.id) return;
   closeSessionMenu();
   state.session = session;
+  // Invalidate anything still in flight for the session we just left.
+  state.sessionGeneration += 1;
   resetChatView();
   updateSessionFooter();
   state.sessionRequestedModel = session.model || '';

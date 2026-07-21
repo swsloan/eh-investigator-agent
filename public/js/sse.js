@@ -4,6 +4,7 @@ import {
   addToolCard,
   addUserMessage,
   agentErrorText,
+  discardEmptyReasoningBlock,
   ensureBlock,
   finishToolCard,
   isAssistantErrorMessage,
@@ -26,6 +27,20 @@ const CHALLENGER_PROMPT_MARKER = /^\[\[EH_CHALLENGER_AGENT\]\]\n?/;
 
 let refreshFilesCallback = () => {};
 let loadSessionsCallback = () => {};
+
+// Incremented per EventSource we open, so a stream that has been superseded can
+// be told apart from the live one even within the same session.
+let streamGeneration = 0;
+
+/** True only for the stream that is still the active one for the shown session. */
+function isActiveStream(scope) {
+  return !scope || (
+    scope.connectionGeneration === streamGeneration
+    && state.eventSource === scope.source
+    && state.session?.id === scope.sessionId
+    && state.sessionGeneration === scope.sessionGeneration
+  );
+}
 
 export function initSessionStream({ refreshFiles, loadSessions }) {
   refreshFilesCallback = refreshFiles;
@@ -92,8 +107,15 @@ export function handleEvent(ev) {
         const kind = ame.type === 'text_end' ? 'text' : 'thinking';
         const block = ensureBlock(ame.contentIndex, kind);
         if (typeof ame.content === 'string') block.raw = ame.content;
-        block.dirty = true;
-        queueRender();
+        // A reasoning block that ended with only whitespace never becomes visible;
+        // drop its placeholder rather than leaving an empty disclosure behind.
+        if (kind === 'thinking' && !/\S/.test(block.raw || '')) {
+          discardEmptyReasoningBlock(block);
+          block.dirty = false;
+        } else {
+          block.dirty = true;
+          queueRender();
+        }
       }
       break;
     }
@@ -193,8 +215,27 @@ export function handleEvent(ev) {
 
 export function connect(sessionId) {
   if (state.eventSource) state.eventSource.close();
-  state.eventSource = new EventSource(sessionEventsUrl(sessionId));
-  state.eventSource.onopen = () => applyIdleStatus();
-  state.eventSource.onmessage = (event) => handleEvent(JSON.parse(event.data));
-  state.eventSource.onerror = () => setStatus('error', 'Reconnecting...', 'Trying to reconnect to the session event stream.');
+  const source = new EventSource(sessionEventsUrl(sessionId));
+  // Identity for this connection. A superseded stream (session switched, or a
+  // newer connect() replaced it) fails the check and its late events are dropped
+  // instead of being applied to whatever session is now on screen.
+  const scope = {
+    source,
+    sessionId,
+    sessionGeneration: state.sessionGeneration,
+    connectionGeneration: ++streamGeneration,
+  };
+  state.eventSource = source;
+  source.onopen = () => {
+    if (!isActiveStream(scope)) return;
+    applyIdleStatus();
+  };
+  source.onmessage = (event) => {
+    if (!isActiveStream(scope)) return;
+    handleEvent(JSON.parse(event.data));
+  };
+  source.onerror = () => {
+    if (!isActiveStream(scope)) return;
+    setStatus('error', 'Reconnecting...', 'Trying to reconnect to the session event stream.');
+  };
 }

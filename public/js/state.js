@@ -2,8 +2,25 @@ export function newUsage() {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 };
 }
 
+/** Snapshot of which session (and which visit to it) an async request belongs to. */
+export function captureSessionScope() {
+  if (!state.session) return null;
+  return { sessionId: state.session.id, sessionGeneration: state.sessionGeneration };
+}
+
+/** False once the user has switched away from the session a request started in. */
+export function isCurrentSessionScope(scope) {
+  return Boolean(scope)
+    && state.session?.id === scope.sessionId
+    && state.sessionGeneration === scope.sessionGeneration;
+}
+
 export const state = {
   session: null,
+  // Bumped on every session switch. In-flight async work captures the value it
+  // started with and discards its result if the counter has moved on, so a slow
+  // response from the previously viewed session can't overwrite the new one.
+  sessionGeneration: 0,
   eventSource: null,
   running: false,
   idleStatus: { state: 'ok', text: 'Ready', title: 'Ready' },

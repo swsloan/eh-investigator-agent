@@ -3,7 +3,7 @@ import { renderMarkdown, highlightCode } from './markdown.js';
 import { linkWorkspaceFileReferences } from './workspace-file-links.js';
 import { themeReportHtml } from './theme.js';
 import { dom, $ } from './dom.js';
-import { state } from './state.js';
+import { captureSessionScope, isCurrentSessionScope, state } from './state.js';
 import { csvDownloadName, downloadName, fmtBytes, fmtTime, pdfDownloadName, triggerDownload } from './utils.js';
 
 const ICON_FILE = '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>';
@@ -216,8 +216,12 @@ function renderTree(files, newPaths) {
 
 export async function refreshFiles() {
   if (!state.session) return;
+  const scope = captureSessionScope();
   const data = await listFiles(state.session.id);
   if (!data) return;
+  // The session may have changed while this was in flight — dropping the result
+  // keeps the previous session's file list from replacing the current one.
+  if (!isCurrentSessionScope(scope)) return;
   const { files } = data;
   const firstLoad = state.knownFiles === null;
   const previousFiles = state.knownFiles || new Map();
