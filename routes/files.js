@@ -1,7 +1,7 @@
 import express from 'express';
 import fs from 'node:fs';
 import { createEvidenceSummaryContext, startDeviceEntityBackfills } from '../lib/evidence-backfill.js';
-import { exportJsonFileAsCsv, summarizeEvidenceFile } from '../lib/evidence-summary.js';
+import { streamCsvFileInWorker, summarizeEvidenceFileInWorker } from '../lib/evidence-worker.js';
 import { sendPdf } from '../lib/pdf-export.js';
 import { getSession } from '../lib/route-utils.js';
 import { createUploadMiddleware } from '../lib/uploads.js';
@@ -11,6 +11,9 @@ import { presentWorkspaceFiles } from '../lib/workspace-file-presentation.js';
 export function filesRouter({
   sessions,
   startBackfills = startDeviceEntityBackfills,
+  createSummaryContext = createEvidenceSummaryContext,
+  summarizeFile = summarizeEvidenceFileInWorker,
+  streamCsv = streamCsvFileInWorker,
   wiresharkDetector = detectWireshark,
   wiresharkOpener = openPacketCaptureInWireshark,
   logger = console,
@@ -32,12 +35,15 @@ export function filesRouter({
     res.json({ files: presentWorkspaceFiles(session) });
   });
 
-  router.get('/:id/summaries', (req, res) => {
+  router.get('/:id/summaries', async (req, res) => {
     const session = getSession(sessions, req, res);
     if (!session) return;
     try {
-      const context = createEvidenceSummaryContext(session);
-      const result = summarizeEvidenceFile(session, req.query.path, context);
+      // Runs in a worker thread so a large evidence file cannot block the event
+      // loop. Context is built lazily, only when the worker asks for it.
+      const result = await summarizeFile(session, req.query.path, {
+        createContext: () => createSummaryContext(session),
+      });
       if (result.pendingBackfills?.length) {
         startBackfills(session, result.pendingBackfills.map((item) => item.object_id), { logger });
       }
@@ -76,7 +82,7 @@ export function filesRouter({
   });
 
   // ?dl=1 forces a download; default serves inline for the in-app viewer.
-  router.get('/:id/files/*', (req, res) => {
+  router.get('/:id/files/*', async (req, res) => {
     const session = getSession(sessions, req, res);
     if (!session) return;
     let abs;
@@ -90,12 +96,24 @@ export function filesRouter({
     }
     if (req.query.format === 'pdf') return sendPdf(res, abs, { sessionId: req.params.id });
     if (req.query.format === 'csv') {
+      // Streamed from a worker thread: headers go out on the metadata message,
+      // then chunks are written as they are produced, so a large export never
+      // materializes the whole CSV in memory.
+      let started = false;
       try {
-        const result = exportJsonFileAsCsv(session, decodeURIComponent(req.params[0]));
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="${result.filename.replace(/"/g, '')}"`);
-        return res.send(result.csv);
+        await streamCsv(session, decodeURIComponent(req.params[0]), {
+          onCsvMetadata: ({ filename }) => {
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="${String(filename).replace(/"/g, '')}"`);
+            started = true;
+          },
+          onCsvChunk: (chunk) => { res.write(chunk); },
+        });
+        return res.end();
       } catch (err) {
+        // Once the body has started there is no way to send a JSON error, so
+        // drop the connection rather than appending an error into the CSV.
+        if (started || res.headersSent) return res.destroy();
         return res.status(err.statusCode || 400).json({ error: err.message || 'Could not export CSV.' });
       }
     }
