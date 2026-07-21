@@ -14,12 +14,19 @@ function usage() {
     '  ./research-interface status',
     '  ./research-interface search -json \'{"query":"CVE-2024-3400","count":8,"freshness":"year"}\'',
     '  ./research-interface fetch -json \'{"url":"https://example.com/advisory"}\'',
+    '  ./research-interface cve -json \'{"cve":"CVE-2024-3400"}\'',
+    '  ./research-interface kev -json \'{"cve":"CVE-2024-3400"}\'',
+    '  ./research-interface epss -json \'{"cve":"CVE-2024-3400"}\'',
+    '  ./research-interface attack -json \'{"id":"T1059.001"}\'',
+    '  ./research-interface rfc -json \'{"rfc":"RFC 9000"}\'',
+    '  ./research-interface iana -json \'{"registry":"service","query":"443","protocol":"tcp"}\'',
+    '  ./research-interface rdap -json \'{"query":"example.com"}\'',
   ].join('\n');
 }
 
 if (!socketPath) fail('Research broker is not configured. Run research-interface from an investigation workspace through the web UI.');
 const operation = process.argv[2];
-if (!['status', 'search', 'fetch'].includes(operation)) fail(usage(), 64);
+if (!['status', 'search', 'fetch', 'cve', 'kev', 'epss', 'attack', 'rfc', 'iana', 'rdap'].includes(operation)) fail(usage(), 64);
 let payload = {};
 if (operation !== 'status') {
   if (process.argv[3] !== '-json' || !process.argv[4]) fail(usage(), 64);
