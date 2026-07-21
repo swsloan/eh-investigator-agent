@@ -12,6 +12,7 @@ pull request.
 | Input | Pin |
 | --- | --- |
 | Node base image | `node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3` |
+| npm (overrides the base image's bundled npm) | `npm@11.18.0` — installed in `Dockerfile` |
 | Graphiti base image | `zepai/knowledge-graph-mcp:standalone@sha256:460bafb39439d99ff001ea6ef03efbe0bd5d9e6afe2655edf926da4fd9df97c5` |
 | FalkorDB image | `falkordb/falkordb:latest@sha256:9042fdc4e53f5390ca5a3993aa71506523970efb40ffb9a98e6a4b1a9a4f8862` |
 | Embedding server image | `ghcr.io/ggml-org/llama.cpp:server@sha256:e10504c7f5c5bacece7e7e5957760eee53868642d853fe5ecfe8611065929a24` |
@@ -25,6 +26,16 @@ pull request.
 The image digests are multi-architecture manifest digests supporting the
 project's AMD64/ARM64 Docker paths. The package lockfile remains authoritative
 for transitive Node dependencies and installations use `npm ci`.
+
+**Why npm is pinned separately (2026-07-21).** `node:22-slim` ships npm 10.9.8,
+whose bundled node-tar 7.5.11 carries **CVE-2026-59873** (CRITICAL, gzip-bomb
+DoS) — enough to fail the `image-security` CRITICAL merge gate on every PR. The
+base image could not simply be advanced: the `node:22-slim` tag still resolves to
+the digest pinned above, so no fixed image exists to move to. npm 11.18.0 is the
+earliest maintained line bundling the patched tar 7.5.19, and it is installed in
+the `Dockerfile` before `npm ci` so the build and the shipped image agree. This
+also cleared several HIGH findings (7 → 3). **Remove this override** once a
+`node:22-slim` shipping fixed npm is published, and re-pin the base digest then.
 
 **Runtime-downloaded input — embedding model (pinned + verified).** The
 `embeddings-init` service in `docker-compose.yml` downloads
