@@ -17,6 +17,7 @@ import { ResearchBroker } from './lib/research-broker.js';
 import { localOriginGuard } from './lib/local-origin.js';
 import { redactText, redactValue } from './lib/redaction.js';
 import { securityHeaders } from './lib/security-headers.js';
+import { createShutdownCoordinator, drainingGuard } from './lib/shutdown-coordinator.js';
 import { restoreSessionsFromWorkspaces } from './lib/session-store.js';
 import {
   activateEnvSecrets, buildAgentEnv, credentialsConfigured,
@@ -113,6 +114,7 @@ function catalogFor(backendId) {
 
 const sessions = new Map(); // id -> AgentSession subclass instance
 const sseClients = new Map(); // sessionId -> Set<res>
+let draining = false; // set by the shutdown coordinator; gates mutating API requests
 const redact = (value) => redactValue(value, secretStore);
 const excliBroker = new ExcliBroker({
   root: ROOT,
@@ -350,6 +352,9 @@ app.use('/memory-llm', createMemoryLlmProxyHandler({
 }));
 
 app.use('/api', localOriginGuard);
+// While draining, refuse new mutating requests so shutdown is not racing work
+// it is about to abort. Reads still succeed until the listener closes.
+app.use('/api', drainingGuard(() => draining));
 app.use(express.json({ limit: '2mb' }));
 app.use((req, res, next) => {
   const json = res.json.bind(res);
@@ -528,17 +533,35 @@ function listen(port, attemptsLeft) {
 }
 listen(BASE_PORT, PORT_ATTEMPTS);
 
-function shutdown() {
-  for (const res of globalActionClients) { try { res.end(); } catch { /* already closed */ } }
-  globalActionClients.clear();
-  for (const s of sessions.values()) s.dispose();
-  excliBroker.stop();
-  actionBroker.stop();
-  reversingLabsBroker.stop();
-  researchBroker.stop();
-  server?.close();
-  process.exit(0);
+// Coordinated shutdown: stop accepting mutating requests, close the listener and
+// SSE clients, dispose sessions and every broker, and only then exit — with a
+// deadline so a wedged step cannot hang the process. Previously this ran
+// synchronously and called process.exit(0) immediately, so the HTTP server and
+// broker sockets were never confirmed closed.
+const shutdownCoordinator = createShutdownCoordinator({
+  getServer: () => server,
+  sessions,
+  sseClients,
+  // actionBroker is fork-specific (the governed write path) and must stop too.
+  brokers: [excliBroker, actionBroker, reversingLabsBroker, researchBroker],
+  stopAuxiliary: () => {
+    for (const res of globalActionClients) { try { res.end(); } catch { /* already closed */ } }
+    globalActionClients.clear();
+    return true;
+  },
+  setDraining: (value) => { draining = value; },
+  deadlineMs: Number(process.env.EH_SHUTDOWN_DEADLINE_MS || 12_000),
+});
+
+let shutdownExit = null;
+function shutdown(signal) {
+  if (!shutdownExit) {
+    shutdownExit = shutdownCoordinator.shutdown(signal).then((result) => {
+      process.exit(result.completed ? 0 : 1);
+    });
+  }
+  return shutdownExit;
 }
 
-process.once('SIGINT', shutdown);
-process.once('SIGTERM', shutdown);
+process.once('SIGINT', () => shutdown('SIGINT'));
+process.once('SIGTERM', () => shutdown('SIGTERM'));
