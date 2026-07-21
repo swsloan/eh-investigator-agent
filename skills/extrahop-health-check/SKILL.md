@@ -32,19 +32,21 @@ security triage.
   Contains root-cause drill-down recipes.
 - `references/reporting.md` - load before answering or writing a report.
   Contains chat-answer and HTML-report guidance.
+- `references/console-links.md` - load when appliance metadata or a pasted
+  RevealX URL makes device or device-group deep links possible.
 
 ## Execution Contract
 
 This project uses `./excli-interface`, not an ExtraHop MCP server.
 
-1. Use the `workspace-organization` skill before writing files.
-2. Use the `extrahop-excli` skill for command syntax and empty-result handling.
+1. Use `workspace-organization` before writing files.
+2. Use `extrahop-excli` for command syntax and empty-result handling.
 3. Run `./excli-interface -listtools` if tool availability is uncertain.
 4. Run `./excli-interface TOOL -help` before first use of a tool in a session.
 5. Save every raw response under `evidence/` before analysis.
 6. Use metric evidence first for broad health and trends. Use records only after
    metrics identify the device, protocol, and narrow time range that matter.
-7. Use the `investigation-reporting` skill for durable HTML reports.
+7. Use `investigation-reporting` for durable HTML reports.
 
 Tool names can vary with CLI release. Prefer the available `excli-interface`
 tool help over examples in this skill. Expected tool families are:
@@ -55,6 +57,10 @@ tool help over examples in this skill. Expected tool families are:
 - records: record search for narrow transaction examples after metrics;
 - tags: only if the CLI exposes tag assignment tools and the user explicitly
   asks to mark or persist results.
+
+If a required read operation is not wrapped, state the missing wrapped
+capability once, continue with the strongest available evidence, and never
+substitute invented telemetry.
 
 ## Scope Selection
 
@@ -100,6 +106,43 @@ Default windows:
 10. **Answer with verdict and evidence.** Keep chat concise; create a durable
     operational health report when requested or when the findings are material.
 
+## Assessment Procedures
+
+### Environment
+
+1. Discover capture/sensor groups and run the freshness gate per sensor.
+2. Screen capture-level protocol volume, actionable error candidates,
+   `tcp:desync`, and `tcp:unidirectional_flows`.
+3. Compare current volume to a valid baseline and identify silent drops, load
+   shifts, or sensor-wide collapse.
+4. Drill into devices only for protocols flagged by error, latency, volume, or
+   visibility signals. Rank a bounded top set rather than enriching the fleet.
+5. Apply two-pass error classification, role weighting, and downstream
+   correlation before assigning the environment verdict.
+
+### Device
+
+1. Resolve the device, role, OID, discovery ID, peers, and relevant protocol
+   perspectives. Do not guess identifiers.
+2. Infer workload class before applying HTTP or database latency thresholds.
+3. Query role-primary protocols, TCP transport, latency percentiles, and
+   request/response volume; keep secondary categories visible but weighted.
+4. Compare with a prior equivalent window and same-role peers when valid.
+5. Classify errors in two passes, inspect temporal shape, and apply activity and
+   routing gates.
+6. Run the matching root-cause playbook for every Warning or Degraded category.
+
+### Protocol fleet
+
+1. Screen the protocol at capture level, then discover devices by a verified
+   role or observed protocol activity.
+2. Assess a bounded, representative set of devices and say when the population
+   was sampled or truncated.
+3. Compare each device with the fleet median and median absolute deviation as
+   well as its own baseline.
+4. Rank worst first and report a bimodal fleet as "mostly healthy with N
+   outliers" rather than hiding the outliers behind an average.
+
 ## Status Vocabulary
 
 Use these statuses consistently:
@@ -133,3 +176,12 @@ Do not report "no issue" from an empty metric response until you have followed
 the empty-response checks in `extrahop-excli`: verify the metric catalog,
 object type, active object IDs, time range, limit, bucket type, and
 client/server category.
+
+## State Changes
+
+Run health checks read-only by default. Assign or clear health tags only when
+the user explicitly asks to persist results and the live CLI exposes the
+required tools. Before changing tags in this interactive app, present the exact
+devices and tag changes and obtain approval. Do not create assumed tag names;
+verify that the tags exist, report per-device failures, and leave unassessed
+devices untouched.

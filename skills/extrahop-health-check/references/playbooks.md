@@ -4,9 +4,11 @@ Run these when a category is Warning or Degraded before finalizing the verdict.
 The goal is to find whether the symptom is local, downstream, fleet-wide, or a
 sensor/deployment artifact.
 
-Stop drilling when you have a defensible root-cause direction, when three
-sequential checks are clean, when the next step is clearly out-of-band, or when
-the first answer would become less useful by continuing.
+Run steps sequentially and let each result determine the next query. Stop when
+a downstream cause is supported, when three relevant sequential checks are
+clean, or when the next deciding evidence is clearly out of band. Preserve the
+upstream user-impact finding even when the recommended remediation targets a
+downstream tier.
 
 ## HTTP 5xx or HTTP Latency
 
@@ -14,14 +16,17 @@ Starting signal: actionable HTTP 5xx rate > 1%, elevated HTTP latency, or a
 volume anomaly on a web/app tier.
 
 1. Check `http_server:tprocess` p50/p95 on the same web server or fleet.
-2. Compare same-role peers. Single-server means host/app fault; whole tier means
+2. Compare the onset of processing latency and 5xx errors. Latency that rises
+   first supports saturation or a slow dependency; fast 5xx with normal latency
+   leans toward deploy, configuration, or a dependency failing quickly.
+3. Compare same-role peers. Single-server means host/app fault; whole tier means
    load balancer, shared dependency, deploy, or external load event.
-3. Check backend database latency for significant peers discovered from metrics
+4. Check backend database latency for significant peers discovered from metrics
    or topology.
-4. Check outbound API/TLS/HTTP client latency from the web server.
-5. Check TCP transport to specific backends: RTO, retransmission, zero-window,
+5. Check outbound API/TLS/HTTP client latency from the web server.
+6. Check TCP transport to specific backends: RTO, retransmission, zero-window,
    and setup time.
-6. If downstream cause is confirmed, keep the upstream user-impact verdict but
+7. If downstream cause is confirmed, keep the upstream user-impact verdict but
    target recommendations at the downstream device or tier.
 
 ## Active Directory / Domain Controller Health
@@ -59,6 +64,9 @@ Starting signal: `db_server:tprocess` p95 or p50 over threshold, sustained.
 5. Compare peers. One DB points to instance fault; many DBs point to shared
    storage, virtualization, or network segment.
 
+When TCP is clean but DB processing remains high, stop at a bounded network
+conclusion and recommend DBA, storage, locking, plan, and host-resource checks.
+
 ## TCP Retransmissions or Flow Stalls
 
 Starting signal: retransmission, RTO, multi-RTO, zero-window, or setup-time
@@ -73,6 +81,10 @@ degradation.
 5. Check PMTU signature: a few large packets repeatedly fail while small
    packets succeed, often on VPN or tunnel paths.
 6. For zero-window, distinguish receiver backpressure from network loss.
+
+Always state direction and concentration in the conclusion: entering versus
+leaving the observed segment, and one peer versus a broadly distributed set.
+Those facts determine where the operator should look next.
 
 ## SMB/CIFS File Server Slowness
 
