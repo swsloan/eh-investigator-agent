@@ -34,6 +34,7 @@ const HTML_EXTS = new Set(['html', 'htm']);
 const PCAP_RE = /\.(?:pcap|pcapng|cap)(?:\.gz)?$/i;
 const HIGHLIGHT_LANG_BY_EXT = new Map([
   ['py', 'python'],
+  ['js', 'javascript'],
 ]);
 const SOURCE_PREVIEW_LIMIT = 400_000;
 const SUMMARY_LAYOUTS = new Set(['source', 'split', 'summary']);
