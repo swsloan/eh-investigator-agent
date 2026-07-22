@@ -18,6 +18,7 @@ export function sessionsRouter({
   secretStore,
   brokerSocketPath,
   buildSessionEnv,
+  onSessionRemoved = () => {},
   challenger,
   redact = (value) => value,
 }) {
@@ -118,7 +119,7 @@ export function sessionsRouter({
       const config = getConfig();
       // Rebuild the full session env (incl. Claude auth) — not bare buildAgentEnv,
       // which would drop the API key / OAuth token on a reused empty session.
-      const { env, claudeSubscription } = buildSessionEnv(config, session.backend);
+      const { env, claudeSubscription } = buildSessionEnv(config, session.backend, session);
       session.applyDefaults({
         model: config.mainModel || '',
         thinking: config.mainReasoning || '',
@@ -166,6 +167,10 @@ export function sessionsRouter({
     sseClients.delete(session.id);
     try { session.abort(); } catch { /* best effort */ }
     session.dispose();
+    // Release per-session resources the server owns (today: the investigation
+    // plan capability). Removal from `sessions` already makes them unusable;
+    // this keeps the bookkeeping from growing across a long-lived server.
+    try { onSessionRemoved(session); } catch { /* best effort */ }
     try {
       fs.rmSync(session.workspace, { recursive: true, force: true });
     } catch (err) {

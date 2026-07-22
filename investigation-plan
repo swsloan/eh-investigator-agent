@@ -1,0 +1,199 @@
+#!/usr/bin/env node
+import net from 'node:net';
+
+const OPERATIONS = new Set(['init', 'add', 'update', 'pivot', 'status']);
+const HELP_FLAGS = new Set(['--help', '-h']);
+const MAX_RESPONSE_BYTES = 768 * 1024;
+const socketPath = process.env.EH_INVESTIGATION_PLAN_BROKER_SOCKET;
+const capability = process.env.EH_INVESTIGATION_PLAN_CAPABILITY;
+
+const HELP = Object.freeze({
+  init: [
+    'Usage: ./investigation-plan init -json \'<object>\'',
+    '',
+    'Required fields:',
+    '  plan_type             threat_hunt | security_investigation | performance_investigation',
+    '  title                 concise plan title',
+    '  objective             decision or outcome the investigation must reach',
+    '  scope                 population, time window, systems, and boundaries',
+    '  hypothesis            testable working hypothesis',
+    '  strategy              ordered evidence strategy',
+    '  completion_criteria   definition of done',
+    '  tasks                 array of one or more task objects',
+    '',
+    'Optional fields:',
+    '  expected_revision     non-negative integer (normally 0 for init)',
+    '',
+    'Task fields:',
+    '  required: id, title',
+    '  optional: why, evidence (string or string array)',
+  ],
+  add: [
+    'Usage: ./investigation-plan add -json \'<object>\'',
+    '',
+    'Required fields:',
+    '  reason                why the checklist must expand',
+    '  tasks                 array of one or more task objects',
+    '',
+    'Optional fields:',
+    '  expected_revision     current plan revision',
+    '',
+    'Task fields:',
+    '  required: id, title',
+    '  optional: why, evidence (string or string array)',
+  ],
+  update: [
+    'Usage: ./investigation-plan update -json \'<object>\'',
+    '',
+    'Required fields:',
+    '  id                    existing task id',
+    '  status                pending | in_progress | completed | blocked | skipped',
+    '',
+    'Conditional field:',
+    '  outcome               required for completed, blocked, or skipped',
+    '',
+    'Optional fields:',
+    '  outcome               result or disposition when not conditionally required',
+    '  evidence_refs         array of existing workspace-relative regular files',
+    '  expected_revision     current plan revision',
+  ],
+  pivot: [
+    'Usage: ./investigation-plan pivot -json \'<object>\'',
+    '',
+    'Required fields:',
+    '  trigger               new fact or condition that caused the pivot',
+    '  decision              reasoned change to the investigation approach',
+    '',
+    'Optional fields:',
+    '  revised_objective',
+    '  revised_hypothesis',
+    '  revised_strategy',
+    '  revised_scope',
+    '  revised_completion_criteria',
+    '  plan_type             threat_hunt | security_investigation | performance_investigation',
+    '  supersede             array of open task ids closed by this pivot',
+    '  add                   array of task objects (required: id, title; optional: why, evidence)',
+    '  evidence_refs         array of existing workspace-relative regular files',
+    '  expected_revision     current plan revision',
+  ],
+  status: [
+    'Usage: ./investigation-plan status',
+    '',
+    'Required fields: none',
+    'Optional fields: none',
+    '',
+    'Returns the full structured plan view and derived progress state.',
+  ],
+});
+
+function usage(operation) {
+  if (operation && HELP[operation]) return HELP[operation].join('\n');
+  return [
+    'Usage: ./investigation-plan <operation> [options]',
+    '',
+    'Operations:',
+    '  init      create a typed structured plan (required before mutation)',
+    '  add       append justified checklist tasks',
+    '  update    change one task status, outcome, or evidence references',
+    '  pivot     record a material reasoning change and revise the plan',
+    '  status    read the current plan and derived progress',
+    '',
+    'Run ./investigation-plan help <operation> for exact fields.',
+    'Help works without a running broker.',
+  ].join('\n');
+}
+
+function fail(message, code = 1) {
+  process.stderr.write(`${message}\n`);
+  process.exit(code);
+}
+
+const args = process.argv.slice(2);
+if (!args.length || (args.length === 1 && (args[0] === 'help' || HELP_FLAGS.has(args[0])))) {
+  process.stdout.write(`${usage()}\n`);
+  process.exit(0);
+}
+if (args[0] === 'help') {
+  if (args.length !== 2 || !OPERATIONS.has(args[1])) fail(usage(), 64);
+  process.stdout.write(`${usage(args[1])}\n`);
+  process.exit(0);
+}
+if (OPERATIONS.has(args[0]) && args.length === 2 && HELP_FLAGS.has(args[1])) {
+  process.stdout.write(`${usage(args[0])}\n`);
+  process.exit(0);
+}
+
+const operation = args[0];
+if (!OPERATIONS.has(operation)) fail(usage(), 64);
+
+if (!socketPath) {
+  fail('Investigation plan broker is not configured. Run ./investigation-plan from an investigation workspace through the web UI.');
+}
+if (!capability) {
+  fail('Investigation plan capability is not configured for this session. Restart the investigation session through the web UI.');
+}
+
+let payload = {};
+if (operation === 'status') {
+  if (args.length !== 1) fail(usage(operation), 64);
+} else {
+  if (args.length !== 3 || args[1] !== '-json' || !args[2]) fail(usage(operation), 64);
+  try {
+    payload = JSON.parse(args[2]);
+  } catch {
+    fail('The -json value must be valid JSON.', 64);
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    fail('The -json value must be a JSON object.', 64);
+  }
+}
+
+const socket = net.createConnection(socketPath);
+let buffer = '';
+let completed = false;
+
+socket.setEncoding('utf8');
+socket.setTimeout(15_000);
+socket.on('connect', () => {
+  socket.write(`${JSON.stringify({ operation, payload, cwd: process.cwd(), capability })}\n`);
+});
+socket.on('data', (chunk) => {
+  // The response is the first line and nothing after it. Without this guard,
+  // trailing bytes would re-enter the parse below: printing the result a second
+  // time, or tripping the size cap and turning a delivered answer into a
+  // failure exit. Today's broker sends one line and ends, so this is a
+  // robustness boundary rather than a live bug.
+  if (completed) return;
+  buffer += chunk;
+  if (Buffer.byteLength(buffer) > MAX_RESPONSE_BYTES) {
+    socket.destroy();
+    fail('Investigation plan broker response is too large.');
+  }
+  const newline = buffer.indexOf('\n');
+  if (newline === -1) return;
+  let response;
+  try {
+    response = JSON.parse(buffer.slice(0, newline));
+  } catch {
+    fail('Investigation plan broker sent an invalid response.');
+  }
+  completed = true;
+  if (response.error) {
+    const prefix = response.code ? `${response.code}: ` : '';
+    process.stderr.write(`${prefix}${response.error}\n`);
+    process.exitCode = response.statusCode === 409 ? 3 : 1;
+  } else {
+    process.stdout.write(`${JSON.stringify(response.result, null, 2)}\n`);
+  }
+  socket.end();
+});
+socket.on('timeout', () => {
+  socket.destroy();
+  fail('Investigation plan broker request timed out.');
+});
+socket.on('error', (err) => {
+  fail(err.code === 'ENOENT' ? 'Investigation plan broker is not running.' : err.message);
+});
+socket.on('close', () => {
+  if (!completed) fail('Investigation plan broker closed without a response.');
+});

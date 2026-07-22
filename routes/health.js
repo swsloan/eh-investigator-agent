@@ -4,7 +4,10 @@ import { credentialsConfigured } from '../lib/settings.js';
 import { getSystemPreflight } from '../lib/system-preflight.js';
 import { getAppVersion } from '../lib/app-version.js';
 
-export function healthRouter({ getConfig, sessions, root, getActiveBackend, getModelCatalog, secretStore, excliBroker, reversingLabsBroker, researchBroker }) {
+export function healthRouter({
+  getConfig, sessions, root, getActiveBackend, getModelCatalog, secretStore,
+  excliBroker, reversingLabsBroker, researchBroker, investigationPlanBroker,
+}) {
   const router = express.Router();
 
   router.get('/health', (req, res) => {
@@ -30,6 +33,7 @@ export function healthRouter({ getConfig, sessions, root, getActiveBackend, getM
       excliBroker,
       reversingLabsBroker,
       researchBroker,
+      investigationPlanBroker,
     });
     res.status(status.ok ? 200 : 503).json(status);
   });
