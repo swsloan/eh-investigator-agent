@@ -74,6 +74,45 @@ Plan of record: `docs/INTEGRATION-PLAN-agent-studio-features.md` and
 
 ---
 
+## 1c. Structured investigation plans (2026-07-22 cycle)
+
+Newest work. The v26.07.20 investigation-plan feature, ported in four reviewed
+slices (PRs #68–#71), all merged to `main`, deployed to the running stack, and
+validated end to end against the live appliance. Full inventory in
+[CHANGES.md](CHANGES.md) → "structured investigation plans".
+
+- **What it is.** The agent maintains a live structured plan per investigation
+  (type, objective, scope, hypothesis, evidence strategy, outcome-oriented
+  checklist, completion contract, append-only pivot history). Managed only
+  through the brokered `./investigation-plan`; `.investigation-plan.json` is
+  authoritative and `investigation-plan.md` is a regenerated projection.
+- **Where it lives.** Core `lib/investigation-plan/` + facade (#68); broker,
+  `./investigation-plan` CLI, and read routes (#69); `skills/
+  investigation-planning/` + system-prompt section (#70); ribbon
+  `public/js/plan-ribbon.js` + `plan` artifact kind, withheld from Workspace
+  Files (#71).
+- **Trust model.** The CLI has no local execution path — every operation runs
+  in-process against a per-session capability bound to one workspace, so the
+  synchronous store's workspace lock is uncontended by construction. UI reads use
+  a short (25 ms) lock wait; agent mutations keep 200 ms.
+- **Two upstream defects fixed while porting:** init with 25–64 tasks failed its
+  own stored-state validation; one `revised_*` pivot field was validated on
+  presence only. Both carry regression tests.
+- **Live validation (2026-07-22).** Ran detection `4294968365` through the app
+  agent: it initialized a `security_investigation` plan before evidence, the
+  ribbon tracked awaiting → 6/6 over SSE, memory recalled the prior campaign and
+  captured the conclusion at close, and it reached the adjudicated LameHug
+  LLM-C2 verdict — correctly attributing the true host (`jjkoupro4`,
+  172.16.204.153) behind proxy `172.16.206.50`. Matches eval case
+  `eval/cases/lamehug-hf-c2.json` (disposition `malicious`).
+- **Not done on purpose.** No distributable bundle cut and `VERSION` left at
+  26.07.10 (consistent with recording post-.10 work as dated CHANGES entries;
+  cut a bundle deliberately when packaging a release). Phase 5 of the port (raw
+  `extrahop-rest-api` / `./excli-interface api` passthrough) remains deferred —
+  the skills reference it but it is intentionally not wired.
+
+---
+
 ## 2. Completed this session
 
 **Deployment & platform** (all live, in bundle)
