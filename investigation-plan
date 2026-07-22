@@ -158,6 +158,12 @@ socket.on('connect', () => {
   socket.write(`${JSON.stringify({ operation, payload, cwd: process.cwd(), capability })}\n`);
 });
 socket.on('data', (chunk) => {
+  // The response is the first line and nothing after it. Without this guard,
+  // trailing bytes would re-enter the parse below: printing the result a second
+  // time, or tripping the size cap and turning a delivered answer into a
+  // failure exit. Today's broker sends one line and ends, so this is a
+  // robustness boundary rather than a live bug.
+  if (completed) return;
   buffer += chunk;
   if (Buffer.byteLength(buffer) > MAX_RESPONSE_BYTES) {
     socket.destroy();
