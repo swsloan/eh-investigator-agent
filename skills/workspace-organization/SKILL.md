@@ -12,7 +12,8 @@ Everything else goes in a directory.
 ## Layout
 
 ```
-<workspace root>/          ← deliverables ONLY (reports, requested exports)
+<workspace root>/          ← deliverables + the app-generated investigation plan
+  investigation-plan.md   ← generated live checklist; never edit directly
   uploads/                 ← files the user shared with you. READ-ONLY.
   evidence/
     detections/            ← search_detections, get_detection output
@@ -20,6 +21,7 @@ Everything else goes in a directory.
     records/               ← search_records output
     packets/               ← download_pcap output and packet analysis
     entities/              ← devices, device groups, tags, localities, users
+  research/                ← web searches, fetched sources, research memos
   scratch/                 ← intermediate work: filtered slices, jq output,
                              notes, draft fragments, one-off scripts
 ```
@@ -39,12 +41,21 @@ ones up front.
 3. **Derived/intermediate output goes in `scratch/`** — jq extractions, sorted
    slices, working notes. If you wouldn't hand it to the user, it isn't root
    material.
-4. **The root is for deliverables**: the report the user asked for, an export
-   they requested, a pcap they want. Mention each root file by name in your
-   answer when you create it.
+4. **The root is for deliverables plus the generated plan**: maintain the plan
+   only through `./investigation-plan` according to the `investigation-planning`
+   skill. Its `investigation-plan.md` projection is app-owned and generated; do
+   not edit, rename, or duplicate it. All other root files must be reports,
+   requested exports, or requested pcaps. Mention each root deliverable by name
+   in your answer when you create it; the standard plan does not need a
+   repetitive announcement on every turn.
 5. **Never write into `uploads/`** and never modify a file the user shared.
 6. PCAP downloads belong under `evidence/packets/` unless the user asked for a
    PCAP as a root deliverable. Use `extrahop-excli` for `download_pcap` details.
+7. External research belongs under the root-level `research/` directory, not
+   under `evidence/`, because it is external context rather than observed
+   ExtraHop evidence. Use the
+   `security-research` skill for filenames, IOCs, CVEs, vendor context, source
+   quality, and the compiled research memo.
 
 ## Why
 

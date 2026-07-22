@@ -4,21 +4,13 @@ Use this workflow for a single detection, host, IP, IOC, suspected compromise,
 or any L1 escalation that needs transaction evidence. L2 tests hypotheses,
 reconstructs attack chains, and decides whether action is warranted.
 
-## Checklist
+## Plan Shape
 
-```markdown
-Investigation Progress:
-- [ ] Step 0: Consume the L1 escalation packet when present
-- [ ] Step 1: Establish the starting point and hypothesis
-- [ ] Step 2: Resolve participants and pivot identifiers
-- [ ] Step 3: Correlate related detections and timeline
-- [ ] Step 4: Corroborate with metrics when the hypothesis is volumetric
-- [ ] Step 5: Pull narrow supporting records
-- [ ] Step 6: Pull packets only when byte-level proof matters
-- [ ] Step 7: Confirm, refute, and conclude
-```
-
-Keep this checklist in scratch notes for larger investigations.
+Represent the investigation in the structured `./investigation-plan`. Use
+outcome tasks for hypothesis framing, participant/timeline scope, the cheapest
+deciding corroboration, and final disposition. Do not turn the plan into a list
+of tool calls. Record a pivot before widening to a materially new participant,
+attack stage, or hypothesis.
 
 ## Step 0: Consume The L1 Escalation Packet
 
