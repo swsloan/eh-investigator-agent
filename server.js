@@ -30,7 +30,7 @@ import { runEvalInApp } from './lib/eval-runner.js';
 import { runInjectionProbes } from './lib/injection-probe.js';
 import { buildDashboard } from './eval/dashboard/build.js';
 import { createFalkorClient } from './lib/falkor-client.js';
-import { startDriftWatch } from './lib/memory-graph.js';
+import { groupCounts, startDriftWatch } from './lib/memory-graph.js';
 import { createMemoryLlmProxyHandler, resolveMemoryProxyConfig } from './lib/memory-llm-proxy.js';
 import { evalRouter } from './routes/eval.js';
 import { memoryGraphRouter } from './routes/memory-graph.js';
@@ -437,6 +437,7 @@ app.use('/api', healthRouter({
   reversingLabsBroker,
   researchBroker,
   investigationPlanBroker,
+  getMemoryStatus,
 }));
 
 // In-app eval: run the labeled cases through the app's own session machinery
@@ -520,6 +521,22 @@ startDriftWatch({
   client: falkor,
   groups: () => (MEMORY_ENV_GROUP ? [MEMORY_ENV_GROUP] : falkorGraphs),
 });
+
+/**
+ * Memory-namespace status for the preflight `memory_group` check. Returns null
+ * when memory is off (check omitted), `{unreachable}` when FalkorDB can't be
+ * read, or `{counts, declared}` for the drift verdict. `declared` prefers the
+ * live sidecar group (EH_MEMORY_GROUP_ID) and falls back to the persisted
+ * config value, so the check compares against whatever the writes actually use.
+ */
+async function getMemoryStatus() {
+  if (!config.memory?.enabled) return null;
+  let groups;
+  try { groups = await falkor.listGraphs(); }
+  catch { return { unreachable: true }; }
+  const counts = await groupCounts(falkor, groups);
+  return { counts, declared: MEMORY_ENV_GROUP || config.memory?.groupId || '' };
+}
 
 app.use((err, req, res, next) => {
   if (!err) return next();
