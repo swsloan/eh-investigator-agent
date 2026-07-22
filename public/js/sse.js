@@ -1,4 +1,5 @@
 import { sessionEventsUrl } from './api.js';
+import { applyInvestigationPlanEvent, refreshInvestigationPlan } from './plan-ribbon.js';
 import {
   addSysNote,
   addToolCard,
@@ -183,6 +184,10 @@ export function handleEvent(ev) {
       if (!state.replaying) refreshFilesCallback();
       break;
 
+    case 'investigation_plan_updated':
+      applyInvestigationPlanEvent(ev, { sessionId: state.session?.id || '' });
+      break;
+
     case 'session_error':
       addSysNote(ev.error);
       setRunning(false);
@@ -235,6 +240,10 @@ export function connect(sessionId) {
   source.onopen = () => {
     if (!isActiveStream(scope)) return;
     applyIdleStatus();
+    // Reconcile the authoritative plan on every connect and reconnect: a
+    // mutation that lands while SSE is down would otherwise leave the ribbon
+    // stale until the next one.
+    refreshInvestigationPlan();
   };
   source.onmessage = (event) => {
     if (!isActiveStream(scope)) return;

@@ -104,6 +104,41 @@
 
     <!-- ===== Right panel: workspace files ===== -->
     <aside class="files-panel">
+      <section id="investigation-plan-ribbon" class="investigation-plan-ribbon awaiting" data-plan-type="" aria-label="Investigation plan">
+        <button id="investigation-plan-toggle" class="plan-ribbon-toggle" type="button" aria-expanded="false" aria-controls="investigation-plan-details">
+          <span class="plan-ribbon-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8l1.5 1.5L12 7M14 8h3M8 13l1.5 1.5L12 12M14 13h3"/></svg>
+          </span>
+          <span class="plan-ribbon-summary">
+            <span class="plan-ribbon-heading">
+              <span>Investigation plan</span>
+              <span id="investigation-plan-type" class="plan-ribbon-type">Awaiting plan</span>
+            </span>
+            <strong id="investigation-plan-current">The agent has not initialized a plan yet.</strong>
+          </span>
+          <span id="investigation-plan-count" class="plan-ribbon-count" aria-label="No checklist items">—</span>
+          <svg class="plan-ribbon-chevron" viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6l5 5 5-5"/></svg>
+        </button>
+        <div id="investigation-plan-details" class="plan-ribbon-details" hidden>
+          <div class="plan-ribbon-scroll">
+            <div class="plan-ribbon-progress-copy">
+              <strong id="investigation-plan-progress-status">Awaiting plan</strong>
+              <span id="investigation-plan-objective">The checklist will appear after the investigator initializes its plan.</span>
+            </div>
+            <div id="investigation-plan-progress" class="plan-ribbon-progress" role="status" aria-label="Investigation plan is awaiting initialization">
+              <span></span>
+            </div>
+            <ol id="investigation-plan-tasks" class="plan-ribbon-tasks" aria-label="Investigation checklist"></ol>
+            <aside id="investigation-plan-pivot" class="plan-ribbon-pivot hidden" aria-label="Latest plan pivot">
+              <span>Latest pivot</span>
+              <strong></strong>
+              <p></p>
+            </aside>
+          </div>
+          <button id="investigation-plan-view" class="plan-ribbon-view hidden" type="button" aria-haspopup="dialog">View investigation plan</button>
+        </div>
+        <p id="investigation-plan-live" class="sr-only" aria-live="polite" aria-atomic="true"></p>
+      </section>
       <div class="files-header">
         <div class="rp-tabs" role="tablist" aria-label="Right panel">
           <button class="rp-tab active" data-rp="files" type="button" role="tab">Files</button>

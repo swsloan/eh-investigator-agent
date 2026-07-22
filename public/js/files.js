@@ -1,6 +1,7 @@
 import { getEvidenceSummary, listFiles, openPcapInWireshark, sessionFileUrl } from './api.js';
 import { renderMarkdown, highlightCode } from './markdown.js';
 import { linkWorkspaceFileReferences } from './workspace-file-links.js';
+import { isInvestigationPlanFile } from './investigation-plan.js';
 import { themeReportHtml } from './theme.js';
 import { dom, $ } from './dom.js';
 import { captureSessionScope, isCurrentSessionScope, state } from './state.js';
@@ -223,7 +224,11 @@ export async function refreshFiles() {
   // The session may have changed while this was in flight — dropping the result
   // keeps the previous session's file list from replacing the current one.
   if (!isCurrentSessionScope(scope)) return;
-  const { files } = data;
+  // The plan has its own ribbon above this list. The server already omits it,
+  // but an older session state or a partial response can still carry it, so the
+  // client filters too rather than letting a generated file look like a
+  // deliverable the agent authored.
+  const files = (data.files || []).filter((file) => !isInvestigationPlanFile(file));
   const firstLoad = state.knownFiles === null;
   const previousFiles = state.knownFiles || new Map();
   const currentFiles = new Map();
@@ -455,6 +460,7 @@ export function closeViewer() {
   state.viewingIsHtml = false;
   state.viewingIsJson = false;
   state.viewingFile = null;
+  state.viewingGeneratedHtml = null;
   state.summaryPaneLayout = 'split';
   setSummaryLayoutControlsVisible(false);
   dom.viewerBody.className = 'viewer-body';
@@ -473,11 +479,16 @@ export async function openViewer(file) {
   state.viewingIsHtml = HTML_EXTS.has(ext);
   state.viewingIsJson = ext === 'json';
   state.viewingFile = file;
+  state.viewingGeneratedHtml = null;
   const canSummarize = isSummarizableEvidenceJson(file);
   $('viewer-name').textContent = file.path;
   $('viewer-sub').textContent = `${fmtBytes(file.size)} · ${fmtTime(file.mtime)}`;
   setViewerStatus('');
   closeDownloadMenu();
+  // Generated HTML hides this wrap because it has no file to download; a real
+  // file must always bring it back, or the first plan view would strip download
+  // controls from every file opened afterwards.
+  dom.viewerDownloadWrap.classList.remove('hidden');
   dom.viewerDownloadBtn.title = state.viewingIsHtml || state.viewingIsJson ? 'Download options' : 'Download';
   dom.viewerDownloadFileLabel.textContent = state.viewingIsJson ? 'Download JSON' : 'Download';
   dom.viewerDownloadCsv.classList.toggle('hidden', !state.viewingIsJson);
@@ -567,8 +578,56 @@ export async function openViewer(file) {
   refreshFiles();
 }
 
+/**
+ * Show HTML the app generated in memory (the rendered investigation plan) in the
+ * same viewer used for workspace files. Upstream keeps this in its own
+ * file-viewer module; this fork merged the viewer into files.js, so it lands
+ * here and reuses the existing sandboxed-iframe rendering rather than
+ * introducing a second HTML path.
+ *
+ * There is no file behind it, so `state.viewingPath` stays null and the
+ * download controls — all of which resolve a workspace path — are hidden.
+ */
+export function openGeneratedHtmlViewer({ title, subtitle = '', html, kind = 'generated-html', returnFocus = null } = {}) {
+  if (!captureSessionScope()) return; // the session went away while the render was in flight
+  state.viewingPath = null;
+  state.viewingFile = null;
+  state.viewingIsHtml = true;
+  state.viewingIsJson = false;
+  state.viewingGeneratedHtml = {
+    title: String(title || 'Generated document'),
+    subtitle: String(subtitle || ''),
+    html: String(html || ''),
+    kind,
+    returnFocus,
+  };
+  $('viewer-name').textContent = state.viewingGeneratedHtml.title;
+  $('viewer-sub').textContent = state.viewingGeneratedHtml.subtitle;
+  setViewerStatus('');
+  closeDownloadMenu();
+  dom.viewerDownloadWrap.classList.add('hidden');
+  setSummaryLayoutControlsVisible(false);
+  renderGeneratedHtmlBody(state.viewingGeneratedHtml.html);
+  dom.viewerEl.classList.remove('hidden');
+  dom.viewerScrim.classList.remove('hidden');
+  dom.filesList.querySelectorAll('.file-row.viewing').forEach((el) => el.classList.remove('viewing'));
+}
+
+function renderGeneratedHtmlBody(html) {
+  // Same containment as a workspace HTML report: a sandboxed iframe with no
+  // allowances, so plan text derived from wire data cannot script the app.
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('sandbox', '');
+  iframe.srcdoc = themeReportHtml(html);
+  dom.viewerBody.className = 'viewer-body';
+  dom.viewerBody.innerHTML = '';
+  dom.viewerBody.appendChild(iframe);
+}
+
 export function refreshThemedReportPreview() {
   if (state.viewingIsHtml && state.viewingFile) openViewer(state.viewingFile);
+  // Generated HTML has no file to reopen; re-theme the snapshot we still hold.
+  else if (state.viewingGeneratedHtml) renderGeneratedHtmlBody(state.viewingGeneratedHtml.html);
 }
 
 export function initFileViewer() {

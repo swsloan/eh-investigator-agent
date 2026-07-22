@@ -90,6 +90,32 @@ export async function getEvidenceSummary(sessionId, relPath, options = {}) {
   return { ok: res.ok, data: await res.json().catch(() => ({})) };
 }
 
+export async function getInvestigationPlan(sessionId, options = {}) {
+  const res = await fetch(`/api/sessions/${sessionId}/investigation-plan`, { signal: options.signal });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 404) {
+    return { ok: true, initialized: false, structured: true, revision: null, plan: null, progress: null };
+  }
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+export async function getRenderedInvestigationPlan(sessionId, options = {}) {
+  const res = await fetch(`/api/sessions/${sessionId}/investigation-plan/render`, { signal: options.signal });
+  const body = await res.text();
+  if (!res.ok) {
+    let message = '';
+    try { message = JSON.parse(body).error || ''; } catch { /* use HTTP status below */ }
+    throw new Error(message || `HTTP ${res.status}`);
+  }
+  const revisionHeader = res.headers.get('X-Investigation-Plan-Revision');
+  const revision = revisionHeader === null ? null : Number(revisionHeader);
+  return {
+    html: body,
+    revision: Number.isSafeInteger(revision) && revision >= 0 ? revision : null,
+  };
+}
+
 export async function openPcapInWireshark(sessionId, relPath) {
   const res = await fetch(`/api/sessions/${sessionId}/files/${encodePath(relPath)}/open-wireshark`, {
     method: 'POST',

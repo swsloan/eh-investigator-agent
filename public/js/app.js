@@ -2,6 +2,7 @@ import { listSessions } from './api.js';
 import { initComposer } from './composer.js';
 import { dom } from './dom.js';
 import { initEval } from './eval.js';
+import { initInvestigationPlan } from './plan-ribbon.js';
 import { closeMemory, initMemory, isMemoryOpen } from './memory.js';
 import {
   closeDownloadMenu,
@@ -9,6 +10,7 @@ import {
   initFileViewer,
   isDownloadMenuOpen,
   isViewerOpen,
+  openGeneratedHtmlViewer,
   refreshFiles,
   refreshThemedReportPreview,
 } from './files.js';
@@ -69,6 +71,7 @@ async function boot() {
 export function startApp() {
   initTheme({ refreshPreview: refreshThemedReportPreview });
   initFileViewer();
+  initInvestigationPlan({ openGeneratedHtml: openGeneratedHtmlViewer });
   initSettings();
   initComposer();
   initSessionStream({ refreshFiles, loadSessions });
