@@ -485,6 +485,10 @@ export async function openViewer(file) {
   $('viewer-sub').textContent = `${fmtBytes(file.size)} · ${fmtTime(file.mtime)}`;
   setViewerStatus('');
   closeDownloadMenu();
+  // Generated HTML hides this wrap because it has no file to download; a real
+  // file must always bring it back, or the first plan view would strip download
+  // controls from every file opened afterwards.
+  dom.viewerDownloadWrap.classList.remove('hidden');
   dom.viewerDownloadBtn.title = state.viewingIsHtml || state.viewingIsJson ? 'Download options' : 'Download';
   dom.viewerDownloadFileLabel.textContent = state.viewingIsJson ? 'Download JSON' : 'Download';
   dom.viewerDownloadCsv.classList.toggle('hidden', !state.viewingIsJson);

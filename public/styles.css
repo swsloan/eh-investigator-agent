@@ -2417,6 +2417,7 @@ html, body {
   cursor: pointer;
 }
 .plan-ribbon-toggle:hover { background: color-mix(in srgb, var(--plan-accent) 7%, transparent); }
+.plan-ribbon-toggle:focus-visible,
 .plan-ribbon-view:focus-visible {
   outline: 2px solid var(--plan-accent-fg);
   outline-offset: -3px;
@@ -2611,10 +2612,6 @@ html, body {
 }
 .plan-ribbon-view:hover { background: var(--surface-hover); }
 .plan-ribbon-view:disabled { color: var(--gray); cursor: wait; }
-.plan-ribbon-progress > span {
-    transition: none;
-  }
-
 @media (prefers-reduced-motion: reduce) {
   .investigation-plan-ribbon,
   .plan-ribbon-chevron,
