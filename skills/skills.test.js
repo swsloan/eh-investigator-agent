@@ -103,6 +103,25 @@ test('the entry-point skills open by initializing a correctly typed plan', () =>
   }
 });
 
+test('the resume path is documented where the agent is told to initialize', () => {
+  // The entry-point skills say "initialize"; the resume case is carried by the
+  // skill they delegate to and by the always-in-context system prompt. Both must
+  // keep saying it, because an agent that blindly re-inits a resumed plan gets a
+  // PLAN_ALREADY_INITIALIZED refusal instead of the current plan. (That refusal
+  // is safe — the store never overwrites an existing plan — but it wastes a turn.)
+  const { body } = frontmatter(path.join(SKILLS, 'investigation-planning', 'SKILL.md'));
+  assert.match(
+    body.replace(/\s+/g, ' '),
+    /run `\.\/investigation-plan status` before changing the plan/,
+    'the planning skill tells a resuming agent to read state first',
+  );
+  assert.match(
+    SYSTEM_PROMPT.replace(/\s+/g, ' '),
+    /resumed investigation, call `\.\/investigation-plan status`/,
+    'the system prompt carries the same resume rule',
+  );
+});
+
 test('the plan template asset the store compares against still ships', () => {
   const asset = path.join(SKILLS, 'investigation-planning', 'assets', 'investigation-plan.md');
   assert.ok(fs.existsSync(asset), 'the placeholder template is part of the skill');
