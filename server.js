@@ -14,6 +14,7 @@ import { ActionIndex } from './lib/action-index.js';
 import { listActionsAcrossWorkspaces } from './lib/action-store.js';
 import { ReversingLabsBroker } from './lib/reversinglabs-broker.js';
 import { ResearchBroker } from './lib/research-broker.js';
+import { InvestigationPlanBroker } from './lib/investigation-plan-broker.js';
 import { localOriginGuard } from './lib/local-origin.js';
 import { redactText, redactValue } from './lib/redaction.js';
 import { securityHeaders } from './lib/security-headers.js';
@@ -37,6 +38,7 @@ import { filesRouter } from './routes/files.js';
 import { healthRouter } from './routes/health.js';
 import { modelsRouter } from './routes/models.js';
 import { sessionsRouter } from './routes/sessions.js';
+import { investigationPlansRouter } from './routes/investigation-plans.js';
 import { settingsRouter } from './routes/settings.js';
 import { actionsRouter } from './routes/actions.js';
 import { backendUpdatesRouter } from './routes/backend-updates.js';
@@ -153,6 +155,14 @@ const actionBroker = new ActionBroker({
   broadcast: (sessionId, event) => broadcast(sessionId, event),
 });
 actionBroker.start();
+// Structured investigation plans. The agent's ./investigation-plan interface has
+// no local execution path: every operation runs here, in this process, against a
+// per-session capability bound to that session's workspace.
+const investigationPlanBroker = new InvestigationPlanBroker({
+  root: ROOT,
+  sessions,
+});
+investigationPlanBroker.start();
 const challenger = createChallengerCoordinator({
   getConfig: prefs,
   getBackend: activeBackend,
@@ -215,13 +225,19 @@ function broadcast(sessionId, event) {
  * the headless container uses the Pro/Max plan. Centralized so every place that
  * (re)builds session env — createSession AND onConfigChanged — stays consistent.
  */
-function buildSessionEnv(settings, backendId) {
+function buildSessionEnv(settings, backendId, sessionOrId) {
   const env = buildAgentEnv(settings, {
     brokerSocketPath: excliBroker.socketPath,
     reversingLabsBrokerSocketPath: reversingLabsBroker.socketPath,
     reversingLabsEnabled: reversingLabsEnabled(settings, secretStore),
     researchBrokerSocketPath: researchBroker.socketPath,
     actionBrokerSocketPath: actionBroker.socketPath,
+    investigationPlanBrokerSocketPath: investigationPlanBroker.socketPath,
+    // Rebuilt env must carry the session's existing capability, not a new one:
+    // reissuing would invalidate the capability the running agent already holds.
+    investigationPlanCapability: sessionOrId
+      ? investigationPlanBroker.capabilityForSession(sessionOrId)
+      : '',
   });
   const secrets = secretStore.get?.() || {};
   const claudeSubscription = backendId === 'claude' && settings.claudeAuth === 'subscription';
@@ -234,7 +250,12 @@ function createSession(id = crypto.randomUUID(), { backend: backendId } = {}) {
   const backend = getBackend(backendId) || activeBackend();
   const isActive = backend.id === prefs().backend;
   const settings = prefs();
-  const { env: agentEnv, claudeSubscription } = buildSessionEnv(settings, backend.id);
+  // Issue the plan capability before the session exists: the env is fixed at
+  // construction, and AgentSession derives its workspace the same way. Issuing
+  // revokes any capability a previous session with this id held, so a
+  // backend switch or restore cannot leave a live capability behind.
+  investigationPlanBroker.issueSessionCapability(id, path.join(WORKSPACES, id));
+  const { env: agentEnv, claudeSubscription } = buildSessionEnv(settings, backend.id, id);
   const session = new backend.Session(id, WORKSPACES, {
     model: (isActive && settings.mainModel) || undefined,
     thinking: (isActive && settings.mainReasoning) || undefined,
@@ -313,7 +334,7 @@ function onConfigChanged() {
       } catch { /* best effort */ }
       target = createSession(session.id);
     } else {
-      const { env, claudeSubscription } = buildSessionEnv(settings, target.backend);
+      const { env, claudeSubscription } = buildSessionEnv(settings, target.backend, target);
       target.applyDefaults({
         model: settings.mainModel || '',
         thinking: settings.mainReasoning || '',
@@ -390,9 +411,11 @@ app.use('/api/sessions', sessionsRouter({
   secretStore,
   brokerSocketPath: excliBroker.socketPath,
   buildSessionEnv,
+  onSessionRemoved: (session) => investigationPlanBroker.revokeSessionCapability(session),
   challenger,
   redact,
 }));
+app.use('/api/sessions', investigationPlansRouter({ sessions }));
 app.use('/api/actions', actionsRouter({
   sessions,
   executeApproved: (action, opts) => excliBroker.executeApproved(action, opts),
@@ -413,6 +436,7 @@ app.use('/api', healthRouter({
   excliBroker,
   reversingLabsBroker,
   researchBroker,
+  investigationPlanBroker,
 }));
 
 // In-app eval: run the labeled cases through the app's own session machinery
@@ -543,7 +567,7 @@ const shutdownCoordinator = createShutdownCoordinator({
   sessions,
   sseClients,
   // actionBroker is fork-specific (the governed write path) and must stop too.
-  brokers: [excliBroker, actionBroker, reversingLabsBroker, researchBroker],
+  brokers: [excliBroker, actionBroker, reversingLabsBroker, researchBroker, investigationPlanBroker],
   stopAuxiliary: () => {
     for (const res of globalActionClients) { try { res.end(); } catch { /* already closed */ } }
     globalActionClients.clear();
