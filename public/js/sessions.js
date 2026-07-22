@@ -1,4 +1,5 @@
 import { createSession, deleteSession, listSessions, renameSession, setSessionSaved } from './api.js';
+import { resetInvestigationPlan } from './plan-ribbon.js';
 import { openPromoteDialog } from './eval.js';
 import { resetStreamRendering, setHasMessages, updateUsage } from './chat.js';
 import { $, dom } from './dom.js';
@@ -237,6 +238,7 @@ function resetChatView() {
   state.sessionModelPinned = false;
   state.knownFiles = null;
   state.openDirs = new Set();
+  resetInvestigationPlan();
   setHasMessages(false);
   closeViewer();
   updateUsage();

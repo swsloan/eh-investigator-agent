@@ -44,6 +44,7 @@ export const state = {
   viewingIsHtml: false,
   viewingIsJson: false,
   viewingFile: null,
+  viewingGeneratedHtml: null, // in-memory HTML (rendered investigation plan), no workspace file behind it
   summaryPaneLayout: 'split',
   evidenceDefaultView: 'rendered',
   webResearchProvider: '', // resolved provider from public settings: 'brave' | 'duckduckgo'
