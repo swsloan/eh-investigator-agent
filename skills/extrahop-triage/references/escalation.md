@@ -26,8 +26,8 @@ Each queue entry contains one item or one coherent proposed case:
 
 Keep the queue in chat by default. For a large queue, save the structured copy
 as `scratch/escalation-queue.json`; never place an internal queue at the
-workspace root. Track investigation progress with the workflow checklist in
-scratch notes, not by turning the queue into a second transcript.
+workspace root. Track investigation progress in `./investigation-plan`, not by
+turning the queue into a second transcript.
 
 ## Prioritization
 

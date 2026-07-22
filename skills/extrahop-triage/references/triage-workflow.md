@@ -16,22 +16,13 @@ determined from cheap evidence.
 If the user does not specify a mode, default to quick triage and avoid state
 changes.
 
-## Checklist
+## Plan Shape
 
-```markdown
-Triage Progress:
-- [ ] Step 1: Pull the scoped detection population
-- [ ] Step 2: Rank and group related detections
-- [ ] Step 3: Enrich only as far as the verdict requires
-- [ ] Step 4: Assign verdict, confidence, disposition, and action
-- [ ] Step 5: Present Detection Sets and safe close batches
-- [ ] Step 6: Execute only user-approved state changes
-- [ ] Step 7: Escalate suspicious items to L2
-- [ ] Step 8: Review AI accuracy when requested
-```
-
-Keep this checklist in scratch notes for larger queues. Do not put it in the
-final answer unless the user asked for progress detail.
+Represent this workflow with outcome-oriented tasks in the structured
+`./investigation-plan`; do not copy a command-by-command checklist into scratch.
+A typical L1 plan establishes the scoped population, groups and classifies it,
+reconciles safe actions, and hands suspicious items to L2. Add the read-only
+accuracy-review outcome only when the user asks for it.
 
 ## Step 1: Pull The Scoped Detection Population
 

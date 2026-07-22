@@ -1,0 +1,4 @@
+interface:
+  display_name: "Investigation Planning"
+  short_description: "Maintain a live investigation checklist"
+  default_prompt: "Use $investigation-planning and the brokered ./investigation-plan tool to define and maintain a concise structured investigation plan while you work."

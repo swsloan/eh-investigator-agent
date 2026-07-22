@@ -47,17 +47,19 @@ behavior, pivot back to this triage workflow.
 
 This project uses `./excli-interface`, not an ExtraHop MCP server.
 
-1. Use `workspace-organization` before writing files.
-2. Use `extrahop-excli` for command syntax, evidence selection, pivot
+1. Use `investigation-planning` and initialize a `security_investigation` plan
+   before collecting detection evidence.
+2. Use `workspace-organization` before writing files.
+3. Use `extrahop-excli` for command syntax, evidence selection, pivot
    IDs, metric empty-result handling, and PCAP behavior.
-3. Run `./excli-interface -listtools` if tool availability is uncertain.
-4. Run `./excli-interface TOOL -help` before first use of a tool in a session.
-5. Save every raw response under `evidence/` before analysis.
-6. Use detections and metadata for triage, metrics for broad corroboration,
+4. Run `./excli-interface -listtools` if tool availability is uncertain.
+5. Run `./excli-interface TOOL -help` before first use of a tool in a session.
+6. Save every raw response under `evidence/` before analysis.
+7. Use detections and metadata for triage, metrics for broad corroboration,
    records for narrow transaction confirmation, and packets only when byte-level
    proof matters.
-7. Use `investigation-reporting` for durable HTML reports.
-8. Use `security-research` when an unfamiliar IOC, filename, product,
+8. Use `investigation-reporting` for durable HTML reports.
+9. Use `security-research` when an unfamiliar IOC, filename, product,
    CVE, campaign, or current vendor fact could change the disposition. External
    research corroborates context; it does not replace ExtraHop evidence.
 

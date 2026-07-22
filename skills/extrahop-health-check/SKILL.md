@@ -39,14 +39,16 @@ security triage.
 
 This project uses `./excli-interface`, not an ExtraHop MCP server.
 
-1. Use `workspace-organization` before writing files.
-2. Use `extrahop-excli` for command syntax and empty-result handling.
-3. Run `./excli-interface -listtools` if tool availability is uncertain.
-4. Run `./excli-interface TOOL -help` before first use of a tool in a session.
-5. Save every raw response under `evidence/` before analysis.
-6. Use metric evidence first for broad health and trends. Use records only after
+1. Use `investigation-planning` and initialize a `performance_investigation`
+   plan before collecting health evidence.
+2. Use `workspace-organization` before writing files.
+3. Use `extrahop-excli` for command syntax and empty-result handling.
+4. Run `./excli-interface -listtools` if tool availability is uncertain.
+5. Run `./excli-interface TOOL -help` before first use of a tool in a session.
+6. Save every raw response under `evidence/` before analysis.
+7. Use metric evidence first for broad health and trends. Use records only after
    metrics identify the device, protocol, and narrow time range that matter.
-7. Use `investigation-reporting` for durable HTML reports.
+8. Use `investigation-reporting` for durable HTML reports.
 
 Tool names can vary with CLI release. Prefer the available `excli-interface`
 tool help over examples in this skill. Expected tool families are:
