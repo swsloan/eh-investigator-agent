@@ -9,6 +9,56 @@ the complete change inventory.
 All work was done to run the app in Docker on a single host, add a long-term
 temporal-memory layer (Graphiti), and fix issues found along the way.
 
+### Added after 26.07.10 — structured investigation plans (2026-07-22)
+
+Ported the v26.07.20 investigation-plan feature in four reviewed slices
+(PRs #68–#71). The agent now maintains a live, structured plan for each
+investigation — plan type, objective, scope, working hypothesis, evidence
+strategy, an outcome-oriented checklist, a completion contract, and an
+append-only pivot history — surfaced in the UI and never hand-edited.
+
+- **Plan core (#68).** `lib/investigation-plan/` (schema, store, render, lock,
+  constants) plus the `lib/investigation-plan.js` facade.
+  `.investigation-plan.json` is authoritative and revision-checked;
+  `investigation-plan.md` is a deterministic projection regenerated from it. A
+  per-workspace lock directory serializes mutations and the state write is the
+  commit point, so a projection failure after commit is a warning, not an
+  ambiguous failed mutation. Fixed two upstream defects while porting: a plan
+  initialized with 25–64 tasks failed its own stored-state validation (the
+  `initialized` change entry was bounded by the 24-per-mutation cap), and one
+  `revised_*` pivot field was validated on presence only, leaving a
+  tamper-detection gap.
+- **Broker, CLI, routes (#69).** `lib/investigation-plan-broker.js` (on the
+  fork's `SingleRequestBrokerLifecycle`), the `./investigation-plan` interface,
+  and read-only `GET /api/sessions/:id/investigation-plan[/render]`. Every
+  operation runs in-process against a per-session capability bound to one
+  workspace; the CLI fails closed without both the broker socket and a
+  capability, which is what keeps the synchronous store's workspace lock
+  uncontended by construction. UI read routes pass a 25 ms lock wait (vs. the
+  200 ms default for agent mutations) so a contended read returns a retryable
+  409 instead of parking the event loop.
+- **Skill + prompt (#70).** `skills/investigation-planning/`, the "Investigation
+  plan" section of the system prompt, and restoration of the plan directives
+  held back from `extrahop-triage`, `extrahop-health-check`, and
+  `workspace-organization` (Plan Shape replaces the previously pasted step
+  checklists). The Phase-5 raw-REST fallbacks in those skills were deliberately
+  left out.
+- **Ribbon + PLAN artifact kind (#71).** `public/js/plan-ribbon.js` and the
+  ribbon above Workspace Files (plan type, current focus, progress, latest
+  pivot, and the full rendered plan on demand), updated live over SSE. The plan
+  file is classified kind `plan` (`lib/workspace-artifacts.js`) and withheld
+  from the file list (`lib/workspace-file-presentation.js`), since it has its own
+  ribbon. Fork-specific: a generated-HTML viewer added in `public/js/files.js`
+  (upstream renders it from its own file-viewer module, which this fork merged
+  into `files.js`).
+
+Every security- or correctness-relevant assertion was mutation-checked, and the
+node test suite is green at 243 tests. Validated end to end against the live
+appliance: the agent initialized a `security_investigation` plan before
+collecting evidence, the ribbon tracked awaiting → 6/6 live, memory was recalled
+at start and captured at close, and it reached the adjudicated LameHug LLM-C2
+verdict (eval case `eval/cases/lamehug-hf-c2.json`).
+
 ### Added after 26.07.10 — embedder moved from Ollama to llama.cpp (2026-07-20)
 
 - **Smaller local embedding server.** Replaced the `ollama` service with
