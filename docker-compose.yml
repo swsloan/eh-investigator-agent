@@ -203,7 +203,6 @@ services:
       FALKORDB_URI: redis://falkordb:6379
       FALKORDB_DATABASE: ${FALKORDB_DATABASE:-extrahop}
       FALKORDB_PASSWORD: ${FALKORDB_PASSWORD:-}
-      GRAPHITI_GROUP_ID: ${EH_MEMORY_GROUP_ID:-ehdefault}
       SEMAPHORE_LIMIT: ${SEMAPHORE_LIMIT:-6}
       MODEL_NAME: ${MODEL_NAME:-claude-sonnet-5}
       # Route Anthropic extraction through the app proxy, which injects the
@@ -228,9 +227,13 @@ services:
       # than erroring, so a dimensions mismatch degrades retrieval silently
       # instead of failing loudly. Check this value when changing models.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-local}
-    # App-managed embedder overrides. Written by the app when Settings → Memory →
-    # Embedder changes; picked up on the next start of this service. Optional, so
-    # a fresh clone (no file yet) falls back to config.yaml defaults.
+    # App-managed runtime overrides (embedder + GRAPHITI_GROUP_ID). Written by the
+    # app when Settings → Memory changes; picked up on the next start of this
+    # service. Optional, so a fresh clone (no file yet) falls back to config.yaml
+    # defaults. The memory namespace lives here rather than in `environment:` so
+    # the UI owns it and a stack recreate cannot silently switch namespaces —
+    # `environment:` would override env_file. EH_MEMORY_GROUP_ID still wins: the
+    # app resolves it first and writes the result into this file.
     env_file:
       - path: ./graphiti/runtime/embedder.env
         required: false

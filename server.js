@@ -21,11 +21,11 @@ import { securityHeaders } from './lib/security-headers.js';
 import { createShutdownCoordinator, drainingGuard } from './lib/shutdown-coordinator.js';
 import { restoreSessionsFromWorkspaces } from './lib/session-store.js';
 import {
-  activateEnvSecrets, buildAgentEnv, credentialsConfigured,
+  activateEnvSecrets, buildAgentEnv, credentialsConfigured, deriveGroupId,
   loadConfig, loadDotEnv, resolveConfig, reversingLabsEnabled, saveConfig,
 } from './lib/settings.js';
 import { createSecretStore } from './lib/secrets.js';
-import { writeEmbedderEnv } from './lib/embedder-env.js';
+import { writeGraphitiRuntimeEnv } from './lib/embedder-env.js';
 import { runEvalInApp } from './lib/eval-runner.js';
 import { runInjectionProbes } from './lib/injection-probe.js';
 import { buildDashboard } from './eval/dashboard/build.js';
@@ -104,7 +104,20 @@ const activeBackend = () => getBackend(prefs().backend);
 // Sync the app-managed embedder env file the Graphiti sidecar reads at startup,
 // so a persisted embedder config is reflected even after a hand-edit of
 // config.json. Best-effort; never fatal to boot.
-writeEmbedderEnv(prefs().memory?.embedder);
+/**
+ * Memory config for the app-managed graphiti runtime env file, with the
+ * namespace resolved through the same precedence the rest of the app uses:
+ * EH_MEMORY_GROUP_ID (operator override) > persisted config.memory.groupId
+ * (Settings → Memory) > derived from the ExtraHop host. Writing it here is what
+ * lets the UI own the memory namespace instead of a compose-time env default.
+ */
+function graphitiRuntimeMemory(settings) {
+  return {
+    embedder: settings.memory?.embedder,
+    groupId: deriveGroupId(settings.extrahop?.host, process.env, settings.memory?.groupId),
+  };
+}
+writeGraphitiRuntimeEnv(graphitiRuntimeMemory(prefs()));
 
 const catalogs = new Map(); // backend id -> model catalog
 function catalogFor(backendId) {
@@ -321,7 +334,7 @@ function onConfigChanged() {
   const settings = prefs();
   // Re-emit the embedder env file so a Settings → Memory change lands where the
   // Graphiti sidecar will read it on its next restart.
-  writeEmbedderEnv(settings.memory?.embedder);
+  writeGraphitiRuntimeEnv(graphitiRuntimeMemory(settings));
   warnOnInsecureTls(settings);
   for (const session of [...sessions.values()]) {
     if (session.promptCount !== 0 || session.running) continue;

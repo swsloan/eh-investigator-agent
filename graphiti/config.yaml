@@ -45,7 +45,7 @@ database:
       database: ${FALKORDB_DATABASE:extrahop}
 
 graphiti:
-  group_id: ${GRAPHITI_GROUP_ID:main}      # per monitored environment (D3)
+  group_id: ${GRAPHITI_GROUP_ID:ehdefault}  # per monitored environment (D3); set in Settings → Memory (app writes graphiti/runtime/embedder.env). Default matches the app fallback so a missing file never invents a new namespace.
   episode_id_prefix: ${EPISODE_ID_PREFIX:}
   user_id: ${USER_ID:eh_investigator}
 
