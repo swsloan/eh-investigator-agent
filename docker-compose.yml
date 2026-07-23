@@ -232,8 +232,9 @@ services:
     # service. Optional, so a fresh clone (no file yet) falls back to config.yaml
     # defaults. The memory namespace lives here rather than in `environment:` so
     # the UI owns it and a stack recreate cannot silently switch namespaces —
-    # `environment:` would override env_file. EH_MEMORY_GROUP_ID still wins: the
-    # app resolves it first and writes the result into this file.
+    # `environment:` would override env_file. Settings → Memory is the authority;
+    # EH_MEMORY_GROUP_ID is only the default while that setting is blank. The app
+    # resolves the two and writes the winner into this file.
     env_file:
       - path: ./graphiti/runtime/embedder.env
         required: false

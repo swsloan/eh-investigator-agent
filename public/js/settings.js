@@ -19,10 +19,11 @@ const RX360_TENANT_ID_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /**
  * Render the Settings → Memory group picker. The input holds the *configured*
- * value (blank = derive); the note states the *effective* namespace and where it
- * came from, so an environment override can never silently make this field a lie.
- * Built with DOM nodes rather than innerHTML — the group is server-sanitized to
- * [a-z0-9], but the note must not depend on that to stay safe.
+ * value (blank = inherit); the note states the *effective* namespace and where
+ * it came from, so the field never misrepresents what is actually in force.
+ * This setting is the authority — an EH_MEMORY_GROUP_ID default only applies
+ * while the field is blank. Built with DOM nodes rather than innerHTML: the
+ * group is server-sanitized to [a-z0-9], but the note must not rely on that.
  */
 function renderMemoryGroup(memory) {
   const input = $('set-memory-group');
@@ -31,27 +32,16 @@ function renderMemoryGroup(memory) {
   input.value = memory.groupId || '';
   const effective = memory.groupIdEffective || '';
   const source = memory.groupIdSource || 'default';
-  const parts = [];
   const code = (text) => { const el = document.createElement('code'); el.textContent = text; return el; };
-  const strong = (text) => { const el = document.createElement('strong'); el.textContent = text; return el; };
+  const parts = ['Active namespace: ', code(effective)];
 
-  if (source === 'env') {
-    input.disabled = true;
-    parts.push(strong('Overridden by the environment.'), ' ', code('EH_MEMORY_GROUP_ID'),
-      ' pins the namespace to ', code(effective),
-      ', so this field is inactive. Remove it from ', code('.env'),
-      ' and recreate the stack to control the group here.');
-  } else {
-    input.disabled = false;
-    const origin = {
-      config: 'from this setting',
-      host: 'derived from the ExtraHop host',
-      default: 'built-in default',
-    }[source] || source;
-    parts.push('Active namespace: ', code(effective), ` (${origin}). `,
-      'Investigations only recall history stored in this group — changing it starts a new one. ',
-      'Applies on memory-stack restart: run ', code('docker compose up -d graphiti-mcp'), '.');
-  }
+  if (source === 'config') parts.push(' (from this setting).');
+  else if (source === 'env') parts.push(' (default from ', code('EH_MEMORY_GROUP_ID'), ' — set a value here to override it).');
+  else if (source === 'host') parts.push(' (derived from the ExtraHop host — set a value here to pin it).');
+  else parts.push(' (built-in default — set a value here to pin it).');
+
+  parts.push(' Investigations only recall history stored in this group — changing it starts a new one.',
+    ' Applies on memory-stack restart: run ', code('docker compose up -d graphiti-mcp'), '.');
   note.replaceChildren(...parts.map((p) => (typeof p === 'string' ? document.createTextNode(p) : p)));
 }
 
