@@ -17,6 +17,50 @@ const EVIDENCE_VIEW_MODES = new Set(['code', 'split', 'rendered']);
 // Mirrors RX360_TENANT_ID_RE in lib/settings.js — client-side guard before save.
 const RX360_TENANT_ID_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
+/**
+ * Render the Settings → Memory group picker. The input holds the *configured*
+ * value (blank = inherit); the note states the *effective* namespace and where
+ * it came from, so the field never misrepresents what is actually in force.
+ * This setting is the authority — an EH_MEMORY_GROUP_ID default only applies
+ * while the field is blank. Built with DOM nodes rather than innerHTML: the
+ * group is server-sanitized to [a-z0-9], but the note must not rely on that.
+ */
+function renderMemoryGroup(memory) {
+  const input = $('set-memory-group');
+  const note = $('memory-group-note');
+  if (!input || !note) return;
+  input.value = memory.groupId || '';
+  const effective = memory.groupIdEffective || '';
+  const source = memory.groupIdSource || 'default';
+  const code = (text) => { const el = document.createElement('code'); el.textContent = text; return el; };
+  const parts = ['Active namespace: ', code(effective)];
+
+  if (source === 'config') parts.push(' (from this setting).');
+  else if (source === 'env') parts.push(' (default from ', code('EH_MEMORY_GROUP_ID'), ' — set a value here to override it).');
+  else if (source === 'host') parts.push(' (derived from the ExtraHop host — set a value here to pin it).');
+  else parts.push(' (built-in default — set a value here to pin it).');
+
+  parts.push(' Investigations only recall history stored in this group — changing it starts a new one.',
+    ' Applies on memory-stack restart: run ', code('docker compose up -d graphiti-mcp'), '.');
+  note.replaceChildren(...parts.map((p) => (typeof p === 'string' ? document.createTextNode(p) : p)));
+}
+
+/** Offer the namespaces that actually exist as autocomplete options. */
+async function loadMemoryGroupOptions() {
+  const list = $('memory-group-options');
+  if (!list) return;
+  try {
+    const res = await fetch('/api/memory/graph/groups');
+    if (!res.ok) return; // memory off or unreachable — free text still works
+    const { groups = [] } = await res.json();
+    list.replaceChildren(...groups.map((g) => {
+      const opt = document.createElement('option');
+      opt.value = g;
+      return opt;
+    }));
+  } catch { /* non-fatal: the field is free text */ }
+}
+
 function normalizeEvidenceView(value) {
   return EVIDENCE_VIEW_MODES.has(value) ? value : 'rendered';
 }
@@ -634,6 +678,8 @@ export async function openSettings() {
   $('hint-clientsecret').textContent = settings.extrahop.clientSecretSet ? savedHint : '— not set';
   $('set-memory-enabled').checked = Boolean(settings.memory?.enabled);
   $('set-memory-url').value = settings.memory?.url || '';
+  renderMemoryGroup(settings.memory || {});
+  loadMemoryGroupOptions();
   const embedder = settings.memory?.embedder || {};
   $('set-embedder-model').value = embedder.model || '';
   $('set-embedder-dimensions').value = embedder.dimensions ?? '';
@@ -735,6 +781,7 @@ async function saveSettings() {
     memory: {
       enabled: $('set-memory-enabled').checked,
       url: $('set-memory-url').value,
+      groupId: $('set-memory-group').value,
       embedder: {
         model: $('set-embedder-model').value,
         dimensions: $('set-embedder-dimensions').value,

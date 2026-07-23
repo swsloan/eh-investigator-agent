@@ -359,6 +359,12 @@
                 <input id="set-memory-url" type="text" placeholder="http://graphiti-mcp:8000/mcp" autocomplete="off">
               </label>
               <label class="field">
+                <span>Memory group <em>— the namespace investigations read and write</em></span>
+                <input id="set-memory-group" type="text" list="memory-group-options" placeholder="leave blank to derive from the ExtraHop host" autocomplete="off" spellcheck="false">
+                <datalist id="memory-group-options"></datalist>
+              </label>
+              <div id="memory-group-note" class="modal-note"></div>
+              <label class="field">
                 <span>Anthropic API key <em id="hint-anthropic"></em></span>
                 <input id="set-anthropic-key" type="password" placeholder="leave blank to keep current" autocomplete="off">
               </label>
