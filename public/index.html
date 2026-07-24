@@ -538,13 +538,15 @@
         <label class="memory-group">Namespace
           <select id="mem-group"></select>
         </label>
-        <span id="mem-drift" class="mem-drift hidden" title="Untyped entities — extraction failed to classify"></span>
-        <button id="mem-expand" class="icon-btn" title="Expand to full screen">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 00-2 2v3m0 8v3a2 2 0 002 2h3m8-18h3a2 2 0 012 2v3m0 8v3a2 2 0 01-2 2h-3"/></svg>
-        </button>
-        <button id="memory-close" class="icon-btn" title="Close">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
-        </button>
+        <div class="mem-head-actions">
+          <span id="mem-drift" class="mem-drift hidden" title="Untyped entities — extraction failed to classify"></span>
+          <button id="mem-expand" class="icon-btn" title="Expand to full screen" aria-label="Expand to full screen">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 00-2 2v3m0 8v3a2 2 0 002 2h3m8-18h3a2 2 0 012 2v3m0 8v3a2 2 0 01-2 2h-3"/></svg>
+          </button>
+          <button id="memory-close" class="icon-btn" title="Close" aria-label="Close">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
       </div>
       <div class="memory-body">
         <div id="mem-canvas" class="mem-canvas">
