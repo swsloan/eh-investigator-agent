@@ -22,11 +22,22 @@
   --raised: #ffffff;      /* cards/inputs sitting on a surface */
   --input-bg: #fcfcfe;
 
-  /* Text — four steps, all kept legible against their backgrounds */
-  --ink: #16151f;         /* primary */
-  --text-2: #3c3b47;      /* secondary body */
-  --gray: #898a8d;        /* muted labels */
-  --text-faint: #adadb6;  /* hints, placeholders */
+  /* Text — four steps, every one at or above WCAG AA (4.5:1) on the lightest
+     surface it lands on (--raised #fff) and the darkest (--track #ececf2). The
+     two muted steps sit closer together than a purely decorative ramp would:
+     legibility sets the floor, hierarchy works within it. */
+  --ink: #16151f;         /* primary            17.6:1 */
+  --text-2: #3c3b47;      /* secondary body     10.7:1 */
+  --gray: #64646f;        /* muted labels        5.7:1 */
+  --text-faint: #737385;  /* hints, placeholders 4.5:1 */
+
+  /* Accent-as-text. The brand hues are tuned for fills and borders and are far
+     too light to read as small text on white (--cyan is 2.6:1), so text keeps a
+     darkened variant. Use these anywhere the token drives `color:`, and the
+     originals for backgrounds, borders, and dots. */
+  --cyan-text: #0a76a8;   /*  5.0:1 */
+  --ok-text: #17864f;     /*  4.6:1 */
+  --warn-text: #b8440e;   /*  5.4:1 */
 
   /* Lines */
   --hairline: #e9e9ef;
@@ -89,7 +100,13 @@
   --ink: #ececf2;
   --text-2: #c4c3cf;     /* lifted well clear of no-man's-land */
   --gray: #9b9ba6;       /* muted but still ~5:1 on dark surfaces */
-  --text-faint: #74737f;
+  --text-faint: #8f8f9c; /* was #74737f — 3.1:1 on --track, under AA */
+
+  /* On dark the brand hues are already the readable direction (5.5–8.9:1), so
+     the text variants are the originals — the indirection exists for light. */
+  --cyan-text: var(--cyan);
+  --ok-text: var(--ok);
+  --warn-text: var(--warn);
 
   --hairline: #2e2d3a;
   --border-strong: #3a3947;
@@ -539,7 +556,7 @@ html, body {
 .md h2 { font-size: 18px; font-weight: 700; }
 .md h3 { font-size: 15.5px; font-weight: 700; }
 .md p { margin: 0.6em 0; }
-.md a { color: var(--cyan); text-decoration: none; font-weight: 600; }
+.md a { color: var(--cyan-text); text-decoration: none; font-weight: 600; }
 .md a:hover { text-decoration: underline; }
 .md code {
   font-family: ui-monospace, 'Cascadia Code', Menlo, monospace;
@@ -1042,7 +1059,7 @@ html, body {
   color: var(--gray);
 }
 .viewer-status.error { color: var(--danger-text); }
-.viewer-status.ok { color: var(--ok); }
+.viewer-status.ok { color: var(--ok-text); }
 
 .viewer-layout-controls {
   display: flex;
@@ -1488,12 +1505,12 @@ html, body {
 .summary-category-chip.category-sec {
   border-color: rgba(240, 89, 24, 0.32);
   background: rgba(240, 89, 24, 0.12);
-  color: var(--warn);
+  color: var(--warn-text);
 }
 .summary-category-chip.category-perf {
   border-color: rgba(0, 170, 239, 0.32);
   background: rgba(0, 170, 239, 0.12);
-  color: var(--cyan);
+  color: var(--cyan-text);
 }
 .summary-description {
   margin: 18px 0;
@@ -1618,7 +1635,7 @@ html, body {
   stroke-linejoin: round;
 }
 .summary-party-icon-offender { color: var(--plum); }
-.summary-party-icon-victim { color: var(--cyan); }
+.summary-party-icon-victim { color: var(--cyan-text); }
 .summary-party-title strong {
   min-width: 0;
   overflow: hidden;
@@ -2047,7 +2064,7 @@ html, body {
 .confirm-status.error { color: var(--danger-text); }
 .confirm-actions { gap: 9px; }
 .btn-primary.slim { width: auto; padding: 9px 22px; }
-.settings-status { font-size: 12.5px; color: var(--ok); font-weight: 600; }
+.settings-status { font-size: 12.5px; color: var(--ok-text); font-weight: 600; }
 
 .btn-primary:disabled {
   background: var(--disabled);
@@ -2116,13 +2133,13 @@ html, body {
 .spinner { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--border-strong); border-top-color: var(--sapphire); display: inline-block; animation: eval-spin .8s linear infinite; }
 @keyframes eval-spin { to { transform: rotate(360deg); } }
 .eval-gate { font-weight: 700; font-size: 15px; padding: 6px 12px; border-radius: 8px; display: inline-block; margin-bottom: 12px; border: 1px solid transparent; }
-.eval-gate.pass { color: var(--ok); border-color: var(--ok); }
+.eval-gate.pass { color: var(--ok-text); border-color: var(--ok); }
 .eval-gate.fail { color: var(--danger-text); background: var(--danger-bg); border-color: var(--danger-border); }
 .eval-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .eval-metric { display: flex; flex-direction: column; gap: 2px; }
 .eval-metric .k { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .05em; }
 .eval-metric .v { font-size: 20px; font-weight: 700; color: var(--ink); line-height: 1.1; }
-.eval-metric .v.good { color: var(--ok); }
+.eval-metric .v.good { color: var(--ok-text); }
 .eval-metric .v.bad { color: var(--danger-text); }
 .eval-metric .s { font-size: 11px; color: var(--text-faint); }
 .eval-runs { margin-top: 6px; }
@@ -2130,7 +2147,7 @@ html, body {
 .eval-table th { text-align: left; color: var(--text-faint); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border-strong); }
 .eval-table td { padding: 6px 8px; border-bottom: 1px solid var(--surface-hover); color: var(--text-2); }
 .eval-runs .pill { font-size: 11px; font-weight: 700; padding: 1px 9px; border-radius: 99px; }
-.eval-runs .pill.ok { color: var(--ok); border: 1px solid var(--ok); }
+.eval-runs .pill.ok { color: var(--ok-text); border: 1px solid var(--ok); }
 .eval-runs .pill.bad { color: var(--danger-text); background: var(--danger-bg); }
 .eval-controls { display: flex; gap: 16px; flex-wrap: wrap; margin: 6px 0 2px; }
 .eval-knob { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text-2); }
@@ -2145,7 +2162,7 @@ html, body {
 .eval-inc { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .eval-inc code { font-size: 12px; }
 .eval-case .pill { font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--border-strong); color: var(--text-faint); text-transform: uppercase; letter-spacing: .04em; }
-.eval-case .pill.ok { color: var(--ok); border-color: var(--ok); }
+.eval-case .pill.ok { color: var(--ok-text); border-color: var(--ok); }
 .eval-case-fields { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 10px; }
 .eval-case-fields label, .eval-notes { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .04em; }
 .eval-case-fields select, .eval-case-fields input, .eval-notes textarea {
@@ -2261,7 +2278,7 @@ html, body {
 .mem-summary li { font-size: 13px; color: var(--text-2); margin-bottom: 4px; line-height: 1.45; }
 .mem-fact-list, .mem-ep-list { list-style: none; margin: 0; padding: 0; }
 .mem-fact-list li, .mem-ep-list li { font-size: 13px; color: var(--text-2); padding: 6px 0; border-bottom: 1px solid var(--hairline); line-height: 1.4; }
-.mem-rel { display: inline-block; font-size: 10.5px; font-weight: 600; color: var(--cyan); margin-right: 4px; }
+.mem-rel { display: inline-block; font-size: 10.5px; font-weight: 600; color: var(--cyan-text); margin-right: 4px; }
 .mem-rel.expired { color: var(--gray); text-decoration: line-through; }
 .mem-ep-list code, .mem-fact-list code { color: var(--gray); font-size: 12px; }
 .mem-investigate { margin-top: 16px; width: 100%; }
@@ -2307,7 +2324,7 @@ html, body {
 /* pinned relationship callout */
 .mem-edge-callout { margin-top: 6px; }
 .mem-edge-ends { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); }
-.mem-edge-arrow { color: var(--cyan); font-size: 11px; font-weight: 600; }
+.mem-edge-arrow { color: var(--cyan-text); font-size: 11px; font-weight: 600; }
 .mem-edge-fact { margin: 10px 0 0; font-size: 13px; color: var(--text-2); line-height: 1.5; }
 .mem-recenter { margin-top: 16px; width: 100%; }
 
@@ -2317,7 +2334,7 @@ html, body {
 .mem-why-lead { margin: 0; font-size: 13.5px; color: var(--ink); line-height: 1.5; }
 .mem-why-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 9px; font-size: 12px; color: var(--text-2); }
 .mem-why-meta b { color: var(--ink); }
-.mem-why-changed { color: var(--warn); font-weight: 600; }
+.mem-why-changed { color: var(--warn-text); font-weight: 600; }
 
 /* "+N more" density-cap affordance (never a silent truncation) */
 .mem-more {
@@ -2454,7 +2471,11 @@ html, body {
   border: 1px solid color-mix(in srgb, var(--plan-accent) 28%, var(--hairline));
   border-radius: 999px;
   color: var(--plan-accent-fg);
-  background: color-mix(in srgb, var(--plan-accent) 7%, var(--raised));
+  /* 4%, not 7%: the accent tints the fill toward the accent-coloured text, and at
+     7% two of the eight type/theme combinations fell under AA (dark
+     security-investigation 4.44:1, light performance 4.42:1). At 4% all eight
+     clear it, and the fill still reads as tinted. */
+  background: color-mix(in srgb, var(--plan-accent) 4%, var(--raised));
   font-size: 8.5px;
   letter-spacing: 0.25px;
   text-overflow: ellipsis;
@@ -2556,7 +2577,7 @@ html, body {
 }
 .plan-ribbon-task.complete { color: var(--text-2); }
 .plan-ribbon-task.complete .plan-ribbon-task-mark { border-color: var(--ok); background: var(--ok); color: #fff; }
-.plan-ribbon-task.blocked .plan-ribbon-task-mark { border-color: var(--warn); color: var(--warn); }
+.plan-ribbon-task.blocked .plan-ribbon-task-mark { border-color: var(--warn); color: var(--warn-text); }
 .plan-ribbon-task-copy { min-width: 0; }
 .plan-ribbon-task-copy span { overflow-wrap: anywhere; }
 .plan-ribbon-task-copy small {
@@ -2656,7 +2677,7 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 .mem-tl-name { flex: 1 1 auto; color: var(--ink); font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mem-tl-type { color: var(--gray); font-size: 11px; }
 .mem-tl-tag { font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
-.mem-tl-tag.known { background: rgba(0, 170, 239, 0.15); color: var(--cyan); }
+.mem-tl-tag.known { background: rgba(0, 170, 239, 0.15); color: var(--cyan-text); }
 .mem-tl-tag.new { background: var(--chip-bg); color: var(--gray); border: 1px dashed var(--chip-border); }
 /* Forensic timeline events */
 .mem-tl-event { padding: 10px 0 10px 14px; margin-left: 6px; border-left: 2px solid var(--hairline); position: relative; }
@@ -2683,7 +2704,7 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 .promote-warn { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; }
 .promote-status { font-size: 12.5px; color: var(--text-faint); min-height: 1em; }
 .promote-status.error { color: var(--danger-text); }
-.pill.promoted { background: rgba(0, 170, 239, 0.15); color: var(--cyan); }
+.pill.promoted { background: rgba(0, 170, 239, 0.15); color: var(--cyan-text); }
 
 /* ===== Memory browse drill-down + curation + saved sessions ===== */
 .mem-type-chip { border: 1px solid var(--chip-border); font: inherit; cursor: pointer; }
@@ -2701,7 +2722,7 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 .mem-curate-del:hover { background: var(--danger-bg); border-color: var(--danger-border); }
 .mem-curate-err { color: var(--danger-text); font-size: 12px; margin-top: 6px; }
 /* Saved-for-review sessions */
-.session-star { color: var(--warn); font-size: 12px; margin-right: 5px; flex: 0 0 auto; }
+.session-star { color: var(--warn-text); font-size: 12px; margin-right: 5px; flex: 0 0 auto; }
 .session-item.saved .session-title { font-weight: 600; }
 
 /* Fix-classification (re-type / delete) control in the entity inspector */
@@ -2714,7 +2735,7 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 .mf-del:hover { background: var(--danger-bg); border-color: var(--danger-border); }
 
 /* Merge candidates + back-to-investigation crumb */
-.mem-crumb { background: none; border: none; color: var(--cyan); font: inherit; font-size: 12.5px; cursor: pointer; padding: 0 0 8px; }
+.mem-crumb { background: none; border: none; color: var(--cyan-text); font: inherit; font-size: 12.5px; cursor: pointer; padding: 0 0 8px; }
 .mem-crumb:hover { text-decoration: underline; }
 .mf-merge { margin-top: 10px; }
 .mf-merge-q { width: 100%; background: var(--input-bg); color: var(--ink); border: 1px solid var(--hairline); border-radius: 7px; padding: 6px 9px; font-size: 13px; margin-top: 5px; }
@@ -2947,7 +2968,7 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 .summary-research-url {
   display: block;
   margin-top: 8px;
-  color: var(--cyan);
+  color: var(--cyan-text);
   font-family: ui-monospace, Menlo, monospace;
   font-size: 11px;
   overflow-wrap: anywhere;
@@ -3296,13 +3317,13 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .04em;
-  color: var(--ok);
+  color: var(--ok-text);
   background: color-mix(in srgb, var(--ok) 12%, transparent);
 }
 
 .integration-chip[data-state="off"] { color: var(--gray); background: color-mix(in srgb, var(--gray) 12%, transparent); }
 
-.integration-chip[data-state="setup"] { color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
+.integration-chip[data-state="setup"] { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 13%, transparent); }
 
 .integration-body {
   padding: 10px 14px 14px;
@@ -3342,7 +3363,7 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
   line-height: 1.3;
 }
 
-.integration-status.success { color: var(--ok); }
+.integration-status.success { color: var(--ok-text); }
 
 .integration-note {
   margin: 12px 0 0;
@@ -3411,7 +3432,7 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  color: var(--warn);
+  color: var(--warn-text);
   padding: 2px 2px 8px;
 }
 .actions-tray-list { display: flex; flex-direction: column; gap: 8px; }
@@ -3443,8 +3464,8 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
   border: 1px solid var(--chip-border);
   color: var(--text-2);
 }
-.action-badge.badge-proposed { color: var(--warn); border-color: var(--warn); }
-.action-badge.badge-executed { color: var(--ok); border-color: var(--ok); }
+.action-badge.badge-proposed { color: var(--warn-text); border-color: var(--warn); }
+.action-badge.badge-executed { color: var(--ok-text); border-color: var(--ok); }
 .action-badge.badge-failed { color: var(--danger-text); border-color: var(--danger-border); background: var(--danger-bg); }
 .action-badge.badge-executing,
 .action-badge.badge-approved { color: var(--sapphire); border-color: var(--sapphire); }
@@ -3523,7 +3544,7 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 
 /* ===== Cross-session approvals: header badge + panel (issue #13, Phase A) ===== */
 .approvals-btn { position: relative; }
-.approvals-btn.has-pending { color: var(--warn); }
+.approvals-btn.has-pending { color: var(--warn-text); }
 .approvals-count {
   position: absolute;
   top: -4px;
@@ -3596,7 +3617,7 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
   color: var(--gray);
   white-space: nowrap;
 }
-.action-age.stale { color: var(--warn); }
+.action-age.stale { color: var(--warn-text); }
 .action-card.action-stale { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 7%, var(--surface)); }
 @supports not (background: color-mix(in srgb, red, blue)) {
   .action-card.action-stale { background: var(--surface); }
@@ -3618,7 +3639,7 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 .approvals-status {
   font-size: 11px;
   font-weight: 600;
-  color: var(--warn);
+  color: var(--warn-text);
 }
 
 /* C4 — notify toggle */
