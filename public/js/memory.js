@@ -905,33 +905,46 @@ async function loadForensicTimeline() {
   } catch { /* no verdict / not JSON — keep discovery-order timeline */ }
 }
 
-async function resolveToken(tok) {
-  invResolved.set(tok, { token: tok, known: null, name: tok, type: guessType(tok) }); // placeholder guards against dup work
-  if (tok.startsWith('detection:')) {
-    const id = tok.slice('detection:'.length);
-    invResolved.set(tok, { token: tok, known: false, name: `Detection ${id}`, type: 'Detection' });
+// What a token looks like before memory has been consulted (or when the lookup
+// fails): new this run, named after the token itself.
+function unresolved(tok) {
+  return tok.startsWith('detection:')
+    ? { token: tok, known: false, name: `Detection ${tok.slice('detection:'.length)}`, type: 'Detection' }
+    : { token: tok, known: false, name: tok, type: guessType(tok) };
+}
+
+// One request for the whole batch. A run touching 30 entities used to open 30
+// parallel /search connections; the server now matches them in a single query.
+// Chunked at the endpoint's own cap so a long investigation can't 400.
+const RESOLVE_CHUNK = 200;
+
+async function resolveTokens(tokens) {
+  for (const tok of tokens) invResolved.set(tok, { token: tok, known: null, name: tok, type: guessType(tok) }); // guards against duplicate work
+  for (let i = 0; i < tokens.length; i += RESOLVE_CHUNK) {
+    const chunk = tokens.slice(i, i + RESOLVE_CHUNK);
     try {
-      const { results } = await getJSON(`/api/memory/graph/search${qs({ q: id })}`);
-      const hit = results.find((r) => r.type === 'Detection') || results[0];
-      if (hit) invResolved.set(tok, { token: tok, known: true, uuid: hit.uuid, name: hit.name, type: hit.type, summary: hit.summary });
-    } catch { /* keep the default Detection node */ }
-    return;
-  }
-  try {
-    const { results } = await getJSON(`/api/memory/graph/search${qs({ q: tok })}`);
-    const hit = results.find((r) => r.name.toLowerCase().includes(tok.toLowerCase())) || (results.length === 1 ? results[0] : null);
-    invResolved.set(tok, hit
-      ? { token: tok, known: true, uuid: hit.uuid, name: hit.name, type: hit.type, summary: hit.summary }
-      : { token: tok, known: false, name: tok, type: guessType(tok) });
-  } catch {
-    invResolved.set(tok, { token: tok, known: false, name: tok, type: guessType(tok) });
+      const { resolved } = await getJSON(`/api/memory/graph/resolve${qs()}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tokens: chunk }),
+      });
+      for (const tok of chunk) {
+        const hit = resolved?.[tok];
+        invResolved.set(tok, hit
+          ? { token: tok, known: true, uuid: hit.uuid, name: hit.name, type: hit.type, summary: hit.summary }
+          : unresolved(tok));
+      }
+    } catch {
+      for (const tok of chunk) invResolved.set(tok, unresolved(tok)); // memory unreachable → everything reads as new
+    }
   }
 }
 
 // Resolve tokens against memory (known vs new), dedupe (a device known by both IP
 // and hostname collapses to one), and keep discovery order (Set insertion order).
 async function resolvedEntities() {
-  await Promise.all([...invTokens].filter((t) => !invResolved.has(t)).map(resolveToken));
+  const pending = [...invTokens].filter((t) => !invResolved.has(t));
+  if (pending.length) await resolveTokens(pending);
   const seen = new Set();
   const ents = [];
   for (const tok of invTokens) {
