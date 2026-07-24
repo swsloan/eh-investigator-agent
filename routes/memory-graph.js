@@ -1,5 +1,5 @@
 import express from 'express';
-import { overview, search, neighbors, quality, listEntities, assignType, retypeNode, deleteUntyped, deleteNode, mergeNodes, ONTOLOGY_TYPES } from '../lib/memory-graph.js';
+import { overview, search, neighbors, quality, listEntities, assignType, retypeNode, deleteUntyped, deleteNode, mergeNodes, resolveTokens, RESOLVE_MAX_TOKENS, ONTOLOGY_TYPES } from '../lib/memory-graph.js';
 
 /**
  * Read-only memory-graph API (v1: contextual recall). Backs the "What do we
@@ -12,6 +12,7 @@ import { overview, search, neighbors, quality, listEntities, assignType, retypeN
  *   GET /api/memory/graph/search?group=&q=&limit= -> entity picker results
  *   GET /api/memory/graph/neighbors?group=&uuid=  -> focus + neighbors + facts + episodes
  *   GET /api/memory/graph/quality?group=          -> untyped [Entity] drift list
+ *   POST /api/memory/graph/resolve {tokens:[…]}   -> token -> entity | null (read-only)
  */
 export function memoryGraphRouter({ getConfig, client, envGroup, redact = (v) => v }) {
   const router = express.Router();
@@ -97,6 +98,19 @@ export function memoryGraphRouter({ getConfig, client, envGroup, redact = (v) =>
 
   router.get('/quality', guard(async (req, res) => {
     res.json(await quality(client, await pickGroup(req)));
+  }));
+
+  // Batch token -> entity resolution for the investigation panel. POST because
+  // the token list is a body, not because it writes: this is read-only, same as
+  // /search. One call replaces one /search per touched entity.
+  router.post('/resolve', guard(async (req, res) => {
+    const tokens = Array.isArray(req.body?.tokens) ? req.body.tokens : null;
+    if (!tokens) return res.status(400).json({ error: 'tokens must be an array.' });
+    if (tokens.length > RESOLVE_MAX_TOKENS) {
+      return res.status(400).json({ error: `tokens is limited to ${RESOLVE_MAX_TOKENS} per request.` });
+    }
+    const group = await pickGroup(req);
+    res.json({ group, resolved: await resolveTokens(client, group, tokens) });
   }));
 
   // List entities (optionally by ontology type) for browse drill-down + the
