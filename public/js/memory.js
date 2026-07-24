@@ -33,6 +33,13 @@ const TYPE_COLOR = {
 };
 const colorFor = (t) => TYPE_COLOR[t] || TYPE_COLOR.Entity;
 
+// A node's summary accumulates one line per episode that mentioned it, so a fact
+// re-observed across runs is stored verbatim several times. Show each once, in
+// first-seen order — the repetition is a storage artifact, not new information.
+const summaryLines = (s) => [...new Map(
+  String(s || '').split('\n').map((l) => l.trim()).filter(Boolean).map((l) => [l, l]),
+).values()];
+
 // Macro-lane per ontology type for the semantic layout (doc §3.2): originators &
 // assets on the left, threat objects on the right, conclusions up top, prior
 // episodes along the bottom. The focus entity holds the centre.
@@ -61,6 +68,7 @@ const INV_HUB = '__inv__';
 let mode = 'browse';              // 'browse' | 'investigation'
 let view = 'graph';               // 'graph' | 'timeline' (investigation mode only)
 let surface = 'overlay';          // 'overlay' (full screen) | 'docked' (right rail)
+let undockedForGraph = false;     // graph view borrowed the full screen from the dock
 const invTokens = new Set();      // raw entity tokens, in discovery order (Set keeps insertion order)
 const invResolved = new Map();    // token -> { token, known, uuid?, name, type, summary? }
 let invRenderTimer = null;
@@ -316,6 +324,7 @@ let prevEdgeKeys = new Set();
 const edgeKey = (e) => `${e.source}»${e.target}`;
 const GRAPH_CAP = 40;      // bounded-SVG budget; above this we keep the top-N + "+N more"
 let capOverride = null;    // set by "+N more" to reveal the rest for the current graph
+const LABEL_FAN = 18;      // px between the labels of edges sharing a node pair (> line height)
 
 async function focusEntity(uuid) {
   const svg = $('mem-svg');
@@ -346,7 +355,9 @@ function renderGraph(data) {
   svg.innerHTML = '';
 
   // Peripheral items: neighbor entities first, then episodes (grouped visually).
-  let peers = data.nodes.map((n) => ({ kind: 'entity', ...n }))
+  // The focus is never its own peer — a self-referential fact would otherwise place
+  // it in a lane as well as at the centre, drawing the node (and its label) twice.
+  let peers = data.nodes.filter((n) => n.uuid !== data.focus.uuid).map((n) => ({ kind: 'entity', ...n }))
     .concat(data.episodes.map((ep) => ({ kind: 'episode', uuid: ep.uuid, name: ep.name, type: 'Episode', created_at: ep.created_at, source: ep.source })));
   // Density cap (bounded-SVG budget): above GRAPH_CAP we keep the most-connected
   // entities (known-first, entities over episodes) and surface a "+N more" chip —
@@ -428,7 +439,15 @@ function renderGraph(data) {
   // wide transparent hit line so the thin visible stroke is still clickable.
   const edgesLayer = document.createElementNS(NS, 'g');
   const liveRun = mode === 'investigation' && !!state.running;
+  // Reciprocal facts (A→B and B→A) share a midpoint, so their labels would land on
+  // exactly the same pixel. Count the edges per unordered node pair up front, then
+  // fan each one out perpendicular to the line.
+  const pairKey = (e) => [e.source, e.target].sort().join('|');
+  const pairTotal = new Map();
+  for (const e of data.edges) pairTotal.set(pairKey(e), (pairTotal.get(pairKey(e)) || 0) + 1);
+  const pairSeen = new Map();
   for (const e of data.edges) {
+    if (e.source === e.target) continue; // self-loop: nothing to draw between
     const a = pos.get(e.source);
     const b = pos.get(e.target);
     if (!a || !b) continue;
@@ -456,9 +475,23 @@ function renderGraph(data) {
       hit.addEventListener('click', (ev) => { ev.stopPropagation(); spotlight(e.source); renderEdgeInspector(e, data); });
       edgesLayer.appendChild(hit);
     }
-    // rel label at midpoint
+    // rel label at the midpoint, fanned perpendicular so co-located edges separate:
+    // one edge stays on the line, two straddle it, and so on. The perpendicular is
+    // measured from the pair's canonical (sorted) endpoints, not from this edge's
+    // own direction — otherwise A→B and B→A flip the normal as well as the spread
+    // and land back on the same pixel.
+    const key = pairKey(e);
+    const seen = pairSeen.get(key) || 0;
+    pairSeen.set(key, seen + 1);
+    const spread = seen - (pairTotal.get(key) - 1) / 2;
+    const [first] = [e.source, e.target].sort();
+    const p1 = pos.get(first);
+    const p2 = first === e.source ? b : a;
+    const len = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+    const nx = -((p2.y - p1.y) / len) * spread * LABEL_FAN;
+    const ny = ((p2.x - p1.x) / len) * spread * LABEL_FAN;
     const t = document.createElementNS(NS, 'text');
-    t.setAttribute('x', (a.x + b.x) / 2); t.setAttribute('y', (a.y + b.y) / 2 - 3);
+    t.setAttribute('x', (a.x + b.x) / 2 + nx); t.setAttribute('y', (a.y + b.y) / 2 - 3 + ny);
     t.setAttribute('class', 'mem-edge-label');
     t.textContent = e.rel || '';
     edgesLayer.appendChild(t);
@@ -658,7 +691,7 @@ function renderPeerInspector(node) {
   const focusUuid = lastGraph?.focus?.uuid;
   const edge = edges.find((e) => (e.source === node.uuid && e.target === focusUuid)
     || (e.target === node.uuid && e.source === focusUuid));
-  const summary = (node.summary || '').split('\n').filter(Boolean);
+  const summary = summaryLines(node.summary);
   inspector(`
     <div class="mem-insp-head">${badge(node.type)}<h3>${esc(node.name)}</h3></div>
     ${edge && (edge.rel || edge.fact) ? `<p class="mem-edge-fact"><span class="mem-rel">${esc(edge.rel || 'related')}</span> ${esc(edge.fact || '')}</p>` : ''}
@@ -690,7 +723,7 @@ function badge(type) { return `<span class="mem-badge" style="background:${color
 function renderFocusInspector(data) {
   if (!data) return;
   const f = data.focus;
-  const summary = (f.summary || '').split('\n').filter(Boolean);
+  const summary = summaryLines(f.summary);
   const facts = data.edges.map((e) => {
     const other = data.nodes.find((n) => n.uuid === (e.dir === 'out' ? e.target : e.source));
     return `<li><span class="mem-rel${e.expired ? ' expired' : ''}">${esc(e.rel)}</span> ${esc(e.fact || (other ? other.name : ''))}</li>`;
@@ -777,6 +810,11 @@ function renderFocusInspector(data) {
         mr.innerHTML = cands.length
           ? cands.map((r) => `<button type="button" class="mf-merge-cand" data-uuid="${esc(r.uuid)}" data-name="${esc(r.name)}"><i style="background:${colorFor(r.type)}"></i><span>${esc(r.name)}</span><em>${esc(r.type)}</em></button>`).join('')
           : '<div class="panel-sub">No matches</div>';
+        // The curation block sits at the bottom of a scrolling inspector, so the
+        // results can render past the fold — bring them into view. Instant, not
+        // smooth: a smooth scroll here is dropped outright under reduced-motion
+        // settings, and the results would silently stay below the fold.
+        if (cands.length) mr.scrollIntoView({ block: 'nearest' });
         mr.querySelectorAll('.mf-merge-cand').forEach((b) => b.addEventListener('click', async () => {
           if (!window.confirm(`Merge "${f.name}" into "${b.dataset.name}"? "${f.name}" will be removed and its facts + episodes moved to "${b.dataset.name}".`)) return;
           err.textContent = '';
@@ -1016,6 +1054,23 @@ function renderNewInspector(node) {
 }
 
 // ---------- surface (dock / full-screen) + mode + view ----------
+// Panels the memory overlay covers. Docked, it replaces the Files column, which
+// collapses to zero width but stays in the DOM — so without `inert` it keeps its
+// tab stops (including a second copy of the Files/Memory tablist) behind an
+// invisible panel. Full screen it covers the sidebar and chat as well.
+function applyBackgroundInert() {
+  const open = isMemoryOpen();
+  const set = (sel, on) => {
+    const el = document.querySelector(sel);
+    if (!el) return;
+    el.toggleAttribute('inert', on);
+    if (on) el.setAttribute('aria-hidden', 'true'); else el.removeAttribute('aria-hidden');
+  };
+  set('aside.files-panel', open);
+  set('aside.sidebar', open && surface === 'overlay');
+  set('main.main', open && surface === 'overlay');
+}
+
 function updateToggles() {
   const ov = $('memory-overlay');
   ov.classList.toggle('docked', surface === 'docked');
@@ -1025,6 +1080,14 @@ function updateToggles() {
   $('mem-mode-browse')?.classList.toggle('active', mode === 'browse');
   $('mem-view-timeline')?.classList.toggle('active', view === 'timeline');
   $('mem-view-graph')?.classList.toggle('active', view === 'graph');
+  // The button toggles between the two surfaces, so say which one it goes to.
+  const expand = $('mem-expand');
+  if (expand) {
+    const label = surface === 'docked' ? 'Expand to full screen' : 'Dock to the right';
+    expand.title = label;
+    expand.setAttribute('aria-label', label);
+  }
+  applyBackgroundInert();
 }
 
 function applyState() {
@@ -1051,12 +1114,16 @@ function setMode(next) {
 function setView(next) {
   if (mode !== 'investigation') return;
   view = next;
-  if (view === 'graph' && surface === 'docked') surface = 'overlay'; // the radial graph needs room
+  // The radial graph needs room, so it takes over the full screen — but that is a
+  // loan, not a move: going back to the timeline returns the surface it borrowed.
+  if (view === 'graph' && surface === 'docked') { undockedForGraph = true; surface = 'overlay'; }
+  else if (view !== 'graph' && undockedForGraph) { undockedForGraph = false; surface = 'docked'; }
   applyState();
 }
 
 function toggleSurface() {
   surface = surface === 'docked' ? 'overlay' : 'docked';
+  undockedForGraph = false; // an explicit choice outranks the graph's loan
   updateToggles();
   if (mode === 'investigation') renderCurrent();
   else if (lastGraph && !$('mem-svg').classList.contains('hidden')) renderGraph(lastGraph);
@@ -1071,13 +1138,16 @@ function open() {
   mode = preferInvestigation ? 'investigation' : 'browse';
   view = 'timeline';
   surface = 'docked';
+  undockedForGraph = false;
   setRpTab('memory');
+  updateToggles(); // inert the collapsed Files column before the groups round-trip
   loadGroups().then(applyState);
 }
 function close() {
   $('memory-overlay').classList.add('hidden');
   document.body.classList.remove('mem-docked');
   setRpTab('files');
+  applyBackgroundInert(); // reads isMemoryOpen(), now false — restores every panel
 }
 
 // Reflect + drive the Files/Memory right-panel switch (both header copies).

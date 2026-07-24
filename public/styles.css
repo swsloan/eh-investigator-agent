@@ -2626,14 +2626,34 @@ html, body {
    right side (one panel, chosen via the Files/Memory tabs). */
 .memory-overlay.docked { left: auto; width: 440px; border-left: 1px solid var(--hairline); box-shadow: -8px 0 28px rgba(0,0,0,0.14); }
 body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 440px); transition: width 0.18s ease; }
-/* Docked header wraps (it's narrower than full screen); the body stacks canvas
-   over a shorter inspector so both browse + investigation stay usable. */
-.memory-overlay.docked .memory-head { flex-wrap: wrap; row-gap: 8px; }
-.memory-overlay.docked .memory-search-wrap { flex-basis: 100%; order: 5; max-width: none; }
+/* Docked, the header is too wide for one row, and greedy flex-wrap strands whatever
+   misses the last line by a few px (the close button did). Place the three rows
+   explicitly instead so the layout can't drift with the content's measured width.
+   The body stacks canvas over a shorter inspector so both modes stay usable. */
+.memory-overlay.docked .memory-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "tabs   actions"
+    "mode   view"
+    "search group";
+  gap: 8px 10px;
+  align-items: center;
+}
+.memory-overlay.docked .rp-tabs { grid-area: tabs; justify-self: start; }
+.memory-overlay.docked .mem-head-actions { grid-area: actions; justify-self: end; }
+.memory-overlay.docked .mem-mode { grid-area: mode; justify-self: start; }
+.memory-overlay.docked .mem-view { grid-area: view; justify-self: end; }
+.memory-overlay.docked .memory-search-wrap { grid-area: search; max-width: none; }
+.memory-overlay.docked .memory-group { grid-area: group; justify-self: end; }
+/* Investigation mode hides .mem-view; let the mode toggle take the whole row. */
+.memory-overlay.docked:not(.investigation) .mem-mode { grid-column: 1 / -1; }
 .memory-overlay.docked .memory-body { flex-direction: column; }
 .memory-overlay.docked .mem-inspector { flex: 0 0 auto; max-height: 42%; border-left: none; border-top: 1px solid var(--hairline); }
 /* View toggle only applies in investigation mode. */
 .memory-overlay:not(.investigation) .mem-view { display: none; }
+/* Expand + close travel together: one flex item full screen, one grid area docked. */
+.mem-head-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 /* Right-panel Files/Memory switch (in both the files + memory headers). */
 .rp-tabs { display: flex; gap: 2px; background: var(--track); border-radius: 8px; padding: 2px; flex: 0 0 auto; }
 .rp-tab { border: none; background: none; color: var(--gray); font: inherit; font-size: 12.5px; font-weight: 600; padding: 4px 12px; border-radius: 6px; cursor: pointer; }
