@@ -5,8 +5,10 @@ etc.) to clone this repository and bring the whole stack up in Docker Desktop.
 
 It builds everything from source — the app and `graphiti-mcp` images build from
 committed Dockerfiles; `falkordb` and the llama.cpp `embeddings` server pull
-public images; the ExtraHop CLI is extracted from the bundled archives under
-`vendor/excli/` at build time.
+public images; the ExtraHop CLI is downloaded at build time from a public,
+commit-pinned GitHub URL and verified against the checksums committed under
+`vendor/excli/`. The CLI is not redistributed in this repo, so the build needs
+network access to fetch it (the archives themselves are not vendored).
 Nothing needs to be created beforehand, and no credentials are required just to
 start the containers.
 
