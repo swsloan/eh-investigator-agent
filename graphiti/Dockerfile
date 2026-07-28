@@ -12,6 +12,16 @@
 #     app's localhost-only model, so disabling the check here is safe.
 FROM zepai/knowledge-graph-mcp:standalone@sha256:460bafb39439d99ff001ea6ef03efbe0bd5d9e6afe2655edf926da4fd9df97c5
 
+# (0) Patch the upstream base's OS packages. The pinned Debian 12 base is stale:
+# Trivy flags 4 CRITICAL (libgnutls30, libssl3, openssl — all TLS libs) plus OS-
+# level HIGHs. Upgrading in place pulls the fixed security releases (libgnutls30
+# deb12u7, libssl3/openssl 3.0.20-1~deb12u2). Verified to clear all 4 CRITICAL
+# and drop fixable HIGH 44 -> 21 (the residual are Python-venv deps, tracked in
+# issue #43). The base runs as root, so no USER change is needed. Revisit — and
+# drop this layer — when `zepai/knowledge-graph-mcp:standalone` ships a refreshed
+# base. See docs/DEPENDENCY-MAINTENANCE.md and issue #43.
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+
 # (1) Anthropic extra
 RUN VIRTUAL_ENV=/app/mcp/.venv /root/.local/bin/uv pip install \
       --python /app/mcp/.venv/bin/python --no-cache \

@@ -37,6 +37,15 @@ maintained line bundling the patched tar 7.5.19, and it is installed in the
 cleared several HIGH findings (7 → 3). **Remove this override** once a
 `node:26-slim` shipping fixed npm is published, and re-pin the base digest then.
 
+**Why graphiti's OS packages are upgraded in-layer (2026-07-28).** The pinned
+`zepai/knowledge-graph-mcp:standalone` base is a stale Debian 12: Trivy flagged
+4 CRITICAL (libgnutls30, libssl3, openssl — TLS libs) plus OS-level HIGHs. Since
+we don't control that base, `graphiti/Dockerfile` runs `apt-get upgrade -y`
+right after `FROM` to pull the fixed security releases in place — verified to
+clear all 4 CRITICAL (HIGH 44 → 21; the residual are Python-venv deps that apt
+can't touch, tracked in issue #43). **Drop this layer and re-pin** once upstream
+publishes a refreshed `:standalone`.
+
 **Runtime-downloaded input — embedding model (pinned + verified).** The
 `embeddings-init` service in `docker-compose.yml` downloads
 `nomic-embed-text-v1.5.f16.gguf` (~274 MB) into the `embed_models` volume on
