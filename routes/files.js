@@ -53,10 +53,13 @@ export function filesRouter({
     }
   });
 
-  router.post('/:id/files/*/open-wireshark', async (req, res) => {
+  router.post('/:id/files/*splat/open-wireshark', async (req, res) => {
     const session = getSession(sessions, req, res);
     if (!session) return;
-    const relPath = decodeURIComponent(req.params[0] || '');
+    // Express 5 (path-to-regexp v8): the `*splat` wildcard captures the tail as an
+    // array of already-URL-decoded segments, so joining them reproduces exactly
+    // what express 4's `decodeURIComponent(req.params[0])` used to yield.
+    const relPath = (req.params.splat || []).join('/');
     if (!isPacketCapturePath(relPath)) {
       return res.status(400).json({ error: 'Only packet capture files can be opened in Wireshark.' });
     }
@@ -82,12 +85,14 @@ export function filesRouter({
   });
 
   // ?dl=1 forces a download; default serves inline for the in-app viewer.
-  router.get('/:id/files/*', async (req, res) => {
+  router.get('/:id/files/*splat', async (req, res) => {
     const session = getSession(sessions, req, res);
     if (!session) return;
+    // See the open-wireshark route above: `*splat` yields decoded path segments.
+    const relPath = (req.params.splat || []).join('/');
     let abs;
     try {
-      abs = session.resolveFile(decodeURIComponent(req.params[0]));
+      abs = session.resolveFile(relPath);
     } catch {
       return res.status(400).json({ error: 'Invalid path' });
     }
@@ -101,7 +106,7 @@ export function filesRouter({
       // materializes the whole CSV in memory.
       let started = false;
       try {
-        await streamCsv(session, decodeURIComponent(req.params[0]), {
+        await streamCsv(session, relPath, {
           onCsvMetadata: ({ filename }) => {
             res.setHeader('Content-Type', 'text/csv; charset=utf-8');
             res.setHeader('Content-Disposition', `attachment; filename="${String(filename).replace(/"/g, '')}"`);
