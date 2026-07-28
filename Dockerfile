@@ -48,7 +48,7 @@ RUN echo "wireshark-common wireshark-common/install-setuid boolean false" | debc
 # postinstall to fetch its platform-native binary, so install it separately
 # without --ignore-scripts.
 RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.80.10 \
-    && npm install -g @anthropic-ai/claude-code@2.1.212 \
+    && npm install -g @anthropic-ai/claude-code@2.1.220 \
     && claude --version
 
 COPY package.json package-lock.json ./
