@@ -24,16 +24,16 @@
     "setup:weasyprint": "(/opt/homebrew/bin/brew install weasyprint || /usr/local/bin/brew install weasyprint || brew install weasyprint) && npm run setup:python"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.212",
+    "@anthropic-ai/claude-agent-sdk": "0.3.220",
     "@highlightjs/cdn-assets": "11.11.1",
     "dompurify": "3.4.12",
     "express": "5.2.1",
     "ipaddr.js": "2.4.0",
     "linkedom": "0.18.13",
-    "marked": "18.0.6",
+    "marked": "18.0.7",
     "multer": "2.2.0"
   },
   "devDependencies": {
-    "@playwright/test": "1.61.1"
+    "@playwright/test": "1.62.0"
   }
 }
