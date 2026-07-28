@@ -398,7 +398,9 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(ROOT, 'public')));
 
 // Locally served vendor assets (no CDN dependency at runtime).
-app.use('/vendor/marked.min.js', express.static(path.join(ROOT, 'node_modules/marked/marked.min.js')));
+// marked ≥16 no longer ships a pre-minified bundle; its UMD build is the
+// browser-loadable one (exposes window.marked via <script>).
+app.use('/vendor/marked.umd.js', express.static(path.join(ROOT, 'node_modules/marked/lib/marked.umd.js')));
 app.use('/vendor/purify.min.js', express.static(path.join(ROOT, 'node_modules/dompurify/dist/purify.min.js')));
 app.use('/vendor/hljs', express.static(path.join(ROOT, 'node_modules/@highlightjs/cdn-assets')));
 
