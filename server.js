@@ -7,6 +7,7 @@ import path from 'node:path';
 import { BACKENDS, detectBackends, getBackend, resolveBackendId } from './lib/backends/index.js';
 import { createChallengerCoordinator } from './lib/challenger-coordinator.js';
 import { createMemoryCoordinator } from './lib/memory-coordinator.js';
+import { createAuditCoordinator } from './lib/audit-coordinator.js';
 import { BackendUpdateManager } from './lib/backend-updates.js';
 import { ExcliBroker } from './lib/excli-broker.js';
 import { ActionBroker } from './lib/action-broker.js';
@@ -185,6 +186,8 @@ const challenger = createChallengerCoordinator({
   secretStore,
 });
 const memory = createMemoryCoordinator({ getConfig: prefs });
+// Audit trail (#30): append-only, hash-chained projection of the agent's activity.
+const audit = createAuditCoordinator({ redact });
 // Backend self-update (managed backends only — e.g. Pi's `pi update --self`).
 // Claude Code has no managed-update policy; it updates via its own SDK. A
 // backend is "busy" while any session on it is actively running a turn.
@@ -210,6 +213,9 @@ const actionSessionInfo = (id) => (sessions.has(id)
   : null);
 
 function broadcast(sessionId, event) {
+  // #30 audit trail: capture the audit-worthy events (tool calls, action
+  // lifecycle, safety, memory) that fan out here. Observe-only, before delivery.
+  audit.capture(sessions.get(sessionId), event);
   const clients = sseClients.get(sessionId);
   if (clients) {
     const data = `data: ${JSON.stringify(redact(event))}\n\n`;
@@ -283,6 +289,7 @@ function createSession(id = crypto.randomUUID(), { backend: backendId } = {}) {
   session.on('event', (event) => broadcast(id, event));
   challenger.attachSession(session);
   memory.attachSession(session);
+  audit.attachSession(session); // #30: end-of-turn verdict capture
   sessions.set(id, session);
   return session;
 }

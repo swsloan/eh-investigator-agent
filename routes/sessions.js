@@ -8,6 +8,7 @@ import { containsSecretMaterial } from '../lib/redaction.js';
 import { renderPendingActionsBlock } from '../lib/action-store.js';
 import { assessConclusionQuality } from '../lib/conclusion-quality.js';
 import { recordSafetyEvent, summarizeSafetyEvents } from '../lib/safety-log.js';
+import { readTrail, verifyTrail } from '../lib/audit-trail.js';
 
 export function sessionsRouter({
   sessions,
@@ -74,6 +75,31 @@ export function sessionsRouter({
     const session = getSession(sessions, req, res);
     if (!session) return;
     return res.json(summarizeSafetyEvents(session.transcript || []));
+  });
+
+  /**
+   * GET /:id/audit — the audit-trail integrity summary for this session (#30):
+   * whether a trail exists, how many entries, and the verifier's verdict over the
+   * hash chain. Read-only.
+   */
+  router.get('/:id/audit', (req, res) => {
+    const session = getSession(sessions, req, res);
+    if (!session) return;
+    const text = readTrail(session.workspace);
+    const verify = verifyTrail(text);
+    return res.json({ present: text.length > 0, entries: verify.entries || 0, verify });
+  });
+
+  /**
+   * GET /:id/audit/export — the raw append-only JSONL trail, for offline retention
+   * and verification (scripts/verify-audit.js). Read-only.
+   */
+  router.get('/:id/audit/export', (req, res) => {
+    const session = getSession(sessions, req, res);
+    if (!session) return;
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="audit-${session.id}.jsonl"`);
+    return res.send(readTrail(session.workspace));
   });
 
   router.get('/:id/events', (req, res) => {
