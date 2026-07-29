@@ -1,18 +1,91 @@
-# Hardened-token overlay. Use scripts/compose-hardened.sh so strong tokens are
+# Hardened overlay. Use scripts/compose-hardened.sh so strong tokens are
 # generated once under .runtime/ and supplied identically to both services.
 #
-# The hardened profile turns on token authentication for the browser/API/SSE
-# surfaces (EH_AUTH_TOKEN) and marks the deployment as hardened, which makes the
-# app fail closed if that token is ever missing (see lib/auth.js). Both tokens are
-# required here (`:?`) so `docker compose` refuses to start without them rather
-# than silently running unauthenticated.
+# Two layers of hardening live here:
+#
+#   1. Token authentication (slice 1). EH_AUTH_TOKEN gates the browser/API/SSE
+#      surfaces and EH_DEPLOYMENT_PROFILE=hardened makes the app fail closed if the
+#      token is ever missing (see lib/auth.js). EH_MEMORY_PROXY_TOKEN is the
+#      separate token the Graphiti sidecar uses for the /memory-llm proxy. Both are
+#      required (`:?`) so `docker compose` refuses to start unauthenticated.
+#
+#   2. Runtime confinement (slice 2). Every service drops all Linux capabilities,
+#      forbids privilege escalation, and gets CPU/memory/PID ceilings so a
+#      compromised or runaway container cannot escalate or exhaust the host. The
+#      internal-only services (FalkorDB browser, Graphiti MCP) stop publishing to
+#      the host — the app reaches them over the private compose network. The app's
+#      own port stays published, now behind the token gate.
+#
+# NOT yet applied here (deferred, tracked under #24):
+#   - read-only root filesystems: needs each service's writable paths mapped to
+#     tmpfs/volumes and validated under a real bring-up (slice 4's functional
+#     matrix), so it is intentionally left off to keep this overlay non-breaking.
+#   - worker/secret separation and restricted egress (slice 3): the agent still
+#     runs in-process with the control plane; isolating it is a re-architecture.
+#
+# None of these run counter to the base compose: the base file is unchanged, so
+# `docker compose up` (local alpha) is unaffected and this overlay is additive.
+
 services:
   eh-investigator:
     environment:
       EH_DEPLOYMENT_PROFILE: "hardened"
       EH_MEMORY_PROXY_TOKEN: ${EH_MEMORY_PROXY_TOKEN:?Use scripts/compose-hardened.sh to generate the hardened tokens}
       EH_AUTH_TOKEN: ${EH_AUTH_TOKEN:?Use scripts/compose-hardened.sh to generate the hardened tokens}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # The app binds a high port and writes only to mounted volumes, so it needs no
+    # capabilities. It spawns agent CLIs (many child processes), so the PID ceiling
+    # is generous; limits are experimental and get tuned under load in slice 4.
+    pids_limit: 2048
+    mem_limit: 4g
+    cpus: 4.0
+    # A writable, size-bounded /tmp so a read-only rootfs (slice 4) is a smaller
+    # step later; harmless now (an in-memory scratch dir).
+    tmpfs:
+      - /tmp:size=256m
 
   graphiti-mcp:
     environment:
       ANTHROPIC_API_KEY: ${EH_MEMORY_PROXY_TOKEN:?Use scripts/compose-hardened.sh to generate the hardened tokens}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    mem_limit: 2g
+    cpus: 2.0
+    # Reachable by the app over the compose network; no host publishing needed.
+    ports: !override []
+
+  falkordb:
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    mem_limit: 2g
+    cpus: 2.0
+    # The FalkorDB browser UI has no authentication; do not expose it to the host
+    # in the hardened profile. The app queries FalkorDB over the compose network.
+    ports: !override []
+
+  embeddings:
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    mem_limit: 3g
+    cpus: 4.0
+
+  embeddings-init:
+    # A transient one-shot bootstrap: it runs `apk add curl` (package installs can
+    # need CHOWN/SETUID) and exits before the stack serves anything, so it keeps
+    # default capabilities — no-new-privileges + limits are the safe controls here.
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 512m

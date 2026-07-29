@@ -67,10 +67,45 @@ which is the fail-safe default. Sign out via the header control (`POST
 /auth/logout`).
 
 > Scope: this is slice 1 of #24 (authentication + fail-closed exposure). Runtime
-> isolation (non-root workers, capability drop, read-only rootfs, worker/secret
-> separation, network egress limits) and the full threat-model / migration /
-> rollback documentation land in later slices, still behind the experimental
-> hardened profile until explicit sign-off.
+> isolation (non-root workers, read-only rootfs, worker/secret separation, network
+> egress limits) and the full threat-model / migration / rollback documentation
+> land in later slices, still behind the experimental hardened profile until
+> explicit sign-off.
+
+## Runtime confinement (#24, slice 2)
+
+The hardened overlay also confines every container so a compromised or runaway
+service cannot escalate privileges or exhaust the host:
+
+- **No capabilities, no escalation.** All long-running services set
+  `cap_drop: [ALL]` and `security_opt: [no-new-privileges:true]`. None of them need
+  a Linux capability — they bind high ports and write only to mounted volumes. The
+  one exception is the transient `embeddings-init` bootstrap, which runs
+  `apk add curl` (package installs can need `CHOWN`/`SETUID`) and exits before the
+  stack serves; it keeps default capabilities but still gets `no-new-privileges`
+  and limits.
+- **Resource ceilings.** Each service has a memory limit, CPU limit, and PID limit
+  (`pids_limit`) so a fork storm or memory leak is contained. The values are
+  generous starting points for a single-host deployment and are tuned under real
+  load in slice 4.
+- **Smaller host surface.** The internal-only services stop publishing to the
+  host: the FalkorDB browser UI (`:3001`, unauthenticated) and the Graphiti MCP
+  endpoint (`:8000`) are reachable only over the private compose network, where the
+  app already talks to them. Only the app's own port stays published — now behind
+  the token gate. To inspect FalkorDB in the hardened profile, use
+  `docker compose ... exec falkordb redis-cli` or temporarily re-publish the port.
+- **Toward read-only roots.** The app mounts a size-bounded `tmpfs` at `/tmp`, a
+  step toward a read-only root filesystem. Read-only roots themselves are deferred
+  to slice 4, where each service's writable paths are mapped and validated under a
+  real bring-up so the change stays non-breaking.
+
+Because all of this lives in `docker-compose.hardened.yml`, the base
+`docker compose up` (local alpha) is byte-for-byte unaffected — the overlay is
+purely additive. Verify the merged result without starting anything:
+
+```bash
+npm run compose:hardened -- config
+```
 
 ## Memory proxy safety bounds
 
