@@ -32,12 +32,32 @@ faithfully.
   `assignee`) are better choices for a smoke test that must *visibly* change and
   revert state.
 
-**Possible future refinement (not implemented):** an optional post-execute
-read-back verification for write actions, surfacing "accepted but not persisted"
-distinctly from "executed and confirmed." The agent does this manually today;
-formalizing it would be a product decision. Tracked informally here rather than
-as an issue, since it depends on appliance configuration and may not be worth the
-added complexity.
+**Now implemented (Phase 3, issue #23).** Post-execute read-back verification is
+built into the governed write path. On approval the app captures the target's
+before-state, revalidates the precondition (refusing to execute against a target
+it can no longer read — drift), executes, then reads the target back and compares
+the observed state to the desired after-state derived from the write params. The
+outcome is one of:
+
+- **verified** — the desired state was observed on read-back (confirmed).
+- **executed** — accepted, but the capability has no read-back verifier
+  (`create_investigation`); the pre-Phase-3 meaning, kept for compatibility.
+- **verification_failed** — the appliance accepted the write but the desired
+  state was NOT observed. The `ticket_id` case above now lands here instead of a
+  green **executed**, with the mismatch spelled out (`ticket_id: wanted INC-1,
+  observed none`).
+
+The verifier registry lives in `lib/action-verify.js` (pure; unit-tested without
+an appliance), read-back I/O is `ExcliBroker.observe()`, and the orchestration is
+in `routes/actions.js`. Interrupted writes (a crash between execute and verify)
+are resolved at startup by `lib/action-recover.js` — read back, never blindly
+re-run. Proposals also expire (`PROPOSAL_TTL_MS`, 24h) so a stale approval cannot
+execute against drifted state.
+
+`update_detection` (read back via `get_detection`) and the
+`assign`/`unassign_devicetag` pair (read back via `list_devicetags_for_device`)
+are the verifiable capabilities today; `create_investigation` has no natural
+read-back and remains `executed`.
 
 ## Reversible fields for a smoke test
 

@@ -11,6 +11,7 @@ import { BackendUpdateManager } from './lib/backend-updates.js';
 import { ExcliBroker } from './lib/excli-broker.js';
 import { ActionBroker } from './lib/action-broker.js';
 import { ActionIndex } from './lib/action-index.js';
+import { recoverInterruptedActions } from './lib/action-recover.js';
 import { listActionsAcrossWorkspaces } from './lib/action-store.js';
 import { ReversingLabsBroker } from './lib/reversinglabs-broker.js';
 import { ResearchBroker } from './lib/research-broker.js';
@@ -303,6 +304,17 @@ actionIndex.seed(listActionsAcrossWorkspaces(
   [...sessions.values()].map((s) => ({ sessionId: s.id, sessionTitle: s.title || 'New session', workspace: s.workspace })),
 ).actions);
 
+// Resolve any write left mid-flight by a prior crash (Phase 3, #23): read the
+// target back and settle it as verified / verification_failed, or (unverifiable)
+// mark it interrupted — never blindly re-execute. Best-effort and async; the
+// broadcast fan-out keeps the open-action index/UI current as each settles.
+recoverInterruptedActions({
+  entries: [...sessions.values()].map((s) => ({ sessionId: s.id, workspace: s.workspace })),
+  observe: (probes, opts) => excliBroker.observe(probes, opts),
+  broadcast,
+  logger: console,
+}).catch((err) => console.warn(`[action-recover] sweep failed: ${err?.message || err}`));
+
 /** One-shot throwaway backend call to name the session after its first message. */
 async function generateTitle(session, userText) {
   if (session.titleGenerated) return;
@@ -434,6 +446,7 @@ app.use('/api/sessions', investigationPlansRouter({ sessions }));
 app.use('/api/actions', actionsRouter({
   sessions,
   executeApproved: (action, opts) => excliBroker.executeApproved(action, opts),
+  observe: (probes, opts) => excliBroker.observe(probes, opts), // read-back verification (#23)
   broadcast, // responses + SSE are redacted centrally (res.json override + broadcast)
   actionIndex,
   getSessionInfo: actionSessionInfo,
