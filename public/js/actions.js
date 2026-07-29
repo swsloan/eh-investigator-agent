@@ -8,15 +8,19 @@ import { listActions, decideAction } from './api.js';
 import { dom } from './dom.js';
 import { state } from './state.js';
 
-const TERMINAL = new Set(['executed', 'rejected', 'failed']);
+const TERMINAL = new Set(['executed', 'verified', 'verification_failed', 'rejected', 'failed', 'expired']);
 
 export const STATUS_LABEL = {
   proposed: 'Awaiting approval',
   approved: 'Approved',
   executing: 'Executing…',
+  verifying: 'Verifying…',
   executed: 'Executed',
+  verified: 'Verified',
+  verification_failed: 'Not confirmed',
   rejected: 'Rejected',
   failed: 'Failed',
+  expired: 'Expired',
 };
 
 function pendingCount(actions) {
@@ -158,6 +162,26 @@ export function actionCard(action, { onResult, showSession = false, showAge = fa
     err.className = 'action-error';
     err.textContent = errText;
     card.appendChild(err);
+  }
+
+  // Phase 3 (#23): surface read-back verification so "accepted but not persisted"
+  // is visible, not hidden behind a green badge. verification_failed shows why;
+  // verified shows a quiet confirmation.
+  if (action.status === 'verification_failed' && !errText) {
+    const note = document.createElement('div');
+    note.className = 'action-verify-fail';
+    note.textContent = `Accepted, but not confirmed: ${action.verification?.detail || 'the desired state was not observed on read-back.'}`;
+    card.appendChild(note);
+  } else if (action.status === 'verified' && action.verification?.detail) {
+    const note = document.createElement('div');
+    note.className = 'action-verify-ok';
+    note.textContent = action.verification.detail;
+    card.appendChild(note);
+  } else if (action.status === 'expired') {
+    const note = document.createElement('div');
+    note.className = 'action-expired-note';
+    note.textContent = 'This proposal expired before it was approved. Ask the agent to re-propose it against current state.';
+    card.appendChild(note);
   }
 
   const feedback = document.createElement('div');

@@ -3508,9 +3508,15 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
   color: var(--text-2);
 }
 .action-badge.badge-proposed { color: var(--warn-text); border-color: var(--warn-edge); }
-.action-badge.badge-executed { color: var(--ok-text); border-color: var(--ok-edge); }
+.action-badge.badge-executed,
+.action-badge.badge-verified { color: var(--ok-text); border-color: var(--ok-edge); }
 .action-badge.badge-failed { color: var(--danger-text); border-color: var(--danger-border); background: var(--danger-bg); }
+/* Not confirmed: accepted by the appliance but read-back didn't observe the
+   desired state. A caution, distinct from a hard failure (amber, not red). */
+.action-badge.badge-verification_failed { color: var(--warn-text); border-color: var(--warn-edge); }
+.action-badge.badge-expired { color: var(--text-faint); border-color: var(--chip-border); }
 .action-badge.badge-executing,
+.action-badge.badge-verifying,
 .action-badge.badge-approved { color: var(--sapphire); border-color: var(--sapphire); }
 .action-cap {
   font-family: ui-monospace, Menlo, monospace;
@@ -3562,6 +3568,29 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
   border-radius: 8px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+/* Read-back verification notes (#23). "Not confirmed" is a caution the analyst
+   must see; "verified" is a quiet confirmation; "expired" is muted guidance. */
+.action-verify-fail {
+  margin-top: 8px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  color: var(--warn-text);
+  background: var(--warn-bg, var(--chip-bg));
+  border: 1px solid var(--warn-edge);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.action-verify-ok {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ok-text);
+}
+.action-expired-note {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-faint);
 }
 .action-feedback {
   margin-top: 8px;
