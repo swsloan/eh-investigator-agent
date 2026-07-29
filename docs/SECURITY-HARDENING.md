@@ -107,6 +107,23 @@ purely additive. Verify the merged result without starting anything:
 npm run compose:hardened -- config
 ```
 
+## Keeping secrets out of the agent worker (#24, slice 3)
+
+The agent (Claude Code / Pi CLI) runs as a child process — the **worker** — and
+runs shell commands, so it must not be able to read the control plane's secrets.
+Every agent process is spawned with `buildScrubbedEnv` (`lib/secrets.js`), which
+strips all ExtraHop, ReversingLabs, Brave, **memory-proxy (`EH_MEMORY_PROXY_TOKEN`),
+UI/API (`EH_AUTH_TOKEN`), FalkorDB, and embedder** secrets from the worker's
+environment (the Anthropic model key is kept — it is the agent's own credential).
+
+This closes the **environment** exposure vector. A worker running as **root in the
+same container** can still reach secrets two other ways — `/proc/1/environ` and the
+root-owned `secrets.json` — which only a **non-root worker UID** closes. That
+re-architecture (non-root worker, workspace-only mounts, restricted egress,
+Pi/Claude auth-volume re-homing) is specified with its threat model, migration, and
+rollback in **[docs/DESIGN-worker-isolation.md](DESIGN-worker-isolation.md)** and is
+implemented and validated in a later step, behind the experimental profile.
+
 ## Memory proxy safety bounds
 
 The proxy accepts only authenticated `POST /v1/messages` requests, the operation
