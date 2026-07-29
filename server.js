@@ -17,6 +17,7 @@ import { ReversingLabsBroker } from './lib/reversinglabs-broker.js';
 import { ResearchBroker } from './lib/research-broker.js';
 import { InvestigationPlanBroker } from './lib/investigation-plan-broker.js';
 import { localOriginGuard } from './lib/local-origin.js';
+import { resolveAuthConfig, startupAuthError, createAuthState, authPublicRouter, authGuard } from './lib/auth.js';
 import { redactText, redactValue } from './lib/redaction.js';
 import { securityHeaders } from './lib/security-headers.js';
 import { createShutdownCoordinator, drainingGuard } from './lib/shutdown-coordinator.js';
@@ -397,6 +398,23 @@ app.use('/memory-llm', createMemoryLlmProxyHandler({
   ),
 }));
 
+// Authentication (Phase 4, #24) for the browser/API/SSE surfaces. Disabled (a
+// pass-through) in the default loopback alpha; REQUIRED and fail-closed when the
+// hardened profile is active or the app is bound to a concrete non-loopback
+// address — checked before the listener opens so an exposed surface never serves
+// unauthenticated. The /memory-llm proxy above keeps its own separate token, so
+// it is intentionally mounted ahead of this guard.
+const authConfig = resolveAuthConfig({ env: process.env, listenHost: LISTEN_HOST });
+const authStartupError = startupAuthError(authConfig);
+if (authStartupError) {
+  console.error(`[auth] ${authStartupError}`);
+  process.exit(1);
+}
+const authState = createAuthState(authConfig);
+app.use(authPublicRouter(authState)); // /login, /auth/session, /auth/logout (public)
+app.use(authGuard(authState));         // gate everything below when a token is configured
+if (authState.enabled) console.log(`[auth] token authentication enabled (${authConfig.reason || 'EH_AUTH_TOKEN set'})`);
+
 app.use('/api', localOriginGuard);
 // While draining, refuse new mutating requests so shutdown is not racing work
 // it is about to abort. Reads still succeed until the listener closes.
@@ -415,6 +433,9 @@ app.use(express.static(path.join(ROOT, 'public')));
 app.use('/vendor/marked.umd.js', express.static(path.join(ROOT, 'node_modules/marked/lib/marked.umd.js')));
 app.use('/vendor/purify.min.js', express.static(path.join(ROOT, 'node_modules/dompurify/dist/purify.min.js')));
 app.use('/vendor/hljs', express.static(path.join(ROOT, 'node_modules/@highlightjs/cdn-assets')));
+
+// Lets the SPA show a logout control only when authentication is enabled (#24).
+app.get('/api/auth/status', (_req, res) => res.json({ enabled: authState.enabled }));
 
 app.use('/api/settings', settingsRouter({
   getConfig: () => config,
