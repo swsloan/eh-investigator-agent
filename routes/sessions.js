@@ -6,6 +6,7 @@ import { getSession } from '../lib/route-utils.js';
 import { validateAttachments } from '../lib/uploads.js';
 import { containsSecretMaterial } from '../lib/redaction.js';
 import { renderPendingActionsBlock } from '../lib/action-store.js';
+import { assessConclusionQuality } from '../lib/conclusion-quality.js';
 
 export function sessionsRouter({
   sessions,
@@ -48,6 +49,19 @@ export function sessionsRouter({
     if (empty) return res.json(sessionSummary(empty));
     const session = createSession();
     return res.json(sessionSummary(session));
+  });
+
+  /**
+   * GET /:id/quality — the conclusion-quality audit for this investigation (#31):
+   * claim→evidence traceability, hallucinated-entity detection, evidence-ladder
+   * adherence, and confidence calibration, plus an overall score and flags each
+   * pointing at the offending claim/evidence. Read-only; never mutates the
+   * investigation or memory.
+   */
+  router.get('/:id/quality', (req, res) => {
+    const session = getSession(sessions, req, res);
+    if (!session) return;
+    return res.json(assessConclusionQuality(session.workspace));
   });
 
   router.get('/:id/events', (req, res) => {
