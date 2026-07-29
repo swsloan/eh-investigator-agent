@@ -38,6 +38,7 @@ import { refreshPreflight } from './status.js';
 import { closeApprovals, initApprovals, isApprovalsOpen } from './approvals.js';
 import { initTheme } from './theme.js';
 import { closeBackendUpdateDialog, initBackendUpdate, isBackendUpdateDialogOpen, refreshBackendUpdate } from './backend-update.js';
+import { initAuth } from './auth.js';
 
 function initEscapeHandling() {
   document.addEventListener('keydown', (event) => {
@@ -69,6 +70,7 @@ async function boot() {
 }
 
 export function startApp() {
+  initAuth();
   initTheme({ refreshPreview: refreshThemedReportPreview });
   initFileViewer();
   initInvestigationPlan({ openGeneratedHtml: openGeneratedHtmlViewer });

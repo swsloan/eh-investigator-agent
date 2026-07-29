@@ -35,6 +35,43 @@ npm run compose:hardened -- down
 docker compose up -d
 ```
 
+## Authenticating the web/API/SSE surfaces (#24, slice 1)
+
+The default deployment has **no authentication** — its safety comes entirely from
+binding to host loopback. The moment the service is published beyond loopback,
+that assumption is gone, so the hardened profile turns on a **shared-token gate**
+in front of the browser, API, and SSE surfaces.
+
+- **Credential.** A single secret, `EH_AUTH_TOKEN`. API/CLI clients send
+  `Authorization: Bearer <token>`; the browser exchanges the token for an
+  httpOnly, `SameSite=Strict` session cookie at `POST /auth/session` (a plain
+  `/login` form, so it works under the app's strict CSP). The cookie is what lets
+  EventSource/SSE authenticate, since it cannot set request headers.
+- **Fail-closed.** The process **refuses to start** when authentication is
+  *required* but no token is set. It is required when `EH_DEPLOYMENT_PROFILE`
+  is `hardened`, when `HOST` is a concrete non-loopback address, or when
+  `EH_REQUIRE_AUTH=1`. A wildcard bind (`0.0.0.0`) is **not** by itself treated as
+  exposure — the default compose binds `0.0.0.0` inside the container but Docker
+  publishes the port only on host loopback, so requiring a token there would break
+  the local alpha with no benefit. Non-loopback publishing is the hardened
+  profile's job, and it supplies the token.
+- **Where it does not apply.** The `/memory-llm` proxy keeps its **own** separate
+  token (`EH_MEMORY_PROXY_TOKEN`, used by the Graphiti sidecar) and is mounted
+  ahead of this gate, so sidecar traffic is unaffected.
+
+`scripts/compose-hardened.sh` generates `EH_AUTH_TOKEN` alongside the proxy token
+into `.runtime/hardened.env` (`0600`), and `docker-compose.hardened.yml` marks
+both as required (`:?`) so Compose aborts rather than starting unauthenticated.
+Sessions live in memory: a restart invalidates cookies (operators re-login),
+which is the fail-safe default. Sign out via the header control (`POST
+/auth/logout`).
+
+> Scope: this is slice 1 of #24 (authentication + fail-closed exposure). Runtime
+> isolation (non-root workers, capability drop, read-only rootfs, worker/secret
+> separation, network egress limits) and the full threat-model / migration /
+> rollback documentation land in later slices, still behind the experimental
+> hardened profile until explicit sign-off.
+
 ## Memory proxy safety bounds
 
 The proxy accepts only authenticated `POST /v1/messages` requests, the operation

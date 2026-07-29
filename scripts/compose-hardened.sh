@@ -19,24 +19,42 @@ generate_token() {
   fi
 }
 
-validate_token() {
+validate_proxy_token() {
   local token="$1"
   [[ "$token" != "$LOCAL_DEFAULT" ]] || die "The hardened profile cannot use the local default proxy token."
-  [[ "${#token}" -ge 32 ]] || die "The hardened proxy token must contain at least 32 characters."
+  [[ "${#token}" -ge 32 ]] || die "EH_MEMORY_PROXY_TOKEN must contain at least 32 characters."
+}
+
+validate_auth_token() {
+  local token="$1"
+  [[ "${#token}" -ge 32 ]] || die "EH_AUTH_TOKEN must contain at least 32 characters."
+}
+
+# Ensure a token is available to compose for interpolation: prefer a value already
+# exported in the environment; otherwise generate one once and persist it to the
+# shared 0600 token file so it is stable across restarts.
+ensure_token() {
+  local key="$1" validator="$2" current
+  current="$(printenv "$key" || true)"
+  if [[ -n "$current" ]]; then
+    "$validator" "$current"
+    return
+  fi
+  if [[ -s "$TOKEN_ENV" ]] && grep -q "^${key}=" "$TOKEN_ENV"; then
+    return  # already persisted from a prior run
+  fi
+  local token; token="$(generate_token)"
+  "$validator" "$token"
+  printf '%s=%s\n' "$key" "$token" >> "$TOKEN_ENV"
+  printf 'Generated a persistent %s in %s\n' "$key" "$TOKEN_ENV" >&2
 }
 
 umask 077
 mkdir -p "$RUNTIME_DIR"
-
-if [[ -n "${EH_MEMORY_PROXY_TOKEN:-}" ]]; then
-  validate_token "$EH_MEMORY_PROXY_TOKEN"
-elif [[ ! -s "$TOKEN_ENV" ]]; then
-  token="$(generate_token)"
-  validate_token "$token"
-  printf 'EH_MEMORY_PROXY_TOKEN=%s\n' "$token" > "$TOKEN_ENV"
-  printf 'Generated a persistent hardened proxy token in %s\n' "$TOKEN_ENV" >&2
-fi
-
+touch "$TOKEN_ENV"
+# The memory proxy token (graphiti sidecar -> app) and the UI/API auth token.
+ensure_token EH_MEMORY_PROXY_TOKEN validate_proxy_token
+ensure_token EH_AUTH_TOKEN validate_auth_token
 chmod 0600 "$TOKEN_ENV" 2>/dev/null || true
 
 compose_env=()

@@ -1,11 +1,18 @@
-# Hardened-token overlay. Use scripts/compose-hardened.sh so a strong token is
+# Hardened-token overlay. Use scripts/compose-hardened.sh so strong tokens are
 # generated once under .runtime/ and supplied identically to both services.
+#
+# The hardened profile turns on token authentication for the browser/API/SSE
+# surfaces (EH_AUTH_TOKEN) and marks the deployment as hardened, which makes the
+# app fail closed if that token is ever missing (see lib/auth.js). Both tokens are
+# required here (`:?`) so `docker compose` refuses to start without them rather
+# than silently running unauthenticated.
 services:
   eh-investigator:
     environment:
       EH_DEPLOYMENT_PROFILE: "hardened"
-      EH_MEMORY_PROXY_TOKEN: ${EH_MEMORY_PROXY_TOKEN:?Use scripts/compose-hardened.sh to generate the hardened proxy token}
+      EH_MEMORY_PROXY_TOKEN: ${EH_MEMORY_PROXY_TOKEN:?Use scripts/compose-hardened.sh to generate the hardened tokens}
+      EH_AUTH_TOKEN: ${EH_AUTH_TOKEN:?Use scripts/compose-hardened.sh to generate the hardened tokens}
 
   graphiti-mcp:
     environment:
-      ANTHROPIC_API_KEY: ${EH_MEMORY_PROXY_TOKEN:?Use scripts/compose-hardened.sh to generate the hardened proxy token}
+      ANTHROPIC_API_KEY: ${EH_MEMORY_PROXY_TOKEN:?Use scripts/compose-hardened.sh to generate the hardened tokens}

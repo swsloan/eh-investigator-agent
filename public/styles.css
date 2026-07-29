@@ -193,6 +193,9 @@ html, body {
 }
 
 .hidden { display: none !important; }
+/* The sign-out form is a layout-transparent wrapper so its button sits in the
+   header button row exactly like the others (#24). */
+.logout-form { display: contents; }
 
 /* ============ Sidebar ============ */
 
