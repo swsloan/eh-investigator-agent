@@ -118,11 +118,20 @@ environment (the Anthropic model key is kept — it is the agent's own credentia
 
 This closes the **environment** exposure vector. A worker running as **root in the
 same container** can still reach secrets two other ways — `/proc/1/environ` and the
-root-owned `secrets.json` — which only a **non-root worker UID** closes. That
-re-architecture (non-root worker, workspace-only mounts, restricted egress,
-Pi/Claude auth-volume re-homing) is specified with its threat model, migration, and
-rollback in **[docs/DESIGN-worker-isolation.md](DESIGN-worker-isolation.md)** and is
-implemented and validated in a later step, behind the experimental profile.
+root-owned `secrets.json` — which only a **non-root worker UID** closes. That is
+**architecturally blocked while the worker runs in the control-plane process**: the
+Claude Agent SDK spawns the CLI itself and exposes no `uid` option, so the worker
+inherits the app's UID and there is no privilege boundary between them. Closing
+those two vectors therefore requires a **separate worker runtime** (a non-root
+sibling container that holds no secrets and talks to the brokers over sockets) —
+specified, with threat model, migration, and rollback, in
+**[docs/DESIGN-worker-isolation.md](DESIGN-worker-isolation.md)** and carved out as
+its own follow-up effort. The current enforced ceiling is container confinement
+(slice 2) + env scrub (slice 3).
+
+Bringing the hardened profile up and validating it (auth, isolation, and the full
+functional matrix) on a real host — the gate before it can become the default — is
+the runbook in **[docs/HARDENED-VALIDATION.md](HARDENED-VALIDATION.md)**.
 
 ## Memory proxy safety bounds
 
