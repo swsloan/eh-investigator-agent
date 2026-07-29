@@ -7,6 +7,7 @@ import { validateAttachments } from '../lib/uploads.js';
 import { containsSecretMaterial } from '../lib/redaction.js';
 import { renderPendingActionsBlock } from '../lib/action-store.js';
 import { assessConclusionQuality } from '../lib/conclusion-quality.js';
+import { recordSafetyEvent, summarizeSafetyEvents } from '../lib/safety-log.js';
 
 export function sessionsRouter({
   sessions,
@@ -64,6 +65,17 @@ export function sessionsRouter({
     return res.json(assessConclusionQuality(session.workspace));
   });
 
+  /**
+   * GET /:id/safety — the safety/boundary event summary for this session (#32):
+   * injection attempts flagged (not obeyed), secret-redaction hits, SSRF/exfil
+   * guard blocks, and refused write-class calls. Read-only, payload-free.
+   */
+  router.get('/:id/safety', (req, res) => {
+    const session = getSession(sessions, req, res);
+    if (!session) return;
+    return res.json(summarizeSafetyEvents(session.transcript || []));
+  });
+
   router.get('/:id/events', (req, res) => {
     const session = getSession(sessions, req, res);
     if (!session) return;
@@ -114,6 +126,9 @@ export function sessionsRouter({
       return res.status(409).json({ error: 'Agent is already working — abort first or wait.' });
     }
     if (containsSecretMaterial(text || '', secretStore)) {
+      // #32 safety log (observe-only): record that secret material was caught
+      // before it reached the model — never the content itself.
+      recordSafetyEvent(session, 'secret_redacted', { reason: 'inbound message blocked — contained secret material' });
       return res.status(400).json({
         error: 'That message appears to contain ExtraHop credentials. Add or update credentials in Settings instead of sending them to the model.',
       });
