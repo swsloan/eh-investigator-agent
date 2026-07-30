@@ -30,9 +30,22 @@ if (text == null) {
 }
 
 const result = verifyTrail(text);
-if (result.ok) {
-  process.stdout.write(`OK — audit trail intact: ${result.entries} entr${result.entries === 1 ? 'y' : 'ies'}, chain head ${result.head.slice(0, 16)}…\n`);
-  process.exit(0);
+if (!result.ok) {
+  process.stdout.write(`TAMPERED — chain broke at entry index ${result.brokenAt}: ${result.reason}\n`);
+  process.exit(1);
 }
-process.stdout.write(`TAMPERED — chain broke at entry index ${result.brokenAt}: ${result.reason}\n`);
-process.exit(1);
+
+process.stdout.write(`OK — chain intact: ${result.entries} entr${result.entries === 1 ? 'y' : 'ies'}, head ${result.head.slice(0, 16)}…\n`);
+if (!result.sealed) {
+  process.stdout.write('UNSEALED — no session seal; integrity is verified but authenticity is not. Seal at finalize (POST …/audit/seal).\n');
+  process.exit(1);
+}
+if (!result.seal.ok) {
+  process.stdout.write(`SEAL INVALID — ${result.seal.error} (keyId ${result.seal.keyId}).\n`);
+  process.exit(1);
+}
+process.stdout.write(`SEALED — signature verifies against key ${result.seal.keyId}.\n`);
+if (result.unsealedAfterSeal) {
+  process.stdout.write(`NOTE — ${result.unsealedAfterSeal} entr${result.unsealedAfterSeal === 1 ? 'y' : 'ies'} appended after the seal are not covered; re-seal to cover them.\n`);
+}
+process.exit(0);

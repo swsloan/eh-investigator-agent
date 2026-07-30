@@ -8,6 +8,7 @@ import { BACKENDS, detectBackends, getBackend, resolveBackendId } from './lib/ba
 import { createChallengerCoordinator } from './lib/challenger-coordinator.js';
 import { createMemoryCoordinator } from './lib/memory-coordinator.js';
 import { createAuditCoordinator } from './lib/audit-coordinator.js';
+import { getOrCreateSigner } from './lib/audit-keys.js';
 import { BackendUpdateManager } from './lib/backend-updates.js';
 import { ExcliBroker } from './lib/excli-broker.js';
 import { ActionBroker } from './lib/action-broker.js';
@@ -186,8 +187,9 @@ const challenger = createChallengerCoordinator({
   secretStore,
 });
 const memory = createMemoryCoordinator({ getConfig: prefs });
-// Audit trail (#30): append-only, hash-chained projection of the agent's activity.
-const audit = createAuditCoordinator({ redact });
+// Audit trail (#30): append-only, hash-chained projection of the agent's activity;
+// sealed at finalize with the app's Ed25519 key (held only in the secret store).
+const audit = createAuditCoordinator({ redact, getSigner: () => getOrCreateSigner(secretStore) });
 // Backend self-update (managed backends only — e.g. Pi's `pi update --self`).
 // Claude Code has no managed-update policy; it updates via its own SDK. A
 // backend is "busy" while any session on it is actively running a turn.
@@ -468,6 +470,7 @@ app.use('/api/sessions', sessionsRouter({
   buildSessionEnv,
   onSessionRemoved: (session) => investigationPlanBroker.revokeSessionCapability(session),
   challenger,
+  sealAudit: (session) => audit.seal(session), // #30 layer 3: sign the trail at finalize
   redact,
 }));
 app.use('/api/sessions', investigationPlansRouter({ sessions }));

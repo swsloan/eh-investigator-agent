@@ -23,6 +23,7 @@ export function sessionsRouter({
   buildSessionEnv,
   onSessionRemoved = () => {},
   challenger,
+  sealAudit = () => null, // #30: seal the audit trail (injected; no-op in tests)
   redact = (value) => value,
 }) {
   const router = express.Router();
@@ -100,6 +101,19 @@ export function sessionsRouter({
     res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="audit-${session.id}.jsonl"`);
     return res.send(readTrail(session.workspace));
+  });
+
+  /**
+   * POST /:id/audit/seal — sign the current chain head (#30 layer 3), appending a
+   * seal entry so the trail's integrity + authenticity can be verified offline.
+   * Mutating (behind the local-origin guard). 409 when there is nothing to seal.
+   */
+  router.post('/:id/audit/seal', (req, res) => {
+    const session = getSession(sessions, req, res);
+    if (!session) return;
+    const seal = sealAudit(session);
+    if (!seal) return res.status(409).json({ error: 'Nothing to seal — the audit trail is empty.' });
+    return res.json({ ok: true, seal: { keyId: seal.keyId, root: seal.root, at: seal.at } });
   });
 
   router.get('/:id/events', (req, res) => {

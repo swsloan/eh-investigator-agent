@@ -98,12 +98,18 @@ record. Retention never edits a trail in place — it removes whole sealed trail
 
 ## Slices
 
-- **0 — this doc.**
-- **A — core:** `lib/audit-trail.js` (append + hash chain + canonical JSON +
-  `verifyTrail`), capture wiring, `GET /api/sessions/:id/audit.jsonl`, a `verify`
-  CLI. The tamper-evidence + verifier core; fully testable on-box.
-- **B — signed seal + key mgmt:** Ed25519 seal at finalize, rotation, verifier
-  signature check.
+- **0 — this doc.** ✅
+- **A — core:** ✅ `lib/audit-trail.js` (append + hash chain + canonical JSON +
+  `verifyTrail`), `lib/audit-coordinator.js` capture wiring, `GET
+  /api/sessions/:id/audit` + `/audit/export`, `scripts/verify-audit.js`.
+- **B — signed seal + key mgmt:** ✅ `lib/audit-keys.js` (Ed25519 keypair in the
+  secret store; keyId = sha256(pubDER); rotation). `AuditTrail.seal()` appends a
+  chained `seal` entry embedding `{root, sig, keyId, pubKey, alg}` so an export
+  verifies **offline** with no external key file. `verifyTrail` reports
+  `{sealed, seal:{keyId, ok}, unsealedAfterSeal}` and accepts `trustedKeyIds` to
+  pin against known keys. `POST /api/sessions/:id/audit/seal` seals at finalize;
+  the CLI reports authenticity. Rotation keeps old seals verifiable via their own
+  embedded key (no historical registry needed).
 - **C — pluggable external sink (layer 4):** an `AuditSink.emit(sealDigest)`
   interface with a local file/syslog sink built + tested here; S3 Object Lock /
   SIEM / transparency-log sinks as operator-validated configs (need real infra).
