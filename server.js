@@ -9,6 +9,7 @@ import { createChallengerCoordinator } from './lib/challenger-coordinator.js';
 import { createMemoryCoordinator } from './lib/memory-coordinator.js';
 import { createAuditCoordinator } from './lib/audit-coordinator.js';
 import { getOrCreateSigner } from './lib/audit-keys.js';
+import { createAuditSink, resolveAuditSinkConfig } from './lib/audit-sink.js';
 import { BackendUpdateManager } from './lib/backend-updates.js';
 import { ExcliBroker } from './lib/excli-broker.js';
 import { ActionBroker } from './lib/action-broker.js';
@@ -188,8 +189,12 @@ const challenger = createChallengerCoordinator({
 });
 const memory = createMemoryCoordinator({ getConfig: prefs });
 // Audit trail (#30): append-only, hash-chained projection of the agent's activity;
-// sealed at finalize with the app's Ed25519 key (held only in the secret store).
-const audit = createAuditCoordinator({ redact, getSigner: () => getOrCreateSigner(secretStore) });
+// sealed at finalize with the app's Ed25519 key (held only in the secret store),
+// and — when configured — the seal digest is anchored to an external sink (#30
+// layer 4: SIEM/webhook or an append-only WORM file) so a host-compromise re-forge
+// is detectable.
+const auditSink = createAuditSink(() => resolveAuditSinkConfig(process.env, config));
+const audit = createAuditCoordinator({ redact, getSigner: () => getOrCreateSigner(secretStore), sink: auditSink });
 // Backend self-update (managed backends only — e.g. Pi's `pi update --self`).
 // Claude Code has no managed-update policy; it updates via its own SDK. A
 // backend is "busy" while any session on it is actively running a turn.
