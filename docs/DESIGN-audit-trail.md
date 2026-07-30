@@ -110,9 +110,18 @@ record. Retention never edits a trail in place — it removes whole sealed trail
   pin against known keys. `POST /api/sessions/:id/audit/seal` seals at finalize;
   the CLI reports authenticity. Rotation keeps old seals verifiable via their own
   embedded key (no historical registry needed).
-- **C — pluggable external sink (layer 4):** an `AuditSink.emit(sealDigest)`
-  interface with a local file/syslog sink built + tested here; S3 Object Lock /
-  SIEM / transparency-log sinks as operator-validated configs (need real infra).
+- **C — pluggable external sink (layer 4):** ✅ `lib/audit-sink.js`. On seal, the
+  non-secret seal **digest** (`{sessionId, keyId, root, alg, sealedAt}` — no
+  signature, no key material) is emitted to a configured destination, best-effort
+  (fire-and-forget; a down sink never blocks or fails the local seal). Built-in
+  types: **`file`** (append-only JSONL — point it at a WORM mount) and **`http`**
+  (POST to a SIEM/webhook, optional bearer). Config is environment-first:
+  `EH_AUDIT_SINK` (`none`|`file`|`http`), `EH_AUDIT_SINK_PATH`,
+  `EH_AUDIT_SINK_URL`, `EH_AUDIT_SINK_TOKEN` (put a production token in the secret
+  store / a secret env). S3 Object Lock and a syslog/transparency-log sink use the
+  same interface and are operator-validated against real infra. This external,
+  independent record of `(keyId, root)` is what detects a host-compromise re-forge
+  — comparing the anchored root to the exported trail's seal.
 - **D — retention + export UI + e2e runbook.**
 
 ## Failure modes
