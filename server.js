@@ -10,6 +10,7 @@ import { createMemoryCoordinator } from './lib/memory-coordinator.js';
 import { createAuditCoordinator } from './lib/audit-coordinator.js';
 import { getOrCreateSigner } from './lib/audit-keys.js';
 import { createAuditSink, resolveAuditSinkConfig } from './lib/audit-sink.js';
+import { resolveRetentionPolicy, policyIsActive, pruneAuditTrails } from './lib/audit-retention.js';
 import { BackendUpdateManager } from './lib/backend-updates.js';
 import { ExcliBroker } from './lib/excli-broker.js';
 import { ActionBroker } from './lib/action-broker.js';
@@ -329,6 +330,20 @@ recoverInterruptedActions({
   broadcast,
   logger: console,
 }).catch((err) => console.warn(`[action-recover] sweep failed: ${err?.message || err}`));
+
+// Audit-trail retention (#30 Slice D): prune whole SEALED trails per the
+// configured policy. No-op unless EH_AUDIT_RETENTION_DAYS/_MAX is set.
+{
+  const policy = resolveRetentionPolicy(process.env);
+  if (policyIsActive(policy)) {
+    try {
+      pruneAuditTrails({
+        entries: [...sessions.values()].map((s) => ({ sessionId: s.id, workspace: s.workspace })),
+        policy,
+      });
+    } catch (err) { console.warn(`[audit-retention] sweep failed: ${err?.message || err}`); }
+  }
+}
 
 /** One-shot throwaway backend call to name the session after its first message. */
 async function generateTitle(session, userText) {
