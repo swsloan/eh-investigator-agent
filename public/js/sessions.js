@@ -149,6 +149,20 @@ async function handleDelete(session) {
   loadSessions();
 }
 
+// Seal the session's audit trail (best-effort), then download the exported JSONL
+// (#30). Sealing first gives a complete, authenticity-verified record; a failed
+// seal (e.g. an empty trail) still lets the export proceed.
+async function exportAuditTrail(session) {
+  const base = `/api/sessions/${encodeURIComponent(session.id)}/audit`;
+  try { await fetch(`${base}/seal`, { method: 'POST' }); } catch { /* seal is best-effort */ }
+  const a = document.createElement('a');
+  a.href = `${base}/export`;
+  a.download = `audit-${session.id}.jsonl`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 function openSessionMenu(session, item, anchor) {
   const reopening = state.openSessionMenu?.dataset.sessionId === session.id;
   closeSessionMenu();
@@ -161,6 +175,7 @@ function openSessionMenu(session, item, anchor) {
     [session.saved ? 'Unsave' : 'Save for review', () => handleToggleSaved(session)],
     ['Rename', () => handleRename(session, item)],
     ['Promote to eval case', () => { closeSessionMenu(); openPromoteDialog(session); }],
+    ['Export audit trail', () => { closeSessionMenu(); exportAuditTrail(session); }],
     ['Delete', () => handleDelete(session)],
   ]) {
     const btn = document.createElement('button');

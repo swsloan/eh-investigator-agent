@@ -122,7 +122,13 @@ record. Retention never edits a trail in place — it removes whole sealed trail
   same interface and are operator-validated against real infra. This external,
   independent record of `(keyId, root)` is what detects a host-compromise re-forge
   — comparing the anchored root to the exported trail's seal.
-- **D — retention + export UI + e2e runbook.**
+- **D — retention + export UI + e2e runbook.** ✅ `lib/audit-retention.js`:
+  a conservative, opt-in retention policy (`EH_AUDIT_RETENTION_DAYS` /
+  `EH_AUDIT_RETENTION_MAX`, default keep-all) that at startup prunes only **whole,
+  SEALED** trails — never edits in place, never touches an unsealed trail or the
+  session/workspace. Session menu → **Export audit trail** seals then downloads
+  the JSONL. `docs/AUDIT-TRAIL-VALIDATION.md` is the operator e2e sign-off
+  (run → seal/export → verify → tamper → confirm detection).
 
 ## Failure modes
 
