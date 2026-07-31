@@ -3720,3 +3720,97 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 /* C4 — notify toggle */
 .approvals-notify.on { color: var(--sapphire); }
 .approvals-notify.on svg { fill: color-mix(in srgb, var(--sapphire) 20%, transparent); }
+/* ===== Network topology map (Slice B) =====
+   Full-screen only: a map wants the room, and it avoids the docked grid juggling
+   the memory panel needs. Sigma paints into a canvas inside .topo-canvas; colours
+   for nodes/edges are set in JS (canvas can't read CSS vars), so everything here is
+   chrome — and it reads the same semantic tokens as the rest of the app so light and
+   dark both work from one definition. */
+.topology-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; flex-direction: column;
+  background: var(--bg);
+}
+.topology-overlay.hidden { display: none; }
+.topology-head {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 12px 16px; border-bottom: 1px solid var(--hairline);
+  background: var(--surface);
+}
+.topology-head .rp-tabs { flex: 0 0 auto; }
+.topology-head #topo-close { margin-left: auto; }
+.topo-select-wrap {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--gray); white-space: nowrap;
+}
+.topo-select {
+  background: var(--input-bg); color: var(--ink);
+  border: 1px solid var(--hairline); border-radius: 8px;
+  padding: 5px 8px; font-size: 12px; max-width: 260px;
+}
+.topo-select:focus { outline: none; border-color: var(--focus-border); }
+.topo-select:disabled { opacity: .55; }
+
+.topology-body { flex: 1 1 auto; display: flex; min-height: 0; }
+.topo-main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.topo-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 8px 16px; border-bottom: 1px solid var(--hairline);
+}
+.topo-status { font-size: 12px; margin-left: auto; }
+.topo-status b { color: var(--ink); font-weight: 700; }
+
+/* Drill-down breadcrumb: All › Internal › vlan:204 › … */
+.topo-crumbs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.topo-crumb {
+  background: none; border: none; padding: 2px 6px; border-radius: 6px;
+  color: var(--cyan-text); font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.topo-crumb:hover { background: var(--surface-hover); }
+.topo-crumb:focus-visible { outline: 2px solid var(--focus-border); outline-offset: 1px; }
+.topo-crumb-sep { color: var(--text-faint); font-size: 12px; }
+
+.topo-canvas { flex: 1 1 auto; min-height: 0; position: relative; }
+.topo-canvas.hidden { display: none; }
+.topo-empty {
+  flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
+  padding: 32px; text-align: center;
+}
+.topo-empty.hidden { display: none; }
+.topo-empty-inner { max-width: 460px; color: var(--text-2); font-size: 14px; line-height: 1.6; }
+.topo-empty-inner b { color: var(--ink); }
+
+/* Inspector column — device detail on click. */
+.topo-inspector {
+  flex: 0 0 320px; overflow-y: auto; padding: 14px 16px;
+  border-left: 1px solid var(--hairline); background: var(--surface-sub);
+}
+.topo-inspector-empty { font-size: 13px; }
+.topo-ins-title { font-size: 15px; font-weight: 700; color: var(--ink); line-height: 1.3; }
+.topo-ins-sub { font-size: 12px; color: var(--gray); margin-top: 2px; }
+.topo-ins-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+.topo-tag {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 99px;
+  background: var(--surface-hover); color: var(--text-2);
+  border: 1px solid var(--hairline);
+}
+/* Stateful border held to 3:1 per WCAG 1.4.11, like the rest of the app. */
+.topo-tag.crit { color: var(--warn-text); border-color: var(--warn-edge); }
+.topo-ins-h {
+  font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-faint); margin: 14px 0 6px;
+}
+.topo-ins-list { list-style: none; margin: 0; padding: 0; }
+.topo-ins-list li {
+  font-size: 12.5px; color: var(--text-2);
+  padding: 4px 0; border-bottom: 1px solid var(--hairline);
+}
+.topo-peers li { display: flex; justify-content: space-between; gap: 10px; }
+.topo-peer-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topo-peer-bytes { color: var(--text-faint); font-variant-numeric: tabular-nums; flex: none; }
+.topo-ins-foot { font-size: 11.5px; margin-top: 14px; line-height: 1.5; }
+
+@media (max-width: 900px) {
+  .topo-inspector { flex-basis: 240px; }
+}

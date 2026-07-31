@@ -4,6 +4,7 @@ import { dom } from './dom.js';
 import { initEval } from './eval.js';
 import { initInvestigationPlan } from './plan-ribbon.js';
 import { closeMemory, initMemory, isMemoryOpen } from './memory.js';
+import { closeTopology, initTopology, isTopologyOpen } from './topology.js';
 import {
   closeDownloadMenu,
   closeViewer,
@@ -47,6 +48,8 @@ function initEscapeHandling() {
     else if (isApprovalsOpen()) closeApprovals();
     else if (isDownloadMenuOpen()) closeDownloadMenu();
     else if (isMemoryOpen()) closeMemory();
+    else if (isTopologyOpen()) closeTopology();
+    else if (isTopologyOpen()) closeTopology();
     else if (hasOpenSessionMenu()) closeSessionMenu();
     else if (isViewerOpen()) closeViewer();
     else if (hasActiveCustomSelect()) closeActiveCustomSelect();
@@ -81,6 +84,8 @@ export function startApp() {
   initApprovals();
   initEval();
   initMemory();
+  initTopology();
+  initTopology();
   initBackendUpdate();
   initEscapeHandling();
   boot();
