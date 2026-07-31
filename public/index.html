@@ -11,6 +11,11 @@
   <script src="/vendor/marked.umd.js"></script>
   <script src="/vendor/purify.min.js"></script>
   <script src="/vendor/hljs/highlight.min.js"></script>
+  <!-- Topology map renderer (window.graphology / window.Sigma). Self-contained UMD
+       browser bundles served same-origin, so they load under the strict CSP with no
+       inline script and no bundler. Layout is NOT here — it runs server-side. -->
+  <script src="/vendor/graphology.umd.min.js"></script>
+  <script src="/vendor/sigma.min.js"></script>
 </head>
 <body>
   <div class="app">
@@ -150,6 +155,7 @@
         <div class="rp-tabs" role="tablist" aria-label="Right panel">
           <button class="rp-tab active" data-rp="files" type="button" role="tab">Files</button>
           <button class="rp-tab" data-rp="memory" type="button" role="tab">Memory</button>
+          <button class="rp-tab" data-rp="map" type="button" role="tab">Map</button>
         </div>
         <button id="files-refresh" class="icon-btn" title="Refresh">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 11-2.6-6.4M21 4v5h-5"/></svg>
@@ -529,6 +535,7 @@
         <div class="rp-tabs" role="tablist" aria-label="Right panel">
           <button class="rp-tab" data-rp="files" type="button" role="tab">Files</button>
           <button class="rp-tab active" data-rp="memory" type="button" role="tab">Memory</button>
+          <button class="rp-tab" data-rp="map" type="button" role="tab">Map</button>
         </div>
         <div class="mem-mode" role="tablist" aria-label="Memory view">
           <button id="mem-mode-inv" class="mem-mode-btn" type="button" role="tab">This investigation</button>
@@ -566,6 +573,44 @@
         </div>
         <aside id="mem-inspector" class="mem-inspector">
           <div class="mem-inspector-empty panel-sub">Click a node to inspect it.</div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- ===== Network topology map (Slice B) ===== -->
+    <div id="topology-overlay" class="topology-overlay hidden" role="dialog" aria-label="Network map">
+      <div class="topology-head">
+        <div class="rp-tabs" role="tablist" aria-label="Right panel">
+          <button class="rp-tab" data-rp="files" type="button" role="tab">Files</button>
+          <button class="rp-tab" data-rp="memory" type="button" role="tab">Memory</button>
+          <button class="rp-tab active" data-rp="map" type="button" role="tab">Map</button>
+        </div>
+        <label class="topo-select-wrap">Snapshot
+          <select id="topo-snapshot" class="topo-select"></select>
+        </label>
+        <label class="topo-select-wrap">Overlay
+          <select id="topo-overlay-pick" class="topo-select">
+            <option value="">No overlay</option>
+          </select>
+        </label>
+        <button id="topo-refresh" class="btn-secondary slim" type="button">Refresh</button>
+        <button id="topo-close" class="icon-btn" title="Close">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="topology-body">
+        <div class="topo-main">
+          <div class="topo-bar">
+            <nav id="topo-crumbs" class="topo-crumbs" aria-label="Map drill-down"></nav>
+            <div id="topo-status" class="topo-status panel-sub"></div>
+          </div>
+          <div id="topo-canvas" class="topo-canvas hidden"></div>
+          <div id="topo-empty" class="topo-empty">
+            <div class="topo-empty-inner">Loading the network map…</div>
+          </div>
+        </div>
+        <aside id="topo-inspector" class="topo-inspector">
+          <div class="topo-inspector-empty panel-sub">Zoom in to devices, then click one to inspect it.</div>
         </aside>
       </div>
     </div>

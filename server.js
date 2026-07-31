@@ -481,6 +481,13 @@ app.use(express.static(path.join(ROOT, 'public')));
 app.use('/vendor/marked.umd.js', express.static(path.join(ROOT, 'node_modules/marked/lib/marked.umd.js')));
 app.use('/vendor/purify.min.js', express.static(path.join(ROOT, 'node_modules/dompurify/dist/purify.min.js')));
 app.use('/vendor/hljs', express.static(path.join(ROOT, 'node_modules/@highlightjs/cdn-assets')));
+// Topology map renderer. Both ship self-contained UMD browser bundles that expose
+// globals (window.graphology / window.Sigma), so they load as plain <script> tags
+// under the strict CSP — no import map (which would be an inline script), no
+// bundler, no CDN. Only the RENDERER ships to the browser: layout runs server-side
+// in lib/topology-layout.js, so graphology-layout-forceatlas2 stays in Node.
+app.use('/vendor/graphology.umd.min.js', express.static(path.join(ROOT, 'node_modules/graphology/dist/graphology.umd.min.js')));
+app.use('/vendor/sigma.min.js', express.static(path.join(ROOT, 'node_modules/sigma/dist/sigma.min.js')));
 
 // Lets the SPA show a logout control only when authentication is enabled (#24).
 app.get('/api/auth/status', (_req, res) => res.json({ enabled: authState.enabled }));

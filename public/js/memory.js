@@ -1156,10 +1156,14 @@ function open() {
   updateToggles(); // inert the collapsed Files column before the groups round-trip
   loadGroups().then(applyState);
 }
-function close() {
+// `activate` is the tab the user actually chose, so closing Memory in favour of a
+// sibling panel (Files, Map) leaves that sibling highlighted rather than snapping
+// back to Files. Each panel owns its own .rp-tab listener; passing the chosen tab
+// through makes the handlers order-independent.
+function close({ activate = 'files' } = {}) {
   $('memory-overlay').classList.add('hidden');
   document.body.classList.remove('mem-docked');
-  setRpTab('files');
+  setRpTab(activate);
   applyBackgroundInert(); // reads isMemoryOpen(), now false — restores every panel
 }
 
@@ -1177,7 +1181,7 @@ export function initMemory() {
   $('memory-close').addEventListener('click', close);
   // Files/Memory right-panel switch (present in both the files + memory headers).
   document.querySelectorAll('.rp-tab').forEach((b) => b.addEventListener('click', () => {
-    if (b.dataset.rp === 'memory') open(); else close();
+    if (b.dataset.rp === 'memory') open(); else close({ activate: b.dataset.rp });
   }));
   $('mem-expand')?.addEventListener('click', toggleSurface);
   $('mem-mode-inv')?.addEventListener('click', () => setMode('investigation'));

@@ -33,6 +33,14 @@ grant and trusted source here.
 ## Other bundled material
 
 - Source Sans 3 retains the license stored beside the font files.
+- **sigma.js** and **graphology** (both MIT) render the network topology map. They
+  are exact-pinned npm dependencies served same-origin from `node_modules` via
+  `express.static` aliases (`/vendor/sigma.min.js`, `/vendor/graphology.umd.min.js`)
+  — the same pattern as marked/DOMPurify/highlight.js, and deliberately *not*
+  committed blobs: npm dependencies stay covered by the lockfile, Dependabot,
+  `dependency-review`, and the SPDX SBOM, whereas a checked-in bundle would bypass
+  all four. `graphology-layout-forceatlas2` (MIT) is a server-only dependency —
+  layout runs in Node and never ships to the browser.
 - Vendor integration logos remain vendor trademarks and are used only for
   identification.
 - Package and container component inventories are generated as SPDX SBOMs; see
