@@ -7,6 +7,7 @@ import path from 'node:path';
 import { BACKENDS, detectBackends, getBackend, resolveBackendId } from './lib/backends/index.js';
 import { createChallengerCoordinator } from './lib/challenger-coordinator.js';
 import { createMemoryCoordinator } from './lib/memory-coordinator.js';
+import { createTopologyCoordinator } from './lib/topology-coordinator.js';
 import { createAuditCoordinator } from './lib/audit-coordinator.js';
 import { getOrCreateSigner } from './lib/audit-keys.js';
 import { createAuditSink, resolveAuditSinkConfig } from './lib/audit-sink.js';
@@ -40,6 +41,7 @@ import { groupCounts, startDriftWatch } from './lib/memory-graph.js';
 import { createMemoryLlmProxyHandler, resolveMemoryProxyConfig } from './lib/memory-llm-proxy.js';
 import { evalRouter } from './routes/eval.js';
 import { memoryGraphRouter } from './routes/memory-graph.js';
+import { topologyRouter } from './routes/topology.js';
 import { filesRouter } from './routes/files.js';
 import { healthRouter } from './routes/health.js';
 import { modelsRouter } from './routes/models.js';
@@ -189,6 +191,22 @@ const challenger = createChallengerCoordinator({
   secretStore,
 });
 const memory = createMemoryCoordinator({ getConfig: prefs });
+// Network topology (Slice A): ingests the `network-topology` skill's
+// evidence/topology/topology.json at turn end and stores a positioned snapshot in a
+// sibling FalkorDB graph. Constructed here — before sessions are restored below —
+// because createSession attaches it. The FalkorDB client is stateless (a socket per
+// query), so sharing one instance with the memory-graph reader costs nothing.
+const MEMORY_ENV_GROUP = process.env.EH_MEMORY_GROUP_ID || '';
+const falkor = createFalkorClient({
+  url: process.env.FALKORDB_URI || 'redis://falkordb:6379',
+  password: process.env.FALKORDB_PASSWORD || '',
+});
+const topologyGroup = () => deriveGroupId(prefs().extrahop?.host, process.env, prefs().memory?.groupId);
+const topology = createTopologyCoordinator({
+  client: falkor,
+  getConfig: prefs,
+  resolveGroup: topologyGroup,
+});
 // Audit trail (#30): append-only, hash-chained projection of the agent's activity;
 // sealed at finalize with the app's Ed25519 key (held only in the secret store),
 // and — when configured — the seal digest is anchored to an external sink (#30
@@ -297,6 +315,7 @@ function createSession(id = crypto.randomUUID(), { backend: backendId } = {}) {
   session.on('event', (event) => broadcast(id, event));
   challenger.attachSession(session);
   memory.attachSession(session);
+  topology.attachSession(session); // ingest a topology snapshot if the turn produced one
   audit.attachSession(session); // #30: end-of-turn verdict capture
   sessions.set(id, session);
   return session;
@@ -581,15 +600,23 @@ app.use('/api/eval', evalRouter({
 // via GRAPH.RO_QUERY; the viz never mutates memory. Also runs a lightweight
 // drift watch that warns if untyped [Entity] nodes reappear (memory-quality
 // backstop). FALKORDB_URI defaults to the compose service host.
-const MEMORY_ENV_GROUP = process.env.EH_MEMORY_GROUP_ID || '';
-const falkor = createFalkorClient({
-  url: process.env.FALKORDB_URI || 'redis://falkordb:6379',
-  password: process.env.FALKORDB_PASSWORD || '',
-});
+// MEMORY_ENV_GROUP + `falkor` are created earlier (with the topology coordinator),
+// because session restore needs the coordinator before this point.
 app.use('/api/memory/graph', memoryGraphRouter({
   getConfig: prefs,
   client: falkor,
   envGroup: MEMORY_ENV_GROUP,
+  redact: (v) => redactText(String(v), secretStore),
+}));
+// Network topology map. Stores snapshots in a SIBLING graph (`<group>topology`), so
+// an inventory of thousands of devices never lands in the investigation-memory graph
+// — see docs/DESIGN-network-topology.md. Reads are LOD-aggregated server-side.
+app.use('/api/topology', topologyRouter({
+  getConfig: prefs,
+  client: falkor,
+  coordinator: topology,
+  sessions,
+  resolveGroup: topologyGroup,
   redact: (v) => redactText(String(v), secretStore),
 }));
 // Drift watch: warn if untyped [Entity] nodes reappear. Watch the configured
