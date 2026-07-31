@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
-import { listSnapshots, latestSnapshotId, readNode, readTier, topologyGraphName } from '../lib/topology-store.js';
+import { listSnapshots, latestSnapshotId, readNode, readSnapshotForDiff, readTier, topologyGraphName } from '../lib/topology-store.js';
 import { buildOverlay } from '../lib/attack-overlay.js';
+import { describeDrift, diffSnapshots } from '../lib/topology-drift.js';
 
 /**
  * Read-only network-topology map API (Slice A). Backs the zoomable map.
@@ -119,6 +120,57 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
       const detail = await readNode(client, group, { snapshotId, key: req.params.key });
       if (!detail) return res.status(404).json({ error: 'Device not found in this snapshot.' });
       res.json({ group, snapshot_id: snapshotId, ...detail });
+    } catch (err) { fail(res, err); }
+  });
+
+  /**
+   * What changed between two snapshots (Slice D). Defaults to the newest pair, which
+   * is the question people actually ask: "what's different since last time?"
+   */
+  router.get('/drift', async (req, res) => {
+    if (!guard(req, res)) return;
+    try {
+      const group = await pickGroup(req);
+      const snapshots = await listSnapshots(client, group, 100);
+      if (snapshots.length < 2) {
+        return res.json({
+          group,
+          changes: [],
+          summary: { total: 0 },
+          description: snapshots.length
+            ? 'Only one snapshot so far — map the network again to see what changed.'
+            : 'No snapshots yet.',
+          from: snapshots[0]?.id || '',
+          to: snapshots[0]?.id || '',
+          snapshots,
+        });
+      }
+      const pick = (q, fallback) => (typeof q === 'string' && snapshots.some((s) => s.id === q) ? q : fallback);
+      // listSnapshots is newest-first, so [1] is the previous snapshot.
+      const to = pick(req.query.to, snapshots[0].id);
+      const from = pick(req.query.from, snapshots[1].id);
+      if (from === to) return res.json({ group, from, to, changes: [], summary: { total: 0 }, description: 'Same snapshot on both sides.', snapshots });
+
+      const [before, after] = await Promise.all([
+        readSnapshotForDiff(client, group, from),
+        readSnapshotForDiff(client, group, to),
+      ]);
+      const diff = diffSnapshots(before, after, { limit: req.query.limit });
+
+      // Tier coordinates for every device a change touches, so the map can highlight
+      // it at whatever zoom is showing (same lift the attack overlay uses).
+      const touched = new Set();
+      for (const c of diff.changes) {
+        touched.add(c.key);
+        for (const e of c.endpoints || c.devices || []) touched.add(e);
+      }
+      const tier = await readTier(client, group, { snapshotId: to, zoom: 3, limit: 5000 });
+      const tierMap = {};
+      for (const d of tier.nodes) {
+        if (!touched.has(d.key)) continue;
+        tierMap[d.key] = { key: d.key, locality: d.locality, segment: d.segment, role_key: d.role_key };
+      }
+      res.json({ group, from, to, snapshots, tierMap, description: describeDrift(diff), ...diff });
     } catch (err) { fail(res, err); }
   });
 
