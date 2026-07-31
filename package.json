@@ -28,6 +28,8 @@
     "@highlightjs/cdn-assets": "11.11.1",
     "dompurify": "3.4.12",
     "express": "5.2.1",
+    "graphology": "0.26.0",
+    "graphology-layout-forceatlas2": "0.10.1",
     "ipaddr.js": "2.4.0",
     "linkedom": "0.18.13",
     "marked": "18.0.7",
