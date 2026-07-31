@@ -3814,3 +3814,30 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 @media (max-width: 900px) {
   .topo-inspector { flex-basis: 240px; }
 }
+
+/* --- Attack overlay (Slice C): kill-chain strip + staged event sequence --- */
+.topo-stages { display: flex; flex-wrap: wrap; gap: 6px; }
+.topo-stage {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .03em;
+  padding: 3px 9px; border-radius: 99px;
+  color: var(--ink); background: var(--surface-hover);
+  /* The stage hue is the meaning; the border carries it at 3:1 (WCAG 1.4.11). */
+  border: 1px solid var(--stage, var(--hairline));
+  border-left-width: 4px;
+}
+.topo-stage b { color: var(--text-2); font-weight: 800; }
+.topo-events li { display: flex; gap: 9px; align-items: flex-start; padding: 6px 0; }
+.topo-ev-dot {
+  flex: none; width: 9px; height: 9px; border-radius: 50%; margin-top: 5px;
+  background: var(--stage, var(--gray));
+}
+.topo-ev-head { font-size: 12.5px; font-weight: 600; color: var(--ink); line-height: 1.35; }
+.topo-ev-meta { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
+/* An actor the map derived from the write-up rather than being told — never let an
+   inference read as an assertion. */
+.topo-inferred {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  padding: 1px 5px; border-radius: 4px; vertical-align: 1px;
+  color: var(--warn-text); border: 1px solid var(--warn-edge);
+}
