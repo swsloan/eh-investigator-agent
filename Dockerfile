@@ -36,16 +36,34 @@ WORKDIR /app
 # tshark: recommended for parsing PCAPs downloaded from ExtraHop (not used for
 # live capture, so no setuid/cap_net_raw grant is needed).
 # ca-certificates/curl/tar: HTTPS + archive handling.
-# weasyprint: Debian package bundles Cairo/Pango/etc., so HTML report PDF
-# export works out of the box (pdf-export.js falls back to `weasyprint` on PATH).
+# weasyprint (apt) is installed for its NATIVE runtime closure only — Pango,
+# gdk-pixbuf, fontconfig+fonts, libffi, image libs — which the current WeasyPrint
+# reuses. The apt package itself is stale (Debian ships 62.x, whose first-gen CSS
+# Grid mis-sizes fr/repeat() tracks and collapses grid-based reports to tall
+# single-column stacks). The pip step below overlays the pinned modern WeasyPrint
+# (requirements.txt) so grid-heavy reports render correctly; pdf-export.js finds it
+# on PATH (`/usr/local/bin` precedes `/usr/bin`). See docs/DEPENDENCY-MAINTENANCE.md.
 # NOTE: the Wireshark GUI is intentionally omitted — the "Open in Wireshark"
 # feature launches a desktop app and is meaningless in a headless container;
 # its preflight check is optional and will simply report unavailable.
 RUN echo "wireshark-common wireshark-common/install-setuid boolean false" | debconf-set-selections \
     && apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-       ca-certificates curl tar tshark weasyprint jq \
+       ca-certificates curl tar tshark weasyprint python3-pip jq \
     && rm -rf /var/lib/apt/lists/*
+
+# Overlay the pinned current WeasyPrint over apt's native stack so CSS Grid renders
+# (Debian's 62.x Grid is broken). requirements.txt is the single source of truth for
+# both this image and local dev (`npm run setup:python`), so they cannot drift.
+# --break-system-packages is required on Debian (PEP 668); --ignore-installed avoids
+# trying to uninstall apt's dpkg-managed weasyprint (which has no pip RECORD) — the
+# pip build lands in /usr/local, which precedes apt's dist-packages on both PATH and
+# sys.path, so `weasyprint` and `python3 -m weasyprint` both resolve to 66.0. Deps
+# ship as manylinux wheels (no compiler needed).
+COPY requirements.txt ./
+RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir -r requirements.txt \
+    && weasyprint --version \
+    && python3 -m weasyprint --version
 
 # Both backends are installed so either can be selected in Settings:
 #   - Pi           (@earendil-works/pi-coding-agent, provides the `pi` CLI)
