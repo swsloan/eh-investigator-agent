@@ -30,7 +30,39 @@ excli_runs() {
   [[ -x "$EXCLI_BINARY" ]] && { "$EXCLI_BINARY" -version >/dev/null 2>&1 || "$EXCLI_BINARY" -help >/dev/null 2>&1; }
 }
 
+# Non-root worker runtime (#97). When worker isolation is enabled (EH_WORKER_UID
+# set — the hardened profile), the control plane spawns the agent lowered to that
+# UID. Hand the agent-writable volumes (session workspaces + the re-homed Pi/Claude
+# auth dirs) to the worker, and keep the secret/config store (/app/data) root-only
+# so the worker cannot read secrets.json. Fail CLOSED: if the chown cannot be done
+# we refuse to start rather than silently run the agent as root without the boundary.
+# No-op in the default local profile (variable unset).
+prepare_worker_runtime() {
+  local uid="${EH_WORKER_UID:-}"
+  [[ -n "$uid" ]] || return 0
+  local gid="${EH_WORKER_GID:-$uid}"
+  local home="${EH_WORKER_HOME:-/home/worker}"
+
+  if [[ "$(id -u)" != "0" ]]; then
+    log "FATAL: worker isolation is enabled (EH_WORKER_UID=$uid) but the entrypoint is not root; cannot establish the non-root boundary. Refusing to start."
+    exit 1
+  fi
+
+  log "Worker isolation enabled (uid=$uid gid=$gid); preparing agent-writable volumes"
+  # Secrets/config stay root-only; the worker must never read them.
+  chmod 700 "$ROOT_DIR/data" 2>/dev/null || true
+
+  local d
+  for d in "$ROOT_DIR/workspaces" "$home/.claude" "$home/.pi"; do
+    if ! mkdir -p "$d" || ! chown -R "$uid:$gid" "$d"; then
+      log "FATAL: could not prepare the non-root worker runtime (chown $d failed). Refusing to start."
+      exit 1
+    fi
+  done
+}
+
 install_custom_ca || exit 1
+prepare_worker_runtime
 
 if excli_runs; then
   log "excli ready ($("$EXCLI_BINARY" -version 2>/dev/null | head -n1 || echo present))"

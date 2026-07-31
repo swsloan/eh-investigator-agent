@@ -19,6 +19,18 @@ ENV NODE_ENV=production \
     IS_SANDBOX=1 \
     CLAUDE_CONFIG_DIR=/root/.claude
 
+# Non-root agent worker (#97). The control plane runs as root and, in the hardened
+# profile, drops to this UID when it spawns the agent (Claude/Pi CLI) as a child
+# process — so a worker shell cannot read the root control plane's /proc/1/environ
+# or the root-owned /app/data/secrets.json. The Pi/Claude auth volumes are re-homed
+# under /home/worker (see docker-compose.hardened.yml) and chowned to `worker` by
+# the entrypoint on first hardened start. Harmless in the default local profile:
+# the control plane stays root and never lowers a child, so the user is unused.
+RUN groupadd --gid 10001 worker \
+    && useradd --uid 10001 --gid 10001 --home-dir /home/worker --create-home --shell /usr/sbin/nologin worker \
+    && mkdir -p /home/worker/.claude /home/worker/.pi \
+    && chown -R worker:worker /home/worker
+
 WORKDIR /app
 
 # tshark: recommended for parsing PCAPs downloaded from ExtraHop (not used for

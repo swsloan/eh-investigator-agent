@@ -111,6 +111,44 @@ control plane over the existing broker sockets. Two viable shapes:
   process model and needs a privileged helper — a worse trade than a clean
   container split.
 
+### Delivered mechanism (#97): same-container non-root subprocess
+
+The mechanism actually built is a **third shape** that reaches the same UID
+boundary far more cheaply than the sibling container while keeping the SDK's own
+process model: the root control plane spawns the agent as a **child process
+lowered to a dedicated non-root UID** via Node's `spawn({ uid, gid })`
+(`lib/worker-user.js`). The `setuid`-shim's objection (needs a privileged helper)
+does not apply here — the control plane is *already* root, so it drops privileges
+for the child directly, no `setuid` binary. A non-root child in the same PID
+namespace still cannot read root's `/proc/1/environ` (vector 2) or the 0600
+root-owned `secrets.json` (vector 3), and every Bash command the agent runs
+inherits the non-root UID. Concretely:
+
+- **Claude**: the interactive turn's `query()` moves into
+  `lib/backends/claude/worker-entry.js`, spawned lowered; its newline-delimited SDK
+  messages are bridged back into the same `handleSdkMessage` translation, so the UI
+  stream is unchanged. The tool-less `oneshot`/`models` helpers stay in-process
+  (they never grant a shell).
+- **Pi** already spawns its CLI directly, so it just gains `uid`/`gid` + `HOME`.
+- **Brokers** chown their Unix-socket dir + file to the worker so the non-root
+  worker can still connect (root keeps serving; it bypasses DAC).
+- The control plane becomes a **privilege-dropping supervisor**, so the hardened
+  overlay cannot `cap_drop: ALL`; it re-adds the minimal set CHOWN, DAC_OVERRIDE,
+  SETUID, SETGID, KILL. `no-new-privileges` still blocks the child from
+  re-escalating.
+
+Gated: the boundary applies only when `EH_WORKER_UID` is set **and** the control
+plane is root (the hardened profile). The default local (loopback) deployment runs
+in-process exactly as before. `workerSpawnUser()` fails closed (throws) if the
+hardened profile is set but the process is not root.
+
+**Residual not covered by this mechanism:** per-worker-process **egress**
+restriction (scope item below). A same-container subprocess shares the container's
+network namespace, so restricting only the worker's egress would need
+`CAP_NET_ADMIN` (dropped) or the sibling-container topology. The container-level
+egress posture from slice 2 still applies; this is a documented limitation, not a
+regression of vectors 2 & 3.
+
 Whichever shape, the supporting changes are the same and were captured in the
 original plan:
 
@@ -130,25 +168,30 @@ original plan:
    the primary control, and `unshare` would need `CAP_SYS_ADMIN`, which slice 2
    drops.
 
-This work is its own tracked effort (a follow-up issue): it changes container
-topology and turn dispatch, and **must be validated under a real hardened
+This was carved out as its own tracked effort (**#97**) and is now **delivered**
+via the same-container non-root subprocess above. Because it changes runtime
+privileges and volume ownership, it **must be validated under a real hardened
 bring-up** — which cannot be done in the current working environment without
 recreating the running `eh-investigator` project and its live memory/sessions.
-The validation procedure is in [HARDENED-VALIDATION.md](HARDENED-VALIDATION.md).
+The validation procedure (including the worker-shell `/proc` + `secrets.json`
+probes) is in [HARDENED-VALIDATION.md](HARDENED-VALIDATION.md).
 
 ### Migration and rollback
 
 - Ships behind the **experimental hardened profile** only; the default local alpha
   is unchanged.
-- **Migration:** a container-init step chowns the workspace and agent-home volumes
-  to the worker UID on first hardened start; existing sessions/reports are
-  preserved (same volume, new owner). No data moves between volumes.
+- **Migration:** the entrypoint chowns the session workspaces and the re-homed
+  agent-auth volumes to the worker UID on first hardened start; existing
+  sessions/reports are preserved (same named volumes, new owner). The Pi/Claude
+  auth volumes remount from `/root/.{pi,claude}` to `/home/worker/.{pi,claude}` — a
+  mount-path change only, same volume and same login. No data moves between volumes.
 - **Rollback:** revert to the previous image tag / drop the overlay; the volumes
   remain readable by root, so a rollback to the root-worker deployment keeps all
-  sessions, settings, and memory. Because the change is UID/permissions only (no
-  schema or path changes), rollback loses nothing.
-- **Recovery:** if the chown init fails, the container fails closed (worker cannot
-  write its workspace) rather than silently falling back to root.
+  sessions, settings, and memory. The change is UID/permissions + auth-volume
+  mount-path only (no schema change), so rollback loses nothing.
+- **Recovery:** if the entrypoint chown fails (or the entrypoint is not root), the
+  container fails closed — it refuses to start rather than silently running the
+  agent as root without the boundary.
 
 ## Status against the #24 scope
 
@@ -157,18 +200,20 @@ The validation procedure is in [HARDENED-VALIDATION.md](HARDENED-VALIDATION.md).
 | Add an experimental hardened profile (not default) | **done** (slices 1–2) |
 | Drop caps / no-new-privileges / limits / restrict host ports | **done** (slice 2) |
 | Add auth for browser/API/SSE + fail-closed non-loopback | **done** (slice 1) |
-| Separate brokers/secret store from the worker runtime | env vector **done** (slice 3 scrub); `/proc` + `secrets.json` vectors **blocked in-process** (SDK gives the worker the control-plane UID) — needs the separate worker runtime |
-| Non-root worker UID, only the workspace mounted | **specified**, blocked in-process; needs the separate worker runtime (own follow-up) |
-| Restrict worker egress to required endpoints | **specified**, ships with the worker runtime |
-| Preserve Pi/Claude auth volumes without exposing app secrets | **specified** (re-home to worker UID) |
-| A worker shell cannot read ExtraHop/RL/Brave/memory-proxy secrets | **env path enforced + tested**; `/proc`/file path met only once the worker has a distinct UID (separate runtime) |
+| Separate brokers/secret store from the worker runtime | env vector **done** (slice 3 scrub); `/proc` + `secrets.json` vectors **done (#97)** — the worker runs under a distinct non-root UID (same-container subprocess) |
+| Non-root worker UID, only the workspace mounted | **done (#97)** — spawned via `spawn({uid,gid})`; workspace + re-homed auth volumes chowned to the worker, `/app/data` stays root-only |
+| Restrict worker egress to required endpoints | **residual** — a same-container subprocess shares the network namespace; per-worker egress needs `CAP_NET_ADMIN` or the sibling-container topology (documented above) |
+| Preserve Pi/Claude auth volumes without exposing app secrets | **done (#97)** — re-homed to `/home/worker/.{pi,claude}` (hardened overlay), chowned to the worker; `secrets.json` stays root-only |
+| A worker shell cannot read ExtraHop/RL/Brave/memory-proxy secrets | **env path enforced + tested; `/proc`/file path closed (#97)** — verify with the §3 probes in [HARDENED-VALIDATION.md](HARDENED-VALIDATION.md) on a real host |
 | Validate functional suite; document threat model / migration / rollback / recovery | validation runbook + threat model **done** ([HARDENED-VALIDATION.md](HARDENED-VALIDATION.md)); the run itself is an operator step on a real host |
 | Hardened profile becomes default only after explicit sign-off | gated by the runbook's sign-off checklist |
 
-**Net:** slices 1–3 deliver the enforceable auth boundary, container confinement,
-and the worker env-secret scrub. The last isolation step — a distinct worker UID
-to close the `/proc`/`secrets.json` vectors — is **architecturally blocked while
-the worker runs in the control-plane process** (the SDK exposes no `uid`), so it
-is carved out as a separate **worker-runtime** effort with its own issue, to be
-built and validated per [HARDENED-VALIDATION.md](HARDENED-VALIDATION.md) before the
-hardened profile can become the default.
+**Net:** slices 1–3 delivered the auth boundary, container confinement, and the
+worker env-secret scrub. **#97** closes the last isolation step — a distinct
+non-root worker UID for the `/proc`/`secrets.json` vectors — via a same-container
+subprocess the root control plane spawns lowered (no SDK `uid` needed, because the
+worker is a child process, not the in-process `query()`). The one remaining item,
+per-worker egress restriction, is a documented residual of the same-container
+shape. All of it must be validated per
+[HARDENED-VALIDATION.md](HARDENED-VALIDATION.md) on a real host before the hardened
+profile can become the default.
