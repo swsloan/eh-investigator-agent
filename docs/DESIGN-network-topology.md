@@ -22,6 +22,41 @@ Slice A is everything up to (but not including) pixels: the collection skill, th
 normalization contract, server-side layout, and the persistent store. Slice B renders
 it, Slice C overlays incidents, Slice D adds drift.
 
+## The attack overlay (Slice C)
+
+Optional by construction: the picker defaults to **No overlay** and the base map is a
+complete product without it.
+
+**Incidents come from session workspaces, not the graph.** `evidence/verdict.json` is
+the only structured forensic sequence that exists — the memory graph holds entities but
+no ordered events, because the capture prompt asks for one prose episode. So
+`/api/topology/incidents` enumerates workspaces (current and past sessions alike).
+
+**Binding is best-effort, and says so.** The timeline contract gained optional `src`,
+`dst`, `entities[]` and `tactic` fields, but every verdict already on disk lacks them:
+the actors are prose inside `detail`. For those, `lib/attack-overlay.js` extracts IPs
+and hostnames and treats the first-mentioned as the actor — then marks the event
+**inferred** in the UI. A map that quietly guessed direction would be asserting
+something the investigation never said.
+
+**Ordering reconciles mixed time formats.** Real verdicts mix ISO stamps, bare clock
+times, ranges, and phrases like "ongoing" in one timeline. Comparing those raw is wrong
+by ~5 orders of magnitude (an epoch stamp vs. milliseconds-since-midnight), which threw
+a late-stage event to the front of the attack. `orderEvents` walks in the analyst's
+order carrying the last absolute date and anchors clock-only entries to it — how a
+person reads it — rolling to the next day when the clock goes backwards.
+
+**Selecting an incident reframes the map.** At an aggregate tier every actor collapses
+into one cluster, so there is no path to draw. Choosing an incident therefore jumps to a
+device view scoped to exactly its participants (`/map?keys=…`) — the map equivalent of
+searching an address. The breadcrumb shows where you are and returns you.
+
+**Repeat visits to one pair collapse into one path.** An attack routinely hits the same
+two hosts several times (probe, then encrypt, then stage); those are one line on the
+map, labelled with every step number it carries and coloured by the furthest-along
+stage. The footer reports steps, paths, and nodes separately so the aggregation is
+visible rather than hidden.
+
 ---
 
 ## Data model

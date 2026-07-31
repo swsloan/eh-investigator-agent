@@ -1,5 +1,8 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import express from 'express';
 import { listSnapshots, latestSnapshotId, readNode, readTier, topologyGraphName } from '../lib/topology-store.js';
+import { buildOverlay } from '../lib/attack-overlay.js';
 
 /**
  * Read-only network-topology map API (Slice A). Backs the zoomable map.
@@ -97,6 +100,10 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
         snapshotId,
         zoom: req.query.zoom,
         parent: typeof req.query.parent === 'string' ? req.query.parent : '',
+        // `keys` is the attack overlay asking for exactly the incident's devices.
+        keys: typeof req.query.keys === 'string' && req.query.keys
+          ? req.query.keys.split(',').map((k) => k.trim()).filter(Boolean)
+          : null,
         limit: req.query.limit,
       });
       res.json({ group, ...tier });
@@ -112,6 +119,76 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
       const detail = await readNode(client, group, { snapshotId, key: req.params.key });
       if (!detail) return res.status(404).json({ error: 'Device not found in this snapshot.' });
       res.json({ group, snapshot_id: snapshotId, ...detail });
+    } catch (err) { fail(res, err); }
+  });
+
+  /**
+   * Incidents available to overlay on the map (Slice C).
+   *
+   * Read from session WORKSPACES, not the memory graph: the graph holds entities but
+   * no ordered events — the capture prompt stores one prose episode — so
+   * `evidence/verdict.json` is the only structured forensic sequence that exists.
+   * Both the current session and every past one are enumerated.
+   */
+  function readVerdict(workspace) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(path.join(workspace, 'evidence', 'verdict.json'), 'utf8'));
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  router.get('/incidents', (req, res) => {
+    try {
+      const out = [];
+      for (const session of sessions?.values?.() || []) {
+        if (!session?.workspace) continue;
+        const verdict = readVerdict(session.workspace);
+        const events = Array.isArray(verdict?.timeline) ? verdict.timeline.length : 0;
+        if (!verdict || !events) continue; // an investigation with no sequence can't be drawn
+        out.push({
+          id: session.id,
+          title: session.title || 'Investigation',
+          disposition: String(verdict.disposition || ''),
+          confidence: String(verdict.confidence || ''),
+          events,
+          createdAt: session.createdAt || 0,
+        });
+      }
+      out.sort((a, b) => b.createdAt - a.createdAt);
+      res.json({ incidents: out });
+    } catch (err) { fail(res, err); }
+  });
+
+  router.get('/incidents/:sessionId', async (req, res) => {
+    if (!guard(req, res)) return;
+    try {
+      const session = sessions?.get?.(req.params.sessionId);
+      if (!session?.workspace) return res.status(404).json({ error: 'Session not found.' });
+      const verdict = readVerdict(session.workspace);
+      if (!verdict) return res.status(404).json({ error: 'This session has no verdict to overlay.' });
+
+      // Bind the incident against the snapshot actually being displayed, so an event
+      // naming a device the map doesn't contain is reported unbound rather than
+      // silently dropped.
+      const group = await pickGroup(req);
+      const snapshotId = await pickSnapshot(req, group);
+      let devices = [];
+      if (snapshotId) {
+        const tier = await readTier(client, group, { snapshotId, zoom: 3, limit: 5000 });
+        devices = tier.nodes;
+      }
+      const overlay = buildOverlay(verdict, devices, { sessionId: session.id, title: session.title });
+      // Tier coordinates per involved device, so the client can lift an actor to the
+      // cluster that represents it at the current zoom (a device is not drawn at
+      // zoom 0 — its locality is).
+      const tierMap = {};
+      for (const d of devices) {
+        if (!overlay.entities.includes(d.key)) continue;
+        tierMap[d.key] = { key: d.key, locality: d.locality, segment: d.segment, role_key: d.role_key, name: d.name };
+      }
+      res.json({ group, snapshot_id: snapshotId, tierMap, ...overlay });
     } catch (err) { fail(res, err); }
   });
 

@@ -133,8 +133,10 @@ When the deciding question is answered (or provably can't be), write
     { "claim": "TLS SNI resolves to known-good CDN", "source": "evidence/records/ssl.json" }
   ],
   "timeline": [
-    { "time": "2026-07-09 14:57", "event": "Web-enrollment recon begins", "detail": "KALI (172.16.206.22) issues repeated curl GETs to CA.acmelegal.lab/certsrv/.", "evidence": "evidence/records/http.json" },
-    { "time": "2026-07-09 21:11", "event": "Malicious certificate issued", "detail": "POST /certsrv/certfnsh.asp returns a 2,096-byte cert as acmelegal.lab\\ian.lindsay.", "evidence": "evidence/records/http.json" }
+    { "time": "2026-07-09 14:57", "event": "Web-enrollment recon begins", "detail": "KALI (172.16.206.22) issues repeated curl GETs to CA.acmelegal.lab/certsrv/.", "evidence": "evidence/records/http.json",
+      "src": "172.16.206.22", "dst": "172.16.206.40", "tactic": "Discovery" },
+    { "time": "2026-07-09 21:11", "event": "Malicious certificate issued", "detail": "POST /certsrv/certfnsh.asp returns a 2,096-byte cert as acmelegal.lab\\ian.lindsay.", "evidence": "evidence/records/http.json",
+      "src": "172.16.206.22", "dst": "172.16.206.40", "tactic": "Credential Access" }
   ],
   "residual_uncertainty": "packetstore retention did not cover the first hour"
 }
@@ -149,6 +151,25 @@ When the deciding question is answered (or provably can't be), write
   case (recon → action-on-objective → and any benign baseline you separated out).
   Omit it only if the detection has no meaningful time progression. The memory
   visualization renders this as the investigation's timeline once you close.
+
+  Three **optional** fields make the event drawable on the network map, where the
+  attack is rendered as a path across the estate rather than a list of times:
+
+  - **`src` / `dst`** — the acting device and the device acted upon, as an IP,
+    hostname, or ExtraHop device OID. Add them whenever the event really is one
+    host doing something to another; omit them for events with no clear direction
+    (a host-local action, an appliance-side observation).
+  - **`tactic`** — the MITRE ATT&CK **tactic** this event belongs to, spelled as
+    ATT&CK spells it: `Reconnaissance`, `Initial Access`, `Execution`,
+    `Persistence`, `Privilege Escalation`, `Defense Evasion`, `Credential Access`,
+    `Discovery`, `Lateral Movement`, `Collection`, `Command and Control`,
+    `Exfiltration`, `Impact`. This is the *tactic* (the stage), not the technique
+    ID — technique IDs still go in `attack_techniques`.
+
+  These are additive: older verdicts without them still render everywhere they did
+  before, and the map falls back to matching entities named in `detail`. Fill them
+  in when you know them — a guessed `src`/`dst` is worse than none, because the map
+  will draw it as fact.
 
 **Disposition — use exactly one of these five; nothing else.** The disposition is
 a *security judgment*, not a statement about whether the detector fired correctly:
