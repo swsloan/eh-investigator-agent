@@ -21,7 +21,7 @@ pull request.
 | Graphiti Anthropic Python SDK | `anthropic==0.117.0` |
 | Graphiti docstring parser | `docstring-parser==0.18.0` |
 | Node packages | Exact top-level versions in `package.json`; complete tree in `package-lock.json` |
-| Optional PDF Python dependency | `weasyprint==66.0` in `requirements.txt` |
+| PDF engine (WeasyPrint) | `weasyprint==66.0` in `requirements.txt` — the single source of truth for **both** local dev (`npm run setup:python`) and the Docker image (pip-installed over apt's native Pango/gdk-pixbuf/font stack; see below) |
 
 The image digests are multi-architecture manifest digests supporting the
 project's AMD64/ARM64 Docker paths. The package lockfile remains authoritative
@@ -36,6 +36,18 @@ maintained line bundling the patched tar 7.5.19, and it is installed in the
 `Dockerfile` before `npm ci` so the build and the shipped image agree. This also
 cleared several HIGH findings (7 → 3). **Remove this override** once a
 `node:26-slim` shipping fixed npm is published, and re-pin the base digest then.
+
+**Why WeasyPrint is pip-installed over apt in the image (2026-07-30).** Debian's
+`weasyprint` apt package is stale (62.x); its first-generation CSS Grid
+implementation mis-sizes `fr`/`repeat()` tracks and collapses grid-based
+investigation reports into tall single-column stacks (a 6–7pp report rendered as
+12pp). The `Dockerfile` still apt-installs `weasyprint` for its native runtime
+closure (Pango, gdk-pixbuf, fontconfig+fonts, libffi, image libs), then
+`pip install -r requirements.txt` overlays the pinned modern WeasyPrint
+(`weasyprint==66.0`, Grid mature), which shadows the apt binary on `PATH`
+(`/usr/local/bin` before `/usr/bin`) and in `python3 -m weasyprint`. **To bump:**
+change the single pin in `requirements.txt` (dev and image both read it) and
+rebuild. **Drop the pip overlay** once a Debian base ships WeasyPrint ≥66.
 
 **Why graphiti's OS packages are upgraded in-layer (2026-07-28).** The pinned
 `zepai/knowledge-graph-mcp:standalone` base is a stale Debian 12: Trivy flagged
