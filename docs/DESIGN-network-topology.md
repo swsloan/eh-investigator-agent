@@ -243,6 +243,45 @@ Tier 2 runs **only when the user asks for it** (cost/scope discipline, documente
 
 ---
 
+## Drift — what changed (Slice D)
+
+A map tells you what the network looks like; **drift tells you what just became
+true**, which is often the more useful question. `lib/topology-drift.js` diffs two
+snapshots on the stable `key` and reports devices added/removed, role, criticality
+and segment changes, dependencies gained and lost, and identities appearing on hosts
+they have never used.
+
+Every change carries a **severity**, so the list leads with what matters rather than
+with whatever is most numerous: a new workstation is `info`, a new domain controller
+is `high`, an account showing up on a new host is `medium` (a classic lateral-movement
+tell). Conversations are keyed by canonical pair, so writing `a→b` one day and `b→a`
+the next does not fabricate a change.
+
+### Frame-to-frame stability is a hard requirement here
+
+Drift is unreadable if re-running the layout reshuffles the map — the operator cannot
+tell real movement from solver wander. Seeding ForceAtlas2 from the previous
+coordinates is **not sufficient**: FA2 has no fixed origin or scale, so a re-run
+drifts and rescales the whole graph (measured ~40% of the graph's extent after adding
+a single device). Two things fix it:
+
+1. **`alignTo`** fits a similarity transform (translate + uniform scale) on the nodes
+   common to both layouts, putting the frame back where it was. Rotation is
+   deliberately not corrected — FA2 seeded from a settled layout does not
+   systematically rotate, and fitting rotation on a near-degenerate point set is
+   numerically worse than leaving it be.
+2. **A reduced iteration budget** when most nodes are seeded (15% of normal): a
+   near-identical graph only needs to place what changed.
+
+Measured after both: unchanged devices move a **median 1.4%** of the graph's extent
+(p90 1.7%, max 2.6%) when a device is added. Locked in by a test.
+
+### Retention
+
+Snapshots accumulate one per mapping run, each carrying every device and conversation.
+The coordinator keeps the newest `EH_TOPOLOGY_KEEP` (default 12) and prunes the rest
+**after** a successful write, so a failed prune can never cost the snapshot just taken.
+
 ## Scale and limits
 
 - Server-side aggregation keeps the wire payload bounded regardless of estate size; the

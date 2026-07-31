@@ -3841,3 +3841,8 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
   padding: 1px 5px; border-radius: 4px; vertical-align: 1px;
   color: var(--warn-text); border: 1px solid var(--warn-edge);
 }
+
+/* Active state for the "What changed" toggle. */
+.btn-secondary.slim.active {
+  border-color: var(--cyan-edge); color: var(--cyan-text); background: var(--surface-hover);
+}

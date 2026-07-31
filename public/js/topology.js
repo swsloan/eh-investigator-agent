@@ -99,6 +99,7 @@ let sigma = null;
 let graph = null;
 let lastData = null;   // last painted tier, so a theme flip can repaint without refetching
 let overlay = null;    // the incident currently drawn on top, or null for the plain map
+let drift = null;      // the active snapshot comparison, or null
 let state = {
   group: '',
   snapshotId: '',
@@ -283,10 +284,114 @@ function paint(data) {
   });
 
   applyOverlay(data);
+  applyDrift(data);
 
   const count = data.nodes.length;
   const base = `<b>${TIERS[data.zoom]}</b> · ${count} node${count === 1 ? '' : 's'} · ${data.edges.length} link${data.edges.length === 1 ? '' : 's'}`;
-  setStatus(overlay ? `${base} · <b>${esc(overlay.title)}</b> overlay` : base);
+  let suffix = '';
+  if (overlay) suffix = ` · <b>${esc(overlay.title)}</b> overlay`;
+  else if (drift) suffix = ` · <b>${esc(drift.description)}</b>`;
+  setStatus(base + suffix);
+}
+
+/**
+ * Ring the nodes that changed since the compared snapshot. Drift is an annotation on
+ * the map, not a replacement for it: nothing is hidden, changed things just get a
+ * halo whose colour carries severity. Devices roll up to whatever the current tier
+ * draws, so a change stays visible when zoomed out.
+ */
+function applyDrift(data) {
+  if (!drift || !graph || overlay) return;
+  const HALO = { high: '#ef4444', medium: '#f59e0b', info: '#0ea5e9' };
+  const RANK = { high: 0, medium: 1, info: 2 };
+
+  // Map each changed device onto the node drawn at this tier.
+  const worst = new Map();
+  const noteKey = (key, severity) => {
+    if (!key || !graph.hasNode(key)) return;
+    const current = worst.get(key);
+    if (!current || RANK[severity] < RANK[current]) worst.set(key, severity);
+  };
+  const FIELD = ['locality', 'segment', 'role_key', 'key'];
+  for (const change of drift.changes) {
+    const tiers = drift.tierMap?.[change.key];
+    if (tiers) { noteKey(tiers[FIELD[data.zoom]], change.severity); continue; }
+    for (const endpoint of change.endpoints || change.devices || []) {
+      const t = drift.tierMap?.[endpoint];
+      if (t) noteKey(t[FIELD[data.zoom]], change.severity);
+    }
+  }
+
+  for (const [key, severity] of worst) {
+    graph.setNodeAttribute(key, 'color', HALO[severity] || HALO.info);
+    graph.setNodeAttribute(key, 'size', (graph.getNodeAttribute(key, 'size') || 5) * 1.4);
+  }
+  renderDriftPanel(worst.size);
+}
+
+/** The "what changed" list, grouped severity-first. */
+function renderDriftPanel(markedNodes) {
+  if (!drift) return;
+  if (!drift.changes.length) {
+    inspector(`<div class="topo-ins-title">What changed</div>`
+      + `<div class="topo-ins-foot panel-sub">${esc(drift.description || 'No change since the previous snapshot.')}</div>`);
+    return;
+  }
+  const rows = drift.changes.map((c) => (
+    `<li class="topo-ev">
+       <span class="topo-ev-dot" style="--stage:${c.severity === 'high' ? '#ef4444' : c.severity === 'medium' ? '#f59e0b' : '#0ea5e9'}"></span>
+       <div>
+         <div class="topo-ev-head">${esc(c.label)}</div>
+         <div class="topo-ev-meta">${esc(c.detail)}</div>
+       </div>
+     </li>`
+  )).join('');
+  const from = drift.snapshots?.find((s) => s.id === drift.from);
+  const to = drift.snapshots?.find((s) => s.id === drift.to);
+  const stamp = (s) => esc(String(s?.collected_at || s?.id || '').replace('T', ' ').replace('Z', ''));
+  inspector([
+    `<div class="topo-ins-title">What changed</div>`,
+    `<div class="topo-ins-sub">${stamp(from)} → ${stamp(to)}</div>`,
+    `<div class="topo-ins-tags">`,
+    drift.summary.high ? `<span class="topo-tag crit">${drift.summary.high} high</span>` : '',
+    drift.summary.medium ? `<span class="topo-tag">${drift.summary.medium} medium</span>` : '',
+    drift.summary.info ? `<span class="topo-tag">${drift.summary.info} info</span>` : '',
+    `</div>`,
+    `<div class="topo-ins-h">Changes</div><ul class="topo-ins-list topo-events">${rows}</ul>`,
+    `<div class="topo-ins-foot panel-sub">${markedNodes} node${markedNodes === 1 ? '' : 's'} highlighted at this zoom.`
+      + (drift.truncated ? ' List truncated.' : '')
+      + `</div>`,
+  ].join(''));
+}
+
+/** Toggle the snapshot comparison on/off. */
+async function toggleDrift() {
+  const btn = $('topo-drift');
+  if (drift) {
+    drift = null;
+    btn?.setAttribute('aria-pressed', 'false');
+    btn?.classList.remove('active');
+    inspector('<div class="topo-inspector-empty panel-sub">Zoom in to devices, then click one to inspect it.</div>');
+    if (lastData) { const cam = sigma && { ...sigma.getCamera().getState() }; paint(lastData); if (cam) sigma.getCamera().setState(cam); }
+    return;
+  }
+  inspector('<div class="topo-inspector-empty panel-sub">Comparing snapshots…</div>');
+  try {
+    const params = new URLSearchParams();
+    if (state.group) params.set('group', state.group);
+    const res = await fetch(`/api/topology/drift?${params}`);
+    const data = await res.json();
+    if (!res.ok) { inspector(`<div class="topo-inspector-empty panel-sub">${esc(data.error || 'Could not compare snapshots.')}</div>`); return; }
+    drift = data;
+    btn?.setAttribute('aria-pressed', 'true');
+    btn?.classList.add('active');
+    // Selecting drift clears any incident overlay: they are two different questions.
+    if (overlay) { overlay = null; const sel = $('topo-overlay-pick'); if (sel) sel.value = ''; }
+    if (lastData) { const cam = sigma && { ...sigma.getCamera().getState() }; paint(lastData); if (cam) sigma.getCamera().setState(cam); }
+    else renderDriftPanel(0);
+  } catch {
+    inspector('<div class="topo-inspector-empty panel-sub">Could not compare snapshots.</div>');
+  }
 }
 
 /**
@@ -475,6 +580,9 @@ async function selectOverlay(sessionId) {
     const data = await res.json();
     if (!res.ok) { inspector(`<div class="topo-inspector-empty panel-sub">${esc(data.error || 'Could not load that incident.')}</div>`); return; }
     overlay = { ...data, tacticOrder: TACTIC_ORDER };
+    // An incident and a snapshot comparison answer different questions; showing both
+    // at once would mean two competing colour languages on the same nodes.
+    if (drift) { drift = null; $('topo-drift')?.setAttribute('aria-pressed', 'false'); $('topo-drift')?.classList.remove('active'); }
     // Frame the incident. At an aggregate tier the actors collapse into one cluster
     // and there is literally no path to draw ("0 steps"), so selecting an incident
     // jumps to the device view of exactly its participants — the map equivalent of
@@ -516,6 +624,9 @@ function open() {
   setRpTab('map');
   state = { ...state, zoom: 0, parent: '', crumbs: [], keys: null, autoTier: true };
   overlay = null; // the map always opens plain; an incident is something you choose
+  drift = null;
+  $('topo-drift')?.setAttribute('aria-pressed', 'false');
+  $('topo-drift')?.classList.remove('active');
   loadSnapshots().then(() => Promise.all([load(), loadIncidents()]));
 }
 
@@ -546,6 +657,7 @@ export function initTopology() {
     load();
   });
   $('topo-overlay-pick')?.addEventListener('change', (e) => selectOverlay(e.target.value));
+  $('topo-drift')?.addEventListener('click', toggleDrift);
   $('topo-refresh')?.addEventListener('click', () => { loadSnapshots().then(() => load()); });
   window.addEventListener('resize', () => { if (isTopologyOpen() && sigma) sigma.refresh(); });
 
