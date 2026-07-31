@@ -16,12 +16,24 @@
 #      the host — the app reaches them over the private compose network. The app's
 #      own port stays published, now behind the token gate.
 #
-# NOT yet applied here (deferred, tracked under #24):
+#   3. Non-root worker runtime (#97). EH_WORKER_UID lowers the agent (Claude/Pi
+#      CLI) to a dedicated non-root UID that the control plane spawns it under, so
+#      a worker shell cannot read the root control plane's /proc/1/environ or the
+#      root-owned /app/data/secrets.json (the two vectors env-scrubbing can't
+#      close). This makes the control plane a privilege-dropping supervisor, so —
+#      unlike slice 2's "drop ALL" — it must retain a minimal capability set
+#      (CHOWN/DAC_OVERRIDE to own+access the worker's volumes, SETUID/SETGID to
+#      lower the child, KILL to stop it). The Pi/Claude auth volumes are re-homed
+#      under /home/worker and chowned to the worker by the entrypoint.
+#
+# NOT yet applied here (deferred):
 #   - read-only root filesystems: needs each service's writable paths mapped to
 #     tmpfs/volumes and validated under a real bring-up (slice 4's functional
 #     matrix), so it is intentionally left off to keep this overlay non-breaking.
-#   - worker/secret separation and restricted egress (slice 3): the agent still
-#     runs in-process with the control plane; isolating it is a re-architecture.
+#   - per-worker-process egress restriction (#97 residual): a same-container
+#     subprocess shares the container's network namespace, so restricting only the
+#     worker's egress needs CAP_NET_ADMIN (dropped here) or the sibling-container
+#     topology. The container-level egress posture still applies.
 #
 # None of these run counter to the base compose: the base file is unchanged, so
 # `docker compose up` (local alpha) is unaffected and this overlay is additive.
@@ -32,13 +44,32 @@ services:
       EH_DEPLOYMENT_PROFILE: "hardened"
       EH_MEMORY_PROXY_TOKEN: ${EH_MEMORY_PROXY_TOKEN:?Use scripts/compose-hardened.sh to generate the hardened tokens}
       EH_AUTH_TOKEN: ${EH_AUTH_TOKEN:?Use scripts/compose-hardened.sh to generate the hardened tokens}
+      # Non-root worker runtime (#97). The control plane drops to this UID when it
+      # spawns the agent. HOME + CLAUDE_CONFIG_DIR point at the re-homed auth
+      # volumes so both the worker and the root-side helper calls (title/model
+      # discovery) resolve the same Pi/Claude login without exposing /app/data.
+      EH_WORKER_UID: "10001"
+      EH_WORKER_GID: "10001"
+      EH_WORKER_HOME: "/home/worker"
+      HOME: "/home/worker"
+      CLAUDE_CONFIG_DIR: "/home/worker/.claude"
     security_opt:
       - no-new-privileges:true
+    # The control plane is a privilege-dropping supervisor for the non-root worker
+    # (#97): it drops ALL caps, then re-adds only what supervising a lowered child
+    # requires — CHOWN + DAC_OVERRIDE to own and read/write the worker's volumes,
+    # SETUID/SETGID to spawn the child under the worker UID, and KILL to stop it.
+    # no-new-privileges still blocks the child from re-escalating.
     cap_drop:
       - ALL
-    # The app binds a high port and writes only to mounted volumes, so it needs no
-    # capabilities. It spawns agent CLIs (many child processes), so the PID ceiling
-    # is generous; limits are experimental and get tuned under load in slice 4.
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
+      - KILL
+    # It spawns agent CLIs (many child processes), so the PID ceiling is generous;
+    # limits are experimental and get tuned under load in slice 4.
     pids_limit: 2048
     mem_limit: 4g
     cpus: 4.0
@@ -46,6 +77,16 @@ services:
     # step later; harmless now (an in-memory scratch dir).
     tmpfs:
       - /tmp:size=256m
+    # Re-home the Pi/Claude auth volumes under the worker's home so the lowered
+    # worker keeps its login while /app/data (secrets/config) stays root-only. Same
+    # named volumes as the base — only the mount path changes, so no data is lost.
+    # !override replaces the base list (which mounts them under /root).
+    volumes: !override
+      - workspaces:/app/workspaces
+      - pi_home:/home/worker/.pi
+      - claude_home:/home/worker/.claude
+      - config_data:/app/data
+      - ./graphiti/runtime:/app/graphiti/runtime
 
   graphiti-mcp:
     environment:

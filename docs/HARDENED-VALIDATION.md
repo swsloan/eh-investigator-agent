@@ -56,12 +56,21 @@ docker inspect "${COMPOSE_PROJECT}-eh-investigator-1" \
 - [ ] `CapDrop=[ALL]`, `SecOpt` contains `no-new-privileges`, memory and PID
       limits are set — on each long-running service.
 
-## 3. Worker secret isolation (slice 3 + the worker-runtime follow-up)
+## 3. Worker secret isolation (slice 3 env scrub + #97 non-root worker)
 
-Run these **from inside a worker shell** — i.e. have the agent run the command, or
-`docker compose ... exec` the container the agent runs in.
+Run these **from inside a worker shell** — i.e. have the agent run a Bash command,
+or `docker compose ... exec -u worker eh-investigator sh` (the `-u worker` matters:
+without it you get a root shell, which is the control plane, not the worker).
 
-Env scrub (must pass now, in-process):
+First confirm the shell really is the non-root worker (#97):
+
+```bash
+id   # expect uid=10001(worker) gid=10001(worker)
+```
+
+- [ ] `id` reports uid/gid 10001 (an agent Bash turn runs under the worker UID).
+
+Env scrub (slice 3 — passes regardless of UID):
 
 ```bash
 # From the agent's own shell: none of these may print a value.
@@ -73,19 +82,19 @@ done
 
 - [ ] Every line prints an empty value (the worker env is scrubbed).
 
-`/proc` and file vectors (pass **only** once the worker runs under a distinct,
-non-root UID — the separate worker-runtime effort; see
-[DESIGN-worker-isolation.md](DESIGN-worker-isolation.md)):
+`/proc` and file vectors — closed by the non-root worker (#97): a non-root child
+cannot read the root control plane's `/proc/1/environ` or the 0600 root-owned
+`secrets.json`. See [DESIGN-worker-isolation.md](DESIGN-worker-isolation.md):
 
 ```bash
-cat /proc/1/environ | tr '\0' '\n' | grep -E 'EXTRAHOP_API_KEY|EH_AUTH_TOKEN' && echo LEAK || echo ok
+cat /proc/1/environ 2>&1 | tr '\0' '\n' | grep -E 'EXTRAHOP_API_KEY|EH_AUTH_TOKEN' && echo LEAK || echo ok
 cat /app/data/secrets.json 2>&1 | head -c 1 && echo ' (readable = LEAK)' || echo 'ok (not readable)'
 ```
 
-- [ ] With the in-process worker (current ceiling): these are expected to **LEAK**
-      — record it as the known residual.
-- [ ] With the worker-runtime follow-up: both must report `ok` (permission denied)
-      before that item can be checked off.
+- [ ] Both must report `ok` — `/proc/1/environ` is **Permission denied** and
+      `secrets.json` is **not readable** — from the worker shell.
+- [ ] A normal excli tool call from the same worker shell still **succeeds** (the
+      broker sockets were chowned so the non-root worker can connect).
 
 ## 4. Functional matrix (must match the current deployment)
 
@@ -107,16 +116,19 @@ deployment:
 
 ## 5. Migration, rollback, recovery
 
-- **Migration** (to the worker-runtime follow-up): a container-init step chowns the
-  workspace and backend auth volumes to the worker UID on first hardened start;
-  existing sessions/reports persist (same volume, new owner). No data moves between
-  volumes.
+- **Migration** (non-root worker, #97): the entrypoint chowns the session
+  workspaces and the re-homed Pi/Claude auth volumes to the worker UID on first
+  hardened start. Existing sessions/reports persist (same named volumes; the auth
+  volumes remount from `/root/.pi`,`/root/.claude` to `/home/worker/.pi`,
+  `/home/worker/.claude` — path change only, same data, login preserved). No data
+  moves between volumes.
 - **Rollback**: drop the overlay / revert the image tag. Volumes remain
-  root-readable, so returning to the in-process deployment keeps all sessions,
-  settings, and memory — the change is UID/permissions only, no schema or path
-  change.
-- **Recovery**: if the chown init fails, the container **fails closed** (the worker
-  cannot write its workspace) rather than silently running as root.
+  root-readable, so returning to the in-process (root-worker) deployment keeps all
+  sessions, settings, and memory — the change is UID/permissions/mount-path only,
+  no schema change.
+- **Recovery**: if the entrypoint chown fails (or the entrypoint is somehow not
+  root), the container **fails closed** — it refuses to start rather than silently
+  running the agent as root without the boundary.
 
 ## 6. Sign-off checklist (gates the default flip)
 
@@ -124,8 +136,8 @@ The hardened profile may become the default only when **all** of these hold:
 
 - [ ] §1 auth + fail-closed pass.
 - [ ] §2 confinement pass on every service.
-- [ ] §3 env scrub passes; and (post worker-runtime) the `/proc` + `secrets.json`
-      vectors report `ok`.
+- [ ] §3 `id` shows the worker UID, env scrub passes, and the `/proc` +
+      `secrets.json` vectors report `ok` (non-root worker, #97).
 - [ ] §4 functional matrix matches the current deployment with no regressions.
 - [ ] §5 rollback rehearsed once, losing nothing.
 - [ ] Owner sign-off recorded (date + who) in this file or the release notes.
