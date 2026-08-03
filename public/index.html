@@ -593,6 +593,7 @@
             <option value="">No overlay</option>
           </select>
         </label>
+        <button id="topo-external" class="btn-secondary slim" type="button" aria-pressed="false" title="Show devices outside the internal network (External locality)">Show external</button>
         <button id="topo-drift" class="btn-secondary slim" type="button" aria-pressed="false">What changed</button>
         <button id="topo-refresh" class="btn-secondary slim" type="button">Refresh</button>
         <button id="topo-close" class="icon-btn" title="Close">
@@ -603,6 +604,7 @@
         <div class="topo-main">
           <div class="topo-bar">
             <nav id="topo-crumbs" class="topo-crumbs" aria-label="Map drill-down"></nav>
+            <button id="topo-neighbors" class="btn-secondary slim hidden" type="button" aria-pressed="false" title="Also show devices outside this segment that these devices depend on">Show outside dependencies</button>
             <div id="topo-status" class="topo-status panel-sub"></div>
           </div>
           <div id="topo-canvas" class="topo-canvas hidden"></div>

@@ -105,11 +105,19 @@ let state = {
   snapshotId: '',
   zoom: 0,
   parent: '',
-  crumbs: [],          // [{zoom, parent, label, keys}] — the drill-down path
+  scope: '',           // device field the parent matches on at zoom 3 (segment|role_key|locality)
+  crumbs: [],          // [{zoom, parent, scope, label, keys}] — the drill-down path
   keys: null,          // explicit device set (the attack overlay's participants)
+  showExternal: false, // default view is internal-only; toggle reveals External nodes
+  showNeighbors: false, // in a scoped device view, pull one-hop peers outside the scope
   loading: false,
   autoTier: true,      // camera-driven LOD; suspended while drilled into a cluster
 };
+
+/** A segment key (`vlan:204`, `net:10.0.0.0/24`, `loc:Internal`) as a short label. */
+function prettySegment(s) {
+  return String(s || '').replace(/^(vlan|net|loc):/, (_, k) => (k === 'vlan' ? 'VLAN ' : ''));
+}
 
 function colorFor(node, zoom) {
   // Every tier carries meaning in its colour rather than going flat blue in the
@@ -160,8 +168,10 @@ function renderCrumbs() {
     const last = state.crumbs[state.crumbs.length - 1];
     state.parent = last?.parent || '';
     state.zoom = last ? last.zoom : 0;
+    state.scope = last?.scope || '';
     state.keys = last?.keys || null;   // leaving the incident view drops its key scope
     state.autoTier = state.crumbs.length === 0;
+    updateNeighborBtn();
     load();
   }));
 }
@@ -211,14 +221,38 @@ async function showDevice(key) {
 }
 
 function drillInto(node) {
-  // Aggregate clicked: descend one tier, scoped to it. Suspends camera-driven LOD
-  // so the view stays where the user put it.
-  state.crumbs.push({ zoom: state.zoom + 1, parent: node.key, label: node.name });
-  state.zoom = Math.min(3, state.zoom + 1);
+  // Aggregate clicked: descend into it. A segment drills STRAIGHT to its devices
+  // (scope='segment'), skipping the Role tier — that tier collapses to one meaningless
+  // "other" node when roles are unknown, and clicking through it was pure friction.
+  // Role clusters (only reached via camera LOD) still drill to their devices.
+  // Suspends camera-driven LOD so the view stays where the user put it.
+  const from = state.zoom;
+  let zoom;
+  let scope;
+  if (from === 0) { zoom = 1; scope = ''; }            // locality → segments
+  else if (from === 1) { zoom = 3; scope = 'segment'; } // segment → devices (skip Role)
+  else { zoom = 3; scope = 'role_key'; }                // role cluster → devices
+  state.crumbs.push({ zoom, parent: node.key, scope, label: node.name });
+  state.zoom = zoom;
   state.parent = node.key;
+  state.scope = scope;
   state.keys = null;
   state.autoTier = false;
+  updateNeighborBtn();
   load();
+}
+
+/** The "Show outside dependencies" control only applies to a scoped device view. */
+function updateNeighborBtn() {
+  const btn = $('topo-neighbors');
+  if (!btn) return;
+  const applies = state.zoom === 3 && Boolean(state.parent) && !state.keys;
+  btn.classList.toggle('hidden', !applies);
+  if (!applies && state.showNeighbors) {
+    state.showNeighbors = false;
+    btn.setAttribute('aria-pressed', 'false');
+    btn.classList.remove('active');
+  }
 }
 
 function paint(data) {
@@ -228,15 +262,20 @@ function paint(data) {
   graph = new G({ type: 'undirected', allowSelfLoops: false, multi: false });
 
   for (const n of data.nodes) {
+    // Neighbor = a one-hop peer pulled in from OUTSIDE the scoped segment/cluster
+    // ("show outside dependencies"). Muted and labelled with where it lives, so the
+    // boundary is legible and the in-scope devices stay the focus.
+    const isNeighbor = data.zoom === 3 && n.neighbor;
     graph.addNode(n.key, {
       x: Number(n.x) || 0,
       y: Number(n.y) || 0,
-      size: sizeFor(n, data.zoom),
+      size: isNeighbor ? sizeFor(n, data.zoom) * 0.72 : sizeFor(n, data.zoom),
       // Sigma renders labels itself into canvas; it never parses HTML, but keep the
       // same escaping discipline as the rest of the UI — device names come off the
       // wire and are attacker-controllable (lib/telemetry-taint.js).
-      label: String(n.name ?? n.key),
-      color: colorFor(n, data.zoom),
+      label: isNeighbor ? `${n.name ?? n.key} · ${prettySegment(n.segment)}` : String(n.name ?? n.key),
+      color: isNeighbor ? 'rgba(130,138,160,0.55)' : colorFor(n, data.zoom),
+      neighbor: isNeighbor,
       raw: n,
     });
   }
@@ -291,6 +330,7 @@ function paint(data) {
   let suffix = '';
   if (overlay) suffix = ` · <b>${esc(overlay.title)}</b> overlay`;
   else if (drift) suffix = ` · <b>${esc(drift.description)}</b>`;
+  else if (data.neighbors) suffix = ' · <b>+ outside dependencies</b>';
   setStatus(base + suffix);
 }
 
@@ -514,6 +554,9 @@ export async function load({ keepCamera = false } = {}) {
     if (state.group) params.set('group', state.group);
     if (state.snapshotId) params.set('snapshot', state.snapshotId);
     if (state.parent) params.set('parent', state.parent);
+    if (state.scope) params.set('scope', state.scope);
+    if (state.showExternal) params.set('external', '1');
+    if (state.showNeighbors && state.zoom === 3 && state.parent) params.set('neighbors', '1');
     if (state.keys?.length) params.set('keys', state.keys.join(','));
     const res = await fetch(`/api/topology/map?${params}`);
     const data = await res.json();
@@ -531,6 +574,7 @@ export async function load({ keepCamera = false } = {}) {
     paint(data);
     if (cam) sigma.getCamera().setState(cam);
     renderCrumbs();
+    updateNeighborBtn();
   } catch (err) {
     showEmpty('Could not reach the topology service.');
   } finally {
@@ -568,7 +612,7 @@ async function selectOverlay(sessionId) {
   if (!sessionId) {
     overlay = null;
     // Returning to the plain map also leaves the incident's key-scoped view.
-    if (state.keys) { state.keys = null; state.crumbs = []; state.zoom = 0; state.parent = ''; state.autoTier = true; load(); }
+    if (state.keys) { state.keys = null; state.crumbs = []; state.zoom = 0; state.parent = ''; state.scope = ''; state.autoTier = true; load(); }
     if (lastData) { const cam = sigma && { ...sigma.getCamera().getState() }; paint(lastData); if (cam) sigma.getCamera().setState(cam); }
     inspector('<div class="topo-inspector-empty panel-sub">Zoom in to devices, then click one to inspect it.</div>');
     return;
@@ -622,11 +666,15 @@ async function loadSnapshots() {
 function open() {
   $('topology-overlay').classList.remove('hidden');
   setRpTab('map');
-  state = { ...state, zoom: 0, parent: '', crumbs: [], keys: null, autoTier: true };
+  state = { ...state, zoom: 0, parent: '', scope: '', crumbs: [], keys: null, showExternal: false, showNeighbors: false, autoTier: true };
   overlay = null; // the map always opens plain; an incident is something you choose
   drift = null;
   $('topo-drift')?.setAttribute('aria-pressed', 'false');
   $('topo-drift')?.classList.remove('active');
+  for (const id of ['topo-external', 'topo-neighbors']) {
+    $(id)?.setAttribute('aria-pressed', 'false');
+    $(id)?.classList.remove('active');
+  }
   loadSnapshots().then(() => Promise.all([load(), loadIncidents()]));
 }
 
@@ -653,11 +701,25 @@ export function initTopology() {
   $('topo-close')?.addEventListener('click', () => close());
   $('topo-snapshot')?.addEventListener('change', (e) => {
     state.snapshotId = e.target.value;
-    state.crumbs = []; state.parent = ''; state.zoom = 0; state.keys = null; state.autoTier = true;
+    state.crumbs = []; state.parent = ''; state.scope = ''; state.zoom = 0; state.keys = null; state.autoTier = true;
     load();
   });
   $('topo-overlay-pick')?.addEventListener('change', (e) => selectOverlay(e.target.value));
   $('topo-drift')?.addEventListener('click', toggleDrift);
+  $('topo-external')?.addEventListener('click', () => {
+    state.showExternal = !state.showExternal;
+    const b = $('topo-external');
+    b?.setAttribute('aria-pressed', String(state.showExternal));
+    b?.classList.toggle('active', state.showExternal);
+    load({ keepCamera: true });
+  });
+  $('topo-neighbors')?.addEventListener('click', () => {
+    state.showNeighbors = !state.showNeighbors;
+    const b = $('topo-neighbors');
+    b?.setAttribute('aria-pressed', String(state.showNeighbors));
+    b?.classList.toggle('active', state.showNeighbors);
+    load({ keepCamera: true });
+  });
   $('topo-refresh')?.addEventListener('click', () => { loadSnapshots().then(() => load()); });
   window.addEventListener('resize', () => { if (isTopologyOpen() && sigma) sigma.refresh(); });
 
