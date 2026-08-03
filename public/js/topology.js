@@ -100,6 +100,7 @@ let graph = null;
 let lastData = null;   // last painted tier, so a theme flip can repaint without refetching
 let overlay = null;    // the incident currently drawn on top, or null for the plain map
 let drift = null;      // the active snapshot comparison, or null
+let identitiesCache = []; // [{name, principal, devices:[{key,name,ip,role,locality}]}]
 let state = {
   group: '',
   snapshotId: '',
@@ -200,6 +201,24 @@ async function showDevice(key) {
       `<li><span class="topo-peer-name">${esc(p.name || p.ip || p.key)}</span>`
       + `<span class="topo-peer-bytes">${esc(bytes(p.bytes))}</span></li>`
     )).join('');
+    // Identity/inventory rows — only the ones ExtraHop actually resolved. Hostname is
+    // the primary name; DNS/DHCP/NetBIOS are shown when they add something distinct.
+    const detailRows = [
+      ['Hostname', device.name],
+      ['DNS', device.dns_name],
+      ['DHCP', device.dhcp_name],
+      ['NetBIOS', device.netbios_name],
+      ['IP', device.ip],
+      ['MAC', device.mac],
+      ['Vendor', device.vendor],
+      ['OS', device.software],
+    ].filter(([, v]) => v && String(v).trim())
+      // Drop a DNS/DHCP/NetBIOS row that only repeats the hostname.
+      .filter(([label, v], _i, all) => !(['DNS', 'DHCP', 'NetBIOS'].includes(label)
+        && String(v).toLowerCase() === String(all[0][1]).toLowerCase()));
+    const details = detailRows.map(([label, v]) => (
+      `<li><span class="topo-kv-k">${esc(label)}</span><span class="topo-kv-v mono">${esc(v)}</span></li>`
+    )).join('');
     inspector([
       `<div class="topo-ins-title">${esc(device.name)}</div>`,
       `<div class="topo-ins-sub mono">${esc(device.ip)}${device.mac ? ` · ${esc(device.mac)}` : ''}</div>`,
@@ -209,12 +228,17 @@ async function showDevice(key) {
       `<span class="topo-tag">${esc(device.locality)}</span>`,
       device.critical ? '<span class="topo-tag crit">Critical</span>' : '',
       `</div>`,
+      details ? `<div class="topo-ins-h">Details</div><ul class="topo-ins-list topo-kv">${details}</ul>` : '',
       identities?.length
-        ? `<div class="topo-ins-h">Identities</div><ul class="topo-ins-list">${identities.map((i) => `<li>${esc(i.name)}</li>`).join('')}</ul>`
+        ? `<div class="topo-ins-h">Users</div><ul class="topo-ins-list topo-users">${identities.map((i) => (
+          `<li><button type="button" class="topo-user-link" data-user="${esc(i.name)}">${esc(i.name)}</button></li>`
+        )).join('')}</ul>`
         : '',
       rows ? `<div class="topo-ins-h">Top conversations</div><ul class="topo-ins-list topo-peers">${rows}</ul>` : '',
       `<div class="topo-ins-foot panel-sub">Peers reflect the significant-traffic topology (top-N per device), not every connection.</div>`,
     ].join(''));
+    // Clicking a user cross-links to that identity's device set.
+    $('topo-inspector')?.querySelectorAll('.topo-user-link').forEach((b) => b.addEventListener('click', () => showUser(b.dataset.user)));
   } catch {
     inspector('<div class="topo-inspector-empty panel-sub">Could not load device detail.</div>');
   }
@@ -647,6 +671,94 @@ async function selectOverlay(sessionId) {
   }
 }
 
+/* ------------------------------------------------------------------- users */
+
+/** Load every identity in the snapshot once, so the Users panel and search are instant. */
+async function loadIdentities() {
+  try {
+    const params = new URLSearchParams();
+    if (state.group) params.set('group', state.group);
+    if (state.snapshotId) params.set('snapshot', state.snapshotId);
+    const res = await fetch(`/api/topology/identities?${params}`);
+    if (!res.ok) { identitiesCache = []; return; }
+    const { identities } = await res.json();
+    identitiesCache = Array.isArray(identities) ? identities : [];
+  } catch { identitiesCache = []; }
+  const btn = $('topo-users');
+  if (btn) btn.classList.toggle('hidden', identitiesCache.length === 0);
+}
+
+/** The searchable Users list, rendered into the inspector column. */
+function renderUsersPanel(filter = '') {
+  const q = filter.trim().toLowerCase();
+  const matches = q
+    ? identitiesCache.filter((i) => i.name.toLowerCase().includes(q) || (i.principal || '').toLowerCase().includes(q))
+    : identitiesCache;
+  const rows = matches.slice(0, 200).map((i) => (
+    `<li><button type="button" class="topo-user-link" data-user="${esc(i.name)}">`
+    + `<span class="topo-user-name">${esc(i.name)}</span>`
+    + `<span class="topo-user-count">${i.devices.length} device${i.devices.length === 1 ? '' : 's'}</span>`
+    + `</button></li>`
+  )).join('');
+  inspector([
+    `<div class="topo-ins-title">Users</div>`,
+    `<div class="topo-ins-sub panel-sub">${identitiesCache.length} identit${identitiesCache.length === 1 ? 'y' : 'ies'} seen in this snapshot · click one to see its devices</div>`,
+    `<input id="topo-user-search" class="topo-select topo-user-search" type="search" placeholder="Search users…" value="${esc(filter)}" autocomplete="off">`,
+    matches.length
+      ? `<ul class="topo-ins-list topo-users">${rows}</ul>`
+      : `<div class="topo-ins-foot panel-sub">No user matches “${esc(filter)}”.</div>`,
+  ].join(''));
+  const search = $('topo-user-search');
+  if (search) {
+    search.addEventListener('input', (e) => renderUsersPanel(e.target.value));
+    // Keep focus + caret at the end across the re-render.
+    search.focus();
+    const v = search.value; search.value = ''; search.value = v;
+  }
+  $('topo-inspector')?.querySelectorAll('.topo-user-link').forEach((b) => b.addEventListener('click', () => showUser(b.dataset.user)));
+}
+
+/** Open the Users panel (from the header button). */
+function openUsers() {
+  if (!identitiesCache.length) {
+    inspector('<div class="topo-inspector-empty panel-sub">No users in this snapshot. Ask the agent to map the network — Tier 1 binds users on servers and critical hosts.</div>');
+    return;
+  }
+  renderUsersPanel('');
+}
+
+/**
+ * Frame the map on one identity's devices and list them. Reuses the key-scoped view
+ * the attack overlay uses: the devices may span several segments, so a key set is the
+ * right scope, and a breadcrumb makes it obvious how to get back.
+ */
+async function showUser(name) {
+  const identity = identitiesCache.find((i) => i.name === name);
+  if (!identity) return;
+  const keys = identity.devices.map((d) => d.key).filter(Boolean);
+  overlay = null; drift = null;
+  const pick = $('topo-overlay-pick'); if (pick) pick.value = '';
+  if (keys.length) {
+    state.crumbs = [{ zoom: 3, parent: '', scope: '', label: `User: ${name}`, keys }];
+    state.zoom = 3; state.parent = ''; state.scope = ''; state.keys = keys; state.autoTier = false;
+    await load();
+  }
+  const devRows = identity.devices.map((d) => (
+    `<li><button type="button" class="topo-dev-link" data-key="${esc(d.key)}">`
+    + `<span class="topo-peer-name">${esc(d.name || d.ip || d.key)}</span>`
+    + `<span class="topo-peer-bytes">${esc(d.role || '')}</span></button></li>`
+  )).join('');
+  inspector([
+    `<button type="button" class="topo-back" id="topo-user-back">← All users</button>`,
+    `<div class="topo-ins-title">${esc(name)}</div>`,
+    `<div class="topo-ins-sub panel-sub">Authenticated on ${identity.devices.length} device${identity.devices.length === 1 ? '' : 's'} in this snapshot</div>`,
+    `<ul class="topo-ins-list topo-peers">${devRows}</ul>`,
+    `<div class="topo-ins-foot panel-sub">An identity here authenticated from/to these hosts in the window — it does not by itself prove compromise.</div>`,
+  ].join(''));
+  $('topo-user-back')?.addEventListener('click', () => openUsers());
+  $('topo-inspector')?.querySelectorAll('.topo-dev-link').forEach((b) => b.addEventListener('click', () => showDevice(b.dataset.key)));
+}
+
 async function loadSnapshots() {
   try {
     const res = await fetch('/api/topology/snapshots');
@@ -675,7 +787,7 @@ function open() {
     $(id)?.setAttribute('aria-pressed', 'false');
     $(id)?.classList.remove('active');
   }
-  loadSnapshots().then(() => Promise.all([load(), loadIncidents()]));
+  loadSnapshots().then(() => Promise.all([load(), loadIncidents(), loadIdentities()]));
 }
 
 function close({ activate = 'files' } = {}) {
@@ -702,9 +814,11 @@ export function initTopology() {
   $('topo-snapshot')?.addEventListener('change', (e) => {
     state.snapshotId = e.target.value;
     state.crumbs = []; state.parent = ''; state.scope = ''; state.zoom = 0; state.keys = null; state.autoTier = true;
+    loadIdentities();
     load();
   });
   $('topo-overlay-pick')?.addEventListener('change', (e) => selectOverlay(e.target.value));
+  $('topo-users')?.addEventListener('click', openUsers);
   $('topo-drift')?.addEventListener('click', toggleDrift);
   $('topo-external')?.addEventListener('click', () => {
     state.showExternal = !state.showExternal;

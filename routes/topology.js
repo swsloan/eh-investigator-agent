@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
-import { listSnapshots, latestSnapshotId, readNode, readSnapshotForDiff, readTier, topologyGraphName } from '../lib/topology-store.js';
+import { listSnapshots, latestSnapshotId, readIdentities, readNode, readSnapshotForDiff, readTier, topologyGraphName } from '../lib/topology-store.js';
 import { buildOverlay } from '../lib/attack-overlay.js';
 import { describeDrift, diffSnapshots } from '../lib/topology-drift.js';
 
@@ -127,6 +127,23 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
       const detail = await readNode(client, group, { snapshotId, key: req.params.key });
       if (!detail) return res.status(404).json({ error: 'Device not found in this snapshot.' });
       res.json({ group, snapshot_id: snapshotId, ...detail });
+    } catch (err) { fail(res, err); }
+  });
+
+  /**
+   * Users in a snapshot and the devices each authenticated on (Slice 2). Read-only,
+   * bounded, most-connected first.
+   */
+  router.get('/identities', async (req, res) => {
+    if (!guard(req, res)) return;
+    try {
+      const group = await pickGroup(req);
+      const graphs = await graphList();
+      if (!graphs.includes(topologyGraphName(group))) return res.json({ group, snapshot_id: '', identities: [] });
+      const snapshotId = await pickSnapshot(req, group);
+      if (!snapshotId) return res.json({ group, snapshot_id: '', identities: [] });
+      const identities = await readIdentities(client, group, { snapshotId, limit: req.query.limit });
+      res.json({ group, snapshot_id: snapshotId, identities });
     } catch (err) { fail(res, err); }
   });
 
