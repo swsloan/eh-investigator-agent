@@ -53,6 +53,28 @@ const ROLE_COLOR = {
   unknown: '#9ca3af',
 };
 const LOCALITY_COLOR = { Internal: '#3b82f6', External: '#ef4444', Unknown: '#9ca3af' };
+const EXTERNAL_ACTOR_COLOR = '#dc2626'; // a synthetic C2/exfil endpoint drawn on an incident
+
+/** Mean {x,y} of graph node keys that exist; {x:0,y:0} when none. */
+function centroidOfNodes(keys) {
+  let x = 0; let y = 0; let n = 0;
+  for (const k of keys) {
+    if (!graph.hasNode(k)) continue;
+    x += graph.getNodeAttribute(k, 'x') || 0;
+    y += graph.getNodeAttribute(k, 'y') || 0;
+    n++;
+  }
+  return n ? { x: x / n, y: y / n } : { x: 0, y: 0 };
+}
+
+/** A small deterministic offset for an external node, so it sits near — but not on — the incident. */
+function extOffset(key) {
+  let h = 2166136261;
+  const s = String(key);
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  const angle = ((h >>> 0) % 360) * Math.PI / 180;
+  return { x: Math.cos(angle) * 3, y: Math.sin(angle) * 3 };
+}
 
 /**
  * Sigma paints into a canvas, which cannot read CSS variables — so the theme-dependent
@@ -99,8 +121,10 @@ let sigma = null;
 let graph = null;
 let lastData = null;   // last painted tier, so a theme flip can repaint without refetching
 let overlay = null;    // the incident currently drawn on top, or null for the plain map
+let overlayStats = { steps: 0, paths: 0, nodes: 0 }; // last overlay panel counts (for back-to-incident)
 let drift = null;      // the active snapshot comparison, or null
 let identitiesCache = []; // [{name, principal, devices:[{key,name,ip,role,locality}]}]
+let incidentsCache = [];  // [{id, title, disposition, confidence, events, createdAt}]
 let state = {
   group: '',
   snapshotId: '',
@@ -219,7 +243,13 @@ async function showDevice(key) {
     const details = detailRows.map(([label, v]) => (
       `<li><span class="topo-kv-k">${esc(label)}</span><span class="topo-kv-v mono">${esc(v)}</span></li>`
     )).join('');
+    // If an incident is overlaid, a device's detail must not strand the user away from
+    // it: offer a way back, and say what this device did in the incident.
+    const incidentSteps = overlay
+      ? overlay.events.filter((e) => e.src === key || e.dst === key || (e.entities || []).includes(key))
+      : [];
     inspector([
+      overlay ? `<button type="button" class="topo-back" id="topo-inc-back">← Back to incident</button>` : '',
       `<div class="topo-ins-title">${esc(device.name)}</div>`,
       `<div class="topo-ins-sub mono">${esc(device.ip)}${device.mac ? ` · ${esc(device.mac)}` : ''}</div>`,
       `<div class="topo-ins-tags">`,
@@ -228,6 +258,14 @@ async function showDevice(key) {
       `<span class="topo-tag">${esc(device.locality)}</span>`,
       device.critical ? '<span class="topo-tag crit">Critical</span>' : '',
       `</div>`,
+      incidentSteps.length
+        ? `<div class="topo-ins-h">In this incident</div><ul class="topo-ins-list topo-events">${incidentSteps.map((e) => {
+          const idx = overlay.tacticOrder.indexOf(e.tactic);
+          return `<li class="topo-ev"><span class="topo-ev-dot" style="--stage:${STAGE_COLOR[idx] || '#94a3b8'}"></span>`
+            + `<div><div class="topo-ev-head">${esc(e.event)}</div>`
+            + `<div class="topo-ev-meta">${esc(e.time || '—')}${e.tactic ? ` · ${esc(e.tactic)}` : ''}</div></div></li>`;
+        }).join('')}</ul>`
+        : '',
       details ? `<div class="topo-ins-h">Details</div><ul class="topo-ins-list topo-kv">${details}</ul>` : '',
       identities?.length
         ? `<div class="topo-ins-h">Users</div><ul class="topo-ins-list topo-users">${identities.map((i) => (
@@ -239,9 +277,32 @@ async function showDevice(key) {
     ].join(''));
     // Clicking a user cross-links to that identity's device set.
     $('topo-inspector')?.querySelectorAll('.topo-user-link').forEach((b) => b.addEventListener('click', () => showUser(b.dataset.user)));
+    $('topo-inc-back')?.addEventListener('click', backToIncident);
   } catch {
     inspector('<div class="topo-inspector-empty panel-sub">Could not load device detail.</div>');
   }
+}
+
+/** Minimal detail for a synthetic external actor (C2/exfil) — it has no device record. */
+function showExternalNode(raw) {
+  const steps = overlay
+    ? overlay.events.filter((e) => e.src === raw.key || e.dst === raw.key || (e.entities || []).includes(raw.key))
+    : [];
+  inspector([
+    overlay ? `<button type="button" class="topo-back" id="topo-inc-back">← Back to incident</button>` : '',
+    `<div class="topo-ins-title">${esc(raw.name)}</div>`,
+    `<div class="topo-ins-tags"><span class="topo-tag crit">External</span></div>`,
+    `<div class="topo-ins-foot panel-sub">An endpoint outside the mapped estate that this incident reached (e.g. C2 or exfil). Not a discovered device — shown so the attack's path off-network is visible.</div>`,
+    steps.length
+      ? `<div class="topo-ins-h">In this incident</div><ul class="topo-ins-list topo-events">${steps.map((e) => {
+        const idx = overlay.tacticOrder.indexOf(e.tactic);
+        return `<li class="topo-ev"><span class="topo-ev-dot" style="--stage:${STAGE_COLOR[idx] || '#94a3b8'}"></span>`
+          + `<div><div class="topo-ev-head">${esc(e.event)}</div>`
+          + `<div class="topo-ev-meta">${esc(e.time || '—')}${e.tactic ? ` · ${esc(e.tactic)}` : ''}</div></div></li>`;
+      }).join('')}</ul>`
+      : '',
+  ].join(''));
+  $('topo-inc-back')?.addEventListener('click', backToIncident);
 }
 
 function drillInto(node) {
@@ -336,6 +397,7 @@ function paint(data) {
 
   sigma.on('clickNode', ({ node }) => {
     const raw = graph.getNodeAttribute(node, 'raw');
+    if (raw?.external) { showExternalNode(raw); return; } // C2/exfil: no cluster to drill, no device record
     if (data.zoom === 3) showDevice(raw.key); else drillInto(raw);
   });
 
@@ -450,7 +512,7 @@ async function toggleDrift() {
     btn?.setAttribute('aria-pressed', 'true');
     btn?.classList.add('active');
     // Selecting drift clears any incident overlay: they are two different questions.
-    if (overlay) { overlay = null; const sel = $('topo-overlay-pick'); if (sel) sel.value = ''; }
+    if (overlay) { overlay = null; const s = $('topo-overlay-search'); if (s) s.value = ''; }
     if (lastData) { const cam = sigma && { ...sigma.getCamera().getState() }; paint(lastData); if (cam) sigma.getCamera().setState(cam); }
     else renderDriftPanel(0);
   } catch {
@@ -472,8 +534,31 @@ function applyOverlay(data) {
 
   // Lift a device-level actor to the node that represents it at this zoom: at zoom 0
   // a device isn't drawn, its locality is. The server ships each involved device's
-  // tier coordinates for exactly this.
+  // tier coordinates for exactly this. External actors carry the same key at every
+  // tier, so once injected they lift to themselves.
   const FIELD = ['locality', 'segment', 'role_key', 'key'];
+
+  // Inject external actor nodes (C2 / exfil) — they belong to no cluster and draw as
+  // themselves at every zoom. Place each near the incident's internal footprint so the
+  // path out of the estate reads clearly. Done before lifting, so they can be lifted to.
+  const footprint = [];
+  for (const ev of overlay.events) {
+    for (const k of [ev.src, ev.dst]) {
+      const t = overlay.tierMap?.[k];
+      if (t && !t.external) { const key = t[FIELD[data.zoom]]; if (key && graph.hasNode(key)) footprint.push(key); }
+    }
+  }
+  const center = centroidOfNodes(footprint);
+  for (const ext of overlay.externals || []) {
+    if (graph.hasNode(ext.key)) continue;
+    const off = extOffset(ext.key);
+    graph.addNode(ext.key, {
+      x: center.x + off.x, y: center.y + off.y, size: 8,
+      label: `${ext.name} (external)`, color: EXTERNAL_ACTOR_COLOR,
+      external: true, raw: { key: ext.key, name: ext.name, external: true },
+    });
+  }
+
   const liftKey = (deviceKey) => {
     const tiers = overlay.tierMap?.[deviceKey];
     if (!tiers) return '';
@@ -532,7 +617,13 @@ function applyOverlay(data) {
     }
   }
   sigma.setSetting('renderEdgeLabels', byPair.size > 0);
-  renderOverlayPanel(steps.length, byPair.size, involved.size);
+  overlayStats = { steps: steps.length, paths: byPair.size, nodes: involved.size };
+  renderOverlayPanel(overlayStats.steps, overlayStats.paths, overlayStats.nodes);
+}
+
+/** Re-show the incident summary (from a device's detail, "← Back to incident"). */
+function backToIncident() {
+  if (overlay) renderOverlayPanel(overlayStats.steps, overlayStats.paths, overlayStats.nodes);
 }
 
 /** The incident's kill-chain strip + event list, in the inspector column. */
@@ -600,6 +691,7 @@ export async function load({ keepCamera = false } = {}) {
     renderCrumbs();
     updateNeighborBtn();
   } catch (err) {
+    console.error('[topology] load failed', err);
     showEmpty('Could not reach the topology service.');
   } finally {
     state.loading = false;
@@ -616,28 +708,68 @@ function showEmpty(message) {
   renderCrumbs();
 }
 
-/** Populate the overlay picker. "No overlay" is always first and always the default. */
+/** Cache the incident list for the searchable overlay picker. */
 async function loadIncidents() {
-  const sel = $('topo-overlay-pick');
-  if (!sel) return;
   try {
     const res = await fetch('/api/topology/incidents');
-    if (!res.ok) return;
+    if (!res.ok) { incidentsCache = []; return; }
     const { incidents } = await res.json();
-    sel.innerHTML = ['<option value="">No overlay</option>']
-      .concat((incidents || []).map((i) => (
-        `<option value="${esc(i.id)}">${esc(i.title)}${i.disposition ? ` · ${esc(i.disposition)}` : ''} (${i.events})</option>`
-      ))).join('');
-  } catch { /* the picker just stays at "No overlay" */ }
+    incidentsCache = Array.isArray(incidents) ? incidents : [];
+  } catch { incidentsCache = []; }
+}
+
+function incidentLabel(i) {
+  if (!i || !i.id) return '';
+  return `${i.title}${i.disposition ? ` · ${i.disposition}` : ''} (${i.events})`;
+}
+
+/**
+ * The searchable overlay dropdown. The first row always clears the overlay, then the
+ * incidents that match the typed filter — so a large history is reachable without a
+ * giant static list (issue #4: "show the first six, let the user search for others").
+ */
+function renderIncidentList(filter = '') {
+  const list = $('topo-overlay-list');
+  if (!list) return;
+  const q = filter.trim().toLowerCase();
+  const matches = q
+    ? incidentsCache.filter((i) => `${i.title} ${i.disposition}`.toLowerCase().includes(q))
+    : incidentsCache;
+  const items = [`<li role="option" class="topo-combo-item" data-id="">No overlay</li>`]
+    .concat(matches.slice(0, 100).map((i) => (
+      `<li role="option" class="topo-combo-item" data-id="${esc(i.id)}">${esc(incidentLabel(i))}</li>`
+    )));
+  list.innerHTML = items.join('');
+  list.classList.remove('hidden');
+  $('topo-overlay-search')?.setAttribute('aria-expanded', 'true');
+  list.querySelectorAll('.topo-combo-item').forEach((li) => li.addEventListener('mousedown', (e) => {
+    // mousedown (not click) + preventDefault, so selecting doesn't lose input focus to
+    // the blur race before we read the choice.
+    e.preventDefault();
+    const id = li.dataset.id;
+    hideIncidentList();
+    const input = $('topo-overlay-search');
+    if (input) input.value = id ? incidentLabel(incidentsCache.find((x) => x.id === id)) : '';
+    selectOverlay(id);
+  }));
+}
+
+function hideIncidentList() {
+  $('topo-overlay-list')?.classList.add('hidden');
+  $('topo-overlay-search')?.setAttribute('aria-expanded', 'false');
 }
 
 /** Select an incident to draw, or '' to return to the plain map. */
 async function selectOverlay(sessionId) {
   if (!sessionId) {
     overlay = null;
-    // Returning to the plain map also leaves the incident's key-scoped view.
-    if (state.keys) { state.keys = null; state.crumbs = []; state.zoom = 0; state.parent = ''; state.scope = ''; state.autoTier = true; load(); }
-    if (lastData) { const cam = sigma && { ...sigma.getCamera().getState() }; paint(lastData); if (cam) sigma.getCamera().setState(cam); }
+    const os = $('topo-overlay-search'); if (os) os.value = '';
+    state.showExternal = false;
+    $('topo-external')?.setAttribute('aria-pressed', 'false');
+    $('topo-external')?.classList.remove('active');
+    // Returning to the plain map leaves any incident framing behind.
+    state.keys = null; state.crumbs = []; state.zoom = 0; state.parent = ''; state.scope = ''; state.autoTier = true;
+    load();
     inspector('<div class="topo-inspector-empty panel-sub">Zoom in to devices, then click one to inspect it.</div>');
     return;
   }
@@ -651,21 +783,18 @@ async function selectOverlay(sessionId) {
     // An incident and a snapshot comparison answer different questions; showing both
     // at once would mean two competing colour languages on the same nodes.
     if (drift) { drift = null; $('topo-drift')?.setAttribute('aria-pressed', 'false'); $('topo-drift')?.classList.remove('active'); }
-    // Frame the incident. At an aggregate tier the actors collapse into one cluster
-    // and there is literally no path to draw ("0 steps"), so selecting an incident
-    // jumps to the device view of exactly its participants — the map equivalent of
-    // searching an address and being taken there. The breadcrumb makes it obvious
-    // where you are and how to get back.
-    if (overlay.entities?.length) {
-      state.crumbs = [{ zoom: 3, parent: '', label: overlay.title, keys: overlay.entities }];
-      state.zoom = 3;
-      state.parent = '';
-      state.keys = overlay.entities;
-      state.autoTier = false;
-      await load();
-    } else if (lastData) {
-      paint(lastData);
-    }
+    // Start HIGH-LEVEL and zoomable — like the map it's drawn on. The whole estate is
+    // shown at the segment tier with the incident's clusters highlighted and everything
+    // else dimmed; camera-driven LOD stays on, so zooming in redraws the path at each
+    // tier down to individual devices. (The old behaviour teleported straight to a bare
+    // device set with no way to see context or zoom back out.) An incident can touch an
+    // External-locality device, so make sure those are shown while an overlay is active.
+    state.keys = null; state.parent = ''; state.scope = ''; state.crumbs = [];
+    state.zoom = 1; state.autoTier = true;
+    state.showExternal = true;
+    $('topo-external')?.setAttribute('aria-pressed', 'true');
+    $('topo-external')?.classList.add('active');
+    await load();
   } catch {
     inspector('<div class="topo-inspector-empty panel-sub">Could not load that incident.</div>');
   }
@@ -781,6 +910,7 @@ function open() {
   state = { ...state, zoom: 0, parent: '', scope: '', crumbs: [], keys: null, showExternal: false, showNeighbors: false, autoTier: true };
   overlay = null; // the map always opens plain; an incident is something you choose
   drift = null;
+  const os = $('topo-overlay-search'); if (os) os.value = '';
   $('topo-drift')?.setAttribute('aria-pressed', 'false');
   $('topo-drift')?.classList.remove('active');
   for (const id of ['topo-external', 'topo-neighbors']) {
@@ -817,7 +947,10 @@ export function initTopology() {
     loadIdentities();
     load();
   });
-  $('topo-overlay-pick')?.addEventListener('change', (e) => selectOverlay(e.target.value));
+  const overlaySearch = $('topo-overlay-search');
+  overlaySearch?.addEventListener('focus', () => renderIncidentList(overlaySearch.value));
+  overlaySearch?.addEventListener('input', () => renderIncidentList(overlaySearch.value));
+  overlaySearch?.addEventListener('blur', () => setTimeout(hideIncidentList, 150));
   $('topo-users')?.addEventListener('click', openUsers);
   $('topo-drift')?.addEventListener('click', toggleDrift);
   $('topo-external')?.addEventListener('click', () => {

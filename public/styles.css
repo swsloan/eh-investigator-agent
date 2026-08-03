@@ -3751,6 +3751,22 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 .topo-select:focus { outline: none; border-color: var(--focus-border); }
 .topo-select:disabled { opacity: .55; }
 
+/* Searchable overlay picker (combobox): input + absolute dropdown. */
+.topo-combo { position: relative; }
+.topo-combo-input { width: 190px; }
+.topo-combo-list {
+  position: absolute; top: 100%; left: 0; z-index: 40; margin: 4px 0 0; padding: 4px;
+  list-style: none; min-width: 240px; max-width: 340px; max-height: 300px; overflow-y: auto;
+  background: var(--raised); border: 1px solid var(--hairline); border-radius: 10px;
+  box-shadow: var(--shadow-soft);
+}
+.topo-combo-item {
+  padding: 6px 8px; border-radius: 6px; font-size: 12.5px; color: var(--ink);
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.topo-combo-item:hover { background: var(--surface-hover); }
+.topo-combo-item[data-id=""] { color: var(--text-faint); }
+
 .topology-body { flex: 1 1 auto; display: flex; min-height: 0; }
 .topo-main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .topo-bar {

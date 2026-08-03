@@ -264,6 +264,11 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
         if (!overlay.entities.includes(d.key)) continue;
         tierMap[d.key] = { key: d.key, locality: d.locality, segment: d.segment, role_key: d.role_key, name: d.name };
       }
+      // External actors (C2, exfil) aren't devices and live in no cluster: they draw as
+      // themselves at every zoom, so each tier field resolves to the external key.
+      for (const ext of overlay.externals || []) {
+        tierMap[ext.key] = { key: ext.key, locality: ext.key, segment: ext.key, role_key: ext.key, name: ext.name, external: true };
+      }
       res.json({ group, snapshot_id: snapshotId, tierMap, ...overlay });
     } catch (err) { fail(res, err); }
   });

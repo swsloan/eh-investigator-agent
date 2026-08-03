@@ -588,11 +588,12 @@
         <label class="topo-select-wrap">Snapshot
           <select id="topo-snapshot" class="topo-select"></select>
         </label>
-        <label class="topo-select-wrap">Overlay
-          <select id="topo-overlay-pick" class="topo-select">
-            <option value="">No overlay</option>
-          </select>
-        </label>
+        <div class="topo-select-wrap topo-combo">Overlay
+          <input id="topo-overlay-search" class="topo-select topo-combo-input" type="search"
+                 placeholder="No overlay" autocomplete="off" role="combobox"
+                 aria-expanded="false" aria-controls="topo-overlay-list" aria-label="Overlay an incident">
+          <ul id="topo-overlay-list" class="topo-combo-list hidden" role="listbox"></ul>
+        </div>
         <button id="topo-users" class="btn-secondary slim hidden" type="button" title="Browse the users seen in this snapshot and the devices they authenticated on">Users</button>
         <button id="topo-external" class="btn-secondary slim" type="button" aria-pressed="false" title="Show devices outside the internal network (External locality)">Show external</button>
         <button id="topo-drift" class="btn-secondary slim" type="button" aria-pressed="false">What changed</button>
