@@ -209,6 +209,10 @@ function renderCrumbs() {
 }
 
 function inspector(html) {
+  // Any panel render clears the "device being shown" marker; showDevice re-sets it
+  // once it has finished, so a background enrichment poll can only refresh the device
+  // the user is actually looking at.
+  currentDeviceKey = null;
   const el = $('topo-inspector');
   if (el) el.innerHTML = html;
 }
@@ -227,7 +231,7 @@ async function showDevice(key) {
     const params = new URLSearchParams({ group: state.group, snapshot: state.snapshotId });
     const res = await fetch(`/api/topology/node/${encodeURIComponent(key)}?${params}`);
     if (!res.ok) { inspector('<div class="topo-inspector-empty panel-sub">No detail for this device.</div>'); return; }
-    const { device, peers, identities } = await res.json();
+    const { device, peers, identities, enrichments } = await res.json();
     const rows = (peers || []).slice(0, 12).map((p) => (
       `<li><span class="topo-peer-name">${esc(p.name || p.ip || p.key)}</span>`
       + `<span class="topo-peer-bytes">${esc(bytes(p.bytes))}</span></li>`
@@ -279,12 +283,16 @@ async function showDevice(key) {
           `<li><button type="button" class="topo-user-link" data-user="${esc(i.name)}">${esc(i.name)}</button></li>`
         )).join('')}</ul>`
         : '',
+      enrichmentsHtml(enrichments),
       rows ? `<div class="topo-ins-h">Top conversations</div><ul class="topo-ins-list topo-peers">${rows}</ul>` : '',
       `<div class="topo-ins-foot panel-sub">Peers reflect the significant-traffic topology (top-N per device), not every connection.</div>`,
+      askHtml(),
     ].join(''));
     // Clicking a user cross-links to that identity's device set.
     $('topo-inspector')?.querySelectorAll('.topo-user-link').forEach((b) => b.addEventListener('click', () => showUser(b.dataset.user)));
     $('topo-inc-back')?.addEventListener('click', backToIncident);
+    wireAsk(device.key);
+    currentDeviceKey = device.key; // now showing this device; enrichment polls may refresh it
   } catch {
     inspector('<div class="topo-inspector-empty panel-sub">Could not load device detail.</div>');
   }
@@ -310,6 +318,85 @@ function showExternalNode(raw) {
       : '',
   ].join(''));
   $('topo-inc-back')?.addEventListener('click', backToIncident);
+}
+
+/* ------------------------------------------------------ device enrichment */
+
+// Quick-picks the panel offers; the value is the server-side preset key.
+const ENRICH_CHIPS = [
+  ['ports', 'Open ports'], ['dns', 'DNS activity'], ['users', 'Users'],
+  ['software', 'Software / OS'], ['peers', 'Detailed peers'],
+];
+let currentDeviceKey = null; // which device the inspector is showing, so a poll can't hijack another
+let enrichTimer = null;
+
+/** The recorded enrichments block for a device, or '' when there are none. */
+function enrichmentsHtml(list) {
+  if (!Array.isArray(list) || !list.length) return '';
+  const rows = list.map((e) => (
+    `<li><div class="topo-enrich-label">${esc(prettyRole(e.label))}</div>`
+    + `<div class="topo-enrich-value">${esc(e.value)}</div>`
+    + `<div class="topo-enrich-time panel-sub">${esc(String(e.collected_at || '').replace('T', ' ').replace(/\..*$/, '').replace('Z', ''))}</div></li>`
+  )).join('');
+  return `<div class="topo-ins-h">Enrichments</div><ul class="topo-ins-list topo-enrich">${rows}</ul>`;
+}
+
+/** The "Ask ExtraHop about this device" area — quick-pick chips + a free-text box. */
+function askHtml() {
+  const chips = ENRICH_CHIPS.map(([k, label]) => `<button type="button" class="topo-chip" data-preset="${esc(k)}">${esc(label)}</button>`).join('');
+  return [
+    `<div class="topo-ins-h">Ask ExtraHop about this device</div>`,
+    `<div class="topo-chips">${chips}</div>`,
+    `<div class="topo-ask-row"><input id="topo-ask-input" class="topo-select topo-ask-input" type="text" placeholder="Or ask anything…" autocomplete="off">`,
+    `<button type="button" id="topo-ask-go" class="btn-secondary slim">Ask</button></div>`,
+    `<div id="topo-ask-status" class="topo-ins-foot panel-sub"></div>`,
+  ].join('');
+}
+
+function wireAsk(key) {
+  const insp = $('topo-inspector');
+  insp?.querySelectorAll('.topo-chip').forEach((b) => b.addEventListener('click', () => enrichDevice(key, { preset: b.dataset.preset })));
+  $('topo-ask-go')?.addEventListener('click', () => {
+    const v = $('topo-ask-input')?.value.trim();
+    if (v) enrichDevice(key, { request: v });
+  });
+  $('topo-ask-input')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('topo-ask-go')?.click(); });
+}
+
+async function enrichDevice(key, body) {
+  const statusEl = $('topo-ask-status');
+  if (statusEl) statusEl.textContent = 'Asking ExtraHop — this runs a live read-only query and can take a moment…';
+  // Count what's there now, so the poll can tell when the new answer lands.
+  let before = 0;
+  try {
+    const r = await fetch(`/api/topology/enrichments/${encodeURIComponent(key)}?${new URLSearchParams({ group: state.group })}`);
+    if (r.ok) before = (await r.json()).enrichments?.length || 0;
+  } catch { /* assume none */ }
+  try {
+    const res = await fetch(`/api/topology/enrich/${encodeURIComponent(key)}?${new URLSearchParams({ group: state.group, snapshot: state.snapshotId })}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { if (statusEl) statusEl.textContent = data.error || 'Could not start the query.'; return; }
+  } catch { if (statusEl) statusEl.textContent = 'Could not reach the enrichment service.'; return; }
+  pollEnrichments(key, before, 0);
+}
+
+/** Poll for the enrichment to appear, then re-render the device (bounded ~2 min). */
+function pollEnrichments(key, before, tries) {
+  if (enrichTimer) clearTimeout(enrichTimer);
+  if (currentDeviceKey !== key) return; // the user moved on; stop
+  if (tries > 40) { const s = $('topo-ask-status'); if (s) s.textContent = 'Still working — reopen this device shortly to see the result.'; return; }
+  enrichTimer = setTimeout(async () => {
+    if (currentDeviceKey !== key) return;
+    let list = null;
+    try {
+      const r = await fetch(`/api/topology/enrichments/${encodeURIComponent(key)}?${new URLSearchParams({ group: state.group })}`);
+      if (r.ok) list = (await r.json()).enrichments || [];
+    } catch { /* keep polling */ }
+    if (list && list.length > before) { showDevice(key); return; }
+    pollEnrichments(key, before, tries + 1);
+  }, 3000);
 }
 
 function drillInto(node) {

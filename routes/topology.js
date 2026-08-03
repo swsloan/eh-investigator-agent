@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
-import { listSnapshots, latestSnapshotId, readIdentities, readNode, readSnapshotForDiff, readTier, topologyGraphName } from '../lib/topology-store.js';
+import { listSnapshots, latestSnapshotId, readEnrichments, readIdentities, readNode, readSnapshotForDiff, readTier, topologyGraphName } from '../lib/topology-store.js';
 import { buildOverlay } from '../lib/attack-overlay.js';
 import { describeDrift, diffSnapshots } from '../lib/topology-drift.js';
 
@@ -22,7 +22,7 @@ import { describeDrift, diffSnapshots } from '../lib/topology-drift.js';
  * Reads use GRAPH.RO_QUERY. The only write is the explicit ingest, which goes
  * through the same coordinator the turn-end path uses.
  */
-export function topologyRouter({ getConfig, client, coordinator, sessions, resolveGroup, redact = (v) => v }) {
+export function topologyRouter({ getConfig, client, coordinator, sessions, resolveGroup, ensureEnrichmentSession, redact = (v) => v }) {
   const router = express.Router();
   let cachedGraphs = null;
   let cachedAt = 0;
@@ -127,6 +127,72 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
       const detail = await readNode(client, group, { snapshotId, key: req.params.key });
       if (!detail) return res.status(404).json({ error: 'Device not found in this snapshot.' });
       res.json({ group, snapshot_id: snapshotId, ...detail });
+    } catch (err) { fail(res, err); }
+  });
+
+  // Enrichment quick-picks the UI offers, mapped to a concrete ExtraHop ask. The label
+  // is stored with the result; the ask guides the agent. Free text is also allowed.
+  const ENRICH_PRESETS = {
+    ports: 'the listening/open ports and the services on them',
+    dns: 'recent DNS lookups this device made (domains queried)',
+    users: 'which user accounts authenticated from or to this device',
+    software: 'the operating system, software, and vendor/model details',
+    peers: 'its most significant peers with protocols and byte volumes',
+  };
+
+  /**
+   * Kick off a user-directed enrichment for one device (Slice 5). The server has no
+   * excli access — only the agent does — so this sends a scoped prompt to a dedicated
+   * background "map" session, which queries ExtraHop read-only and appends the result
+   * to evidence/topology/enrichments.json; the coordinator merges it into a durable,
+   * snapshot-independent store at turn end. The UI polls GET /enrichments/:key.
+   */
+  router.post('/enrich/:key', async (req, res) => {
+    if (!guard(req, res)) return;
+    if (typeof ensureEnrichmentSession !== 'function') {
+      return res.status(503).json({ error: 'Enrichment is not available in this deployment.' });
+    }
+    try {
+      const group = await pickGroup(req);
+      const snapshotId = await pickSnapshot(req, group);
+      if (!snapshotId) return res.status(404).json({ error: 'No topology snapshot for this group.' });
+      const detail = await readNode(client, group, { snapshotId, key: req.params.key });
+      if (!detail) return res.status(404).json({ error: 'Device not found in this snapshot.' });
+
+      const presetKey = typeof req.body?.preset === 'string' ? req.body.preset : '';
+      const freeText = typeof req.body?.request === 'string' ? req.body.request.trim().slice(0, 400) : '';
+      const ask = ENRICH_PRESETS[presetKey] || freeText;
+      if (!ask) return res.status(400).json({ error: 'Nothing was requested.' });
+      const label = (presetKey && presetKey in ENRICH_PRESETS ? presetKey : (freeText || 'detail')).slice(0, 60);
+
+      const session = ensureEnrichmentSession();
+      if (session.running) return res.status(409).json({ error: 'The map is already running a query — try again in a moment.' });
+
+      const d = detail.device;
+      const prompt = [
+        'Use the network-topology skill\'s "device enrichment" step (SKILL.md §7).',
+        `Target device — name: ${JSON.stringify(d.name)}, ip: ${JSON.stringify(d.ip)}, key: ${JSON.stringify(d.key)}`
+          + (d.discovery_id ? `, discovery_id: ${JSON.stringify(d.discovery_id)}` : '')
+          + (d.oid ? `, oid: ${JSON.stringify(d.oid)}` : '') + '.',
+        `Retrieve, read-only via ./excli-interface: ${ask}.`,
+        `Then append exactly one entry to evidence/topology/enrichments.json (a JSON array), of the form`,
+        `{"device_key": ${JSON.stringify(d.key)}, "label": ${JSON.stringify(label)}, "value": "<a concise answer, one sentence or a short list>", "collected_at": "<ISO 8601 now>"}.`,
+        'Create the file with a single-element array if it does not exist; otherwise read it, append, and write it back. Do not modify anything in ExtraHop.',
+      ].join('\n');
+
+      session.prompt(prompt);
+      res.json({ ok: true, sessionId: session.id, label });
+    } catch (err) { fail(res, err); }
+  });
+
+  /** Enrichments recorded for one device (Slice 5). Polled by the device panel. */
+  router.get('/enrichments/:key', async (req, res) => {
+    if (!guard(req, res)) return;
+    try {
+      const group = await pickGroup(req);
+      const graphs = await graphList();
+      if (!graphs.includes(topologyGraphName(group))) return res.json({ group, key: req.params.key, enrichments: [] });
+      res.json({ group, key: req.params.key, enrichments: await readEnrichments(client, group, req.params.key) });
     } catch (err) { fail(res, err); }
   });
 

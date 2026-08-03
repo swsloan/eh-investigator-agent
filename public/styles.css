@@ -3872,6 +3872,20 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 }
 .topo-back:hover { text-decoration: underline; }
 
+/* On-demand device enrichment: quick-pick chips + free-text ask + recorded results. */
+.topo-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.topo-chip {
+  background: var(--surface-hover); color: var(--text-2); border: 1px solid var(--hairline);
+  border-radius: 999px; padding: 4px 10px; font-size: 11.5px; cursor: pointer;
+}
+.topo-chip:hover { color: var(--ink); border-color: var(--cyan-edge); }
+.topo-ask-row { display: flex; gap: 6px; align-items: center; }
+.topo-ask-input { flex: 1 1 auto; min-width: 0; }
+.topo-enrich li { display: grid; gap: 2px; }
+.topo-enrich-label { font-weight: 700; color: var(--ink); font-size: 12px; text-transform: capitalize; }
+.topo-enrich-value { color: var(--text-2); font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; }
+.topo-enrich-time { font-size: 10.5px; }
+
 @media (max-width: 900px) {
   .topo-inspector { flex-basis: 240px; }
 }
