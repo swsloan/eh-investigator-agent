@@ -144,6 +144,13 @@ function prettySegment(s) {
   return String(s || '').replace(/^(vlan|net|loc):/, (_, k) => (k === 'vlan' ? 'VLAN ' : ''));
 }
 
+/** A role slug (`domain_controller`) as a readable label (`Domain controller`). */
+function prettyRole(r) {
+  return String(r || 'unknown').replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+}
+
+let legendVisible = true; // the colour legend is on by default; a toggle hides it
+
 function colorFor(node, zoom) {
   // Every tier carries meaning in its colour rather than going flat blue in the
   // middle: localities and the segments inside them share the locality hue, while
@@ -418,6 +425,54 @@ function paint(data) {
   else if (drift) suffix = ` · <b>${esc(drift.description)}</b>`;
   else if (data.neighbors) suffix = ' · <b>+ outside dependencies</b>';
   setStatus(base + suffix);
+  renderLegend();
+}
+
+/** One legend row: a colour swatch (optionally ringed/muted) + its meaning. */
+function legendRow(color, label, opts = {}) {
+  const cls = `topo-leg-sw${opts.ring ? ' ring' : ''}${opts.muted ? ' muted' : ''}`;
+  return `<li><span class="${cls}" style="--c:${color}"></span><span>${esc(label)}</span></li>`;
+}
+
+/**
+ * Context-aware legend: shows exactly the colour set the current view uses, sourced
+ * from the same maps the renderer paints with (so it can never drift from the map).
+ * Overlay and drift take priority; otherwise it follows the zoom tier.
+ */
+function renderLegend() {
+  const box = $('topo-legend');
+  const toggle = $('topo-legend-toggle');
+  if (!box || !toggle) return;
+  const show = legendVisible && Boolean(lastData);
+  box.classList.toggle('hidden', !show);
+  toggle.classList.toggle('hidden', !lastData);
+  toggle.setAttribute('aria-pressed', String(legendVisible));
+  if (!show) return;
+
+  const z = lastData.zoom;
+  let title;
+  let rows;
+  if (overlay) {
+    title = 'Kill chain';
+    rows = (overlay.stages || []).map((s) => legendRow(STAGE_COLOR[overlay.tacticOrder.indexOf(s.tactic)] || '#ef4444', s.tactic));
+    if (overlay.externals?.length) rows.push(legendRow(EXTERNAL_ACTOR_COLOR, 'External actor (C2 / exfil)'));
+  } else if (drift) {
+    title = 'What changed';
+    rows = [legendRow('#ef4444', 'High'), legendRow('#f59e0b', 'Medium'), legendRow('#0ea5e9', 'Info')];
+  } else if (z <= 1) {
+    title = 'Locality';
+    const present = new Set(lastData.nodes.map((n) => (z === 0 ? n.name : n.parent)));
+    rows = ['Internal', 'External', 'Unknown']
+      .filter((k) => k === 'Internal' || present.has(k))
+      .map((k) => legendRow(LOCALITY_COLOR[k], k));
+  } else {
+    title = 'Device role';
+    const roles = [...new Set(lastData.nodes.filter((n) => !n.neighbor).map((n) => (z === 2 ? n.name : n.role)).filter(Boolean))];
+    rows = roles.slice(0, 12).map((r) => legendRow(ROLE_COLOR[r] || ROLE_COLOR.unknown, prettyRole(r)));
+    if (lastData.nodes.some((n) => n.critical)) rows.push(legendRow('#ef4444', 'Critical', { ring: true }));
+    if (lastData.nodes.some((n) => n.neighbor)) rows.push(legendRow('rgba(130,138,160,0.55)', 'Outside this segment', { muted: true }));
+  }
+  box.innerHTML = `<div class="topo-leg-h">${esc(title)}</div><ul class="topo-leg-list">${rows.join('')}</ul>`;
 }
 
 /**
@@ -701,6 +756,8 @@ export async function load({ keepCamera = false } = {}) {
 function showEmpty(message) {
   if (sigma) { sigma.kill(); sigma = null; }
   $('topo-canvas').classList.add('hidden');
+  $('topo-legend')?.classList.add('hidden');
+  $('topo-legend-toggle')?.classList.add('hidden');
   const el = $('topo-empty');
   el.classList.remove('hidden');
   el.innerHTML = `<div class="topo-empty-inner">${message}</div>`;
@@ -910,6 +967,7 @@ function open() {
   state = { ...state, zoom: 0, parent: '', scope: '', crumbs: [], keys: null, showExternal: false, showNeighbors: false, autoTier: true };
   overlay = null; // the map always opens plain; an incident is something you choose
   drift = null;
+  legendVisible = true;
   const os = $('topo-overlay-search'); if (os) os.value = '';
   $('topo-drift')?.setAttribute('aria-pressed', 'false');
   $('topo-drift')?.classList.remove('active');
@@ -967,6 +1025,7 @@ export function initTopology() {
     b?.classList.toggle('active', state.showNeighbors);
     load({ keepCamera: true });
   });
+  $('topo-legend-toggle')?.addEventListener('click', () => { legendVisible = !legendVisible; renderLegend(); });
   $('topo-refresh')?.addEventListener('click', () => { loadSnapshots().then(() => load()); });
   window.addEventListener('resize', () => { if (isTopologyOpen() && sigma) sigma.refresh(); });
 
