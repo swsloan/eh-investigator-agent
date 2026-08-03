@@ -321,6 +321,21 @@ function createSession(id = crypto.randomUUID(), { backend: backendId } = {}) {
   return session;
 }
 
+// A single, reused background session that runs the network map's on-demand device
+// enrichment queries (Slice 5). Kept separate from investigations so an enrichment
+// query never lands in an investigation's transcript or workspace; it has the same
+// read-only excli access every session has. Lazily created and reused.
+const TOPOLOGY_SESSION_ID = 'topology-map';
+function ensureTopologySession() {
+  let session = sessions.get(TOPOLOGY_SESSION_ID);
+  if (!session) {
+    session = createSession(TOPOLOGY_SESSION_ID, { backend: prefs().backend });
+    session.title = 'Network map enrichment';
+    session.titleGenerated = false;
+  }
+  return session;
+}
+
 // Restore sessions persisted by previous runs, and backfill workspaces whose
 // state file was lost. Backends may contribute richer recovery (Pi rebuilds
 // from its JSONL history).
@@ -624,6 +639,7 @@ app.use('/api/topology', topologyRouter({
   coordinator: topology,
   sessions,
   resolveGroup: topologyGroup,
+  ensureEnrichmentSession: ensureTopologySession,
   redact: (v) => redactText(String(v), secretStore),
 }));
 // Drift watch: warn if untyped [Entity] nodes reappear. Watch the configured
