@@ -16,6 +16,7 @@
 // CSP with no inline script and no bundler.
 
 import { $ } from './dom.js';
+import { avatarSvg, identityType, roleGlyphInline, roleIconDataUri } from './topo-glyphs.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -280,7 +281,8 @@ async function showDevice(key) {
       details ? `<div class="topo-ins-h">Details</div><ul class="topo-ins-list topo-kv">${details}</ul>` : '',
       identities?.length
         ? `<div class="topo-ins-h">Users</div><ul class="topo-ins-list topo-users">${identities.map((i) => (
-          `<li><button type="button" class="topo-user-link" data-user="${esc(i.name)}">${esc(i.name)}</button></li>`
+          `<li><button type="button" class="topo-user-link" data-user="${esc(i.name)}">`
+          + `${avatarSvg(identityType(i.principal || i.name))}<span class="topo-user-name">${esc(i.name)}</span></button></li>`
         )).join('')}</ul>`
         : '',
       enrichmentsHtml(enrichments),
@@ -440,11 +442,17 @@ function paint(data) {
   const G = window.graphology?.Graph || window.graphology;
   graph = new G({ type: 'undirected', allowSelfLoops: false, multi: false });
 
+  // Device-tier nodes render as role ICONS (a white glyph on the role-coloured disc)
+  // through sigma's image node program; aggregate tiers stay coloured circles. The
+  // icon is a data: URI SVG, so it works under the strict CSP with no CDN.
+  const useIcons = data.zoom === 3 && Boolean(window.Sigma?.rendering?.createNodeImageProgram);
+
   for (const n of data.nodes) {
     // Neighbor = a one-hop peer pulled in from OUTSIDE the scoped segment/cluster
     // ("show outside dependencies"). Muted and labelled with where it lives, so the
     // boundary is legible and the in-scope devices stay the focus.
     const isNeighbor = data.zoom === 3 && n.neighbor;
+    const color = isNeighbor ? 'rgba(130,138,160,0.55)' : colorFor(n, data.zoom);
     graph.addNode(n.key, {
       x: Number(n.x) || 0,
       y: Number(n.y) || 0,
@@ -453,7 +461,8 @@ function paint(data) {
       // same escaping discipline as the rest of the UI — device names come off the
       // wire and are attacker-controllable (lib/telemetry-taint.js).
       label: isNeighbor ? `${n.name ?? n.key} · ${prettySegment(n.segment)}` : String(n.name ?? n.key),
-      color: isNeighbor ? 'rgba(130,138,160,0.55)' : colorFor(n, data.zoom),
+      color,
+      ...(useIcons ? { type: 'image', image: roleIconDataUri(n.role, isNeighbor ? '#94a3b8' : color) } : {}),
       neighbor: isNeighbor,
       raw: n,
     });
@@ -471,7 +480,9 @@ function paint(data) {
 
   const container = $('topo-canvas');
   if (sigma) { sigma.kill(); sigma = null; }
+  const makeImage = window.Sigma?.rendering?.createNodeImageProgram;
   sigma = new window.Sigma(graph, container, {
+    ...(makeImage ? { nodeProgramClasses: { image: makeImage() } } : {}),
     renderEdgeLabels: false,
     defaultEdgeColor: theme.edge,
     labelColor: { color: theme.label },
@@ -555,7 +566,13 @@ function renderLegend() {
   } else {
     title = 'Device role';
     const roles = [...new Set(lastData.nodes.filter((n) => !n.neighbor).map((n) => (z === 2 ? n.name : n.role)).filter(Boolean))];
-    rows = roles.slice(0, 12).map((r) => legendRow(ROLE_COLOR[r] || ROLE_COLOR.unknown, prettyRole(r)));
+    // At the device tier the nodes are icons, so the legend shows the icon too.
+    rows = roles.slice(0, 12).map((r) => {
+      const c = ROLE_COLOR[r] || ROLE_COLOR.unknown;
+      return z === 3
+        ? `<li>${roleGlyphInline(r, c, 14)}<span>${esc(prettyRole(r))}</span></li>`
+        : legendRow(c, prettyRole(r));
+    });
     if (lastData.nodes.some((n) => n.critical)) rows.push(legendRow('#ef4444', 'Critical', { ring: true }));
     if (lastData.nodes.some((n) => n.neighbor)) rows.push(legendRow('rgba(130,138,160,0.55)', 'Outside this segment', { muted: true }));
   }
@@ -969,6 +986,7 @@ function renderUsersPanel(filter = '') {
     : identitiesCache;
   const rows = matches.slice(0, 200).map((i) => (
     `<li><button type="button" class="topo-user-link" data-user="${esc(i.name)}">`
+    + `${avatarSvg(identityType(i.principal || i.name))}`
     + `<span class="topo-user-name">${esc(i.name)}</span>`
     + `<span class="topo-user-count">${i.devices.length} device${i.devices.length === 1 ? '' : 's'}</span>`
     + `</button></li>`
