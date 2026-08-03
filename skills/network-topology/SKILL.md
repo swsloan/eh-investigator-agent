@@ -19,7 +19,8 @@ versioned snapshot. Get the schema in §4 exactly right and everything downstrea
 2. Use `extrahop-excli` for command syntax and empty-result handling.
 3. **Agree the scope first** (§2). A blind sweep of a large estate is slow and
    usually not what was asked for.
-4. Run **Tier 1** (§3) — always. It is the whole map: devices + weighted peer edges.
+4. Run **Tier 1** (§3) — always. It is the whole map: devices + weighted peer edges +
+   a light identity sweep on servers/DCs/critical hosts.
 5. Save every raw response under `evidence/metrics/` and `evidence/entities/` before
    analysis, so the snapshot is reproducible from evidence.
 6. Write `evidence/topology/topology.json` (§4).
@@ -49,7 +50,10 @@ one was agreed:
 ```
 
 Keep for each device: `id` (OID), `name`/`display_name`, `ipaddr`, `macaddr`, `role`,
-`vlanid`, `tags`, `is_critical`.
+`vlanid`, `tags`, `is_critical`, and — when the record carries them —
+`dns_name`, `dhcp_name`, `netbios_name`, `vendor`, and `software` (OS). These drive
+the device detail panel (Hostname / DNS / DHCP / NetBIOS / Vendor / OS); omit any the
+record doesn't have rather than inventing them.
 
 **Discovery IDs (only where you need record pivots).** `search_devices` does not
 return `discovery_id`; `get_device` does. Fetch it for notable devices — servers,
@@ -73,6 +77,24 @@ pair with a byte count becomes one edge. `net_detail` returns **top-N peers per
 device**, not every peer — the map is significant-traffic topology, and you should
 say so rather than implying completeness.
 
+**Identities (the users) — a light, always-on sweep.** The map is "devices *with
+associated identities*", so bind users to hosts as part of Tier 1 — but keep it cheap
+by scoping to **servers, domain controllers, and critical/investigation-relevant
+devices**, not every workstation. Authentication records name the principal on a
+session:
+
+```bash
+./excli-interface search_records -json '{"types":["~kerberos_request"],"filter":{"field":"client","operator":"=","operand":"005056bb0a190000"},"from":-86400000,"limit":500}' > evidence/records/kerberos-notable.json
+```
+
+Record filters take **`discovery_id`**, not the OID (call `get_device` first if you
+only have the OID). `~ntlm` covers Windows auth without Kerberos. Fold each principal
+into the snapshot's `identities` array (§4). A principal seen on several hosts is **one**
+identity bound to all of them — emit it once with every device, not once per host.
+Broader/heavier identity work (every workstation, `~ldap_request` directory binds) stays
+a Tier-2 deep-dive (§5). Say what an identity means and what it doesn't: it authenticated
+from/to that host in the window; it does not prove compromise or that the human was present.
+
 ## 4. The output contract — `evidence/topology/topology.json`
 
 Write exactly this shape. Unknown fields are ignored; malformed rows are dropped
@@ -94,7 +116,11 @@ silently, so precision here is what makes the map correct.
       "vlanid": "204",
       "tags": ["crown-jewel"],
       "is_critical": true,
-      "discovery_id": "005056bb0a190000"
+      "discovery_id": "005056bb0a190000",
+      "dns_name": "nlqawdc1.acmelegal.lab",
+      "netbios_name": "NLQAWDC1",
+      "vendor": "VMware",
+      "software": "Windows Server 2019"
     }
   ],
   "edges": [
@@ -108,7 +134,13 @@ silently, so precision here is what makes the map correct.
       "last_seen": "2026-07-29T05:00:00Z"
     }
   ],
-  "identities": []
+  "identities": [
+    {
+      "name": "sean.todd@ACMELEGAL.LAB",
+      "principal": "sean.todd@ACMELEGAL.LAB",
+      "devices": ["4294967325", "4294967296"]
+    }
+  ]
 }
 ```
 

@@ -56,20 +56,22 @@ tighten `first_seen` / `last_seen` from the record timestamps.
 
 ---
 
-## C. Identity binding — which users authenticate from which hosts
+## C. Identity binding — extend the light Tier-1 sweep to the whole estate
 
-This is the "devices with associated identities" half of the map. Authentication
-records name the principal on a session.
+Tier 1 **already** binds users on servers, domain controllers, and critical hosts (see
+SKILL §3). This deep-dive widens that: run the same authentication queries across **every
+workstation** and add the heavier record types, when the user wants a full picture of who
+logs in where.
 
 ```bash
 ./excli-interface search_records -json '{"types":["~kerberos_request"],"filter":{"field":"client","operator":"=","operand":"005056bb0a190000"},"from":-86400000,"limit":500}' > evidence/records/kerberos-client.json
 ```
 
-Also useful: `~ntlm` (Windows auth without Kerberos) and `~ldap_request` (directory
-binds). Scope to notable devices — servers, domain controllers, anything already
-implicated — rather than sweeping every workstation.
+Beyond the Tier-1 `~kerberos_request` / `~ntlm`, add `~ldap_request` (directory binds)
+for the broad sweep. Cost scales with host count, which is exactly why the estate-wide
+version is opt-in and the notable-host version runs by default.
 
-**Fold back:** populate the snapshot's `identities` array:
+**Fold back:** merge into the snapshot's `identities` array (the same array Tier 1 fills):
 
 ```json
 "identities": [

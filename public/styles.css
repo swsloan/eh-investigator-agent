@@ -3811,6 +3811,27 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 .topo-peer-bytes { color: var(--text-faint); font-variant-numeric: tabular-nums; flex: none; }
 .topo-ins-foot { font-size: 11.5px; margin-top: 14px; line-height: 1.5; }
 
+/* Device detail: key/value inventory rows (Hostname / DNS / Vendor / OS …). */
+.topo-kv li { display: flex; justify-content: space-between; gap: 12px; }
+.topo-kv-k { color: var(--text-faint); flex: none; }
+.topo-kv-v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+
+/* Users list + per-user device set, and the cross-links between them. */
+.topo-user-link, .topo-dev-link {
+  display: flex; justify-content: space-between; gap: 10px; align-items: baseline;
+  width: 100%; background: none; border: none; padding: 0; margin: 0;
+  color: var(--cyan-text); font: inherit; text-align: left; cursor: pointer;
+}
+.topo-user-link:hover .topo-user-name, .topo-dev-link:hover .topo-peer-name { text-decoration: underline; }
+.topo-user-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topo-user-count { color: var(--text-faint); font-variant-numeric: tabular-nums; flex: none; }
+.topo-user-search { width: 100%; margin: 4px 0 8px; }
+.topo-back {
+  background: none; border: none; padding: 2px 0; margin: 0 0 8px; cursor: pointer;
+  color: var(--cyan-text); font-size: 12px; font-weight: 600;
+}
+.topo-back:hover { text-decoration: underline; }
+
 @media (max-width: 900px) {
   .topo-inspector { flex-basis: 240px; }
 }
