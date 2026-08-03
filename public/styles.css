@@ -3862,8 +3862,14 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
   width: 100%; background: none; border: none; padding: 0; margin: 0;
   color: var(--cyan-text); font: inherit; text-align: left; cursor: pointer;
 }
+.topo-user-link { align-items: center; }
 .topo-user-link:hover .topo-user-name, .topo-dev-link:hover .topo-peer-name { text-decoration: underline; }
-.topo-user-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topo-user-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; }
+/* Identity avatars — a glyph per account type (user / service / computer / admin). */
+.topo-avatar { flex: none; color: var(--text-faint); }
+.topo-avatar.admin { color: var(--warn-text); }
+.topo-avatar.service { color: var(--sapphire); }
+.topo-avatar.computer { color: var(--text-2); }
 .topo-user-count { color: var(--text-faint); font-variant-numeric: tabular-nums; flex: none; }
 .topo-user-search { width: 100%; margin: 4px 0 8px; }
 .topo-back {
