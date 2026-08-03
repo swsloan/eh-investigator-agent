@@ -90,10 +90,15 @@ function themeColors() {
         && window.matchMedia?.('(prefers-color-scheme: dark)').matches);
   return {
     label: css.getPropertyValue('--ink').trim() || (dark ? '#ececf2' : '#1a1a22'),
-    // Edges need enough contrast against the canvas in both directions. A light
-    // background washes out a translucent line far more than a dark one does, so the
-    // light theme gets a darker, more opaque stroke rather than the same value.
-    edge: dark ? 'rgba(150,162,196,0.42)' : 'rgba(60,72,104,0.62)',
+    // Edges are context, not the subject — kept faint so a dense device view reads as
+    // nodes with connections, not a ball of wire. A light background washes out a
+    // translucent line more than a dark one, so light gets a touch more opacity.
+    // Low alpha so densely-meshed subnets (every workstation talking to the same DCs)
+    // don't accumulate into a wall of white where the lines converge.
+    edge: dark ? 'rgba(150,162,196,0.12)' : 'rgba(60,72,104,0.22)',
+    // Used to emphasise a hovered node's own edges above the faded rest.
+    edgeStrong: dark ? 'rgba(200,210,235,0.9)' : 'rgba(36,48,80,0.9)',
+    edgeFaint: dark ? 'rgba(150,162,196,0.04)' : 'rgba(60,72,104,0.05)',
   };
 }
 
@@ -120,6 +125,7 @@ const STAGE_COLOR = [
 
 let sigma = null;
 let graph = null;
+let hoveredNode = null; // device under the cursor, to trace its dependencies (plain map only)
 let lastData = null;   // last painted tier, so a theme flip can repaint without refetching
 let overlay = null;    // the incident currently drawn on top, or null for the plain map
 let overlayStats = { steps: 0, paths: 0, nodes: 0 }; // last overlay panel counts (for back-to-incident)
@@ -154,20 +160,59 @@ let legendVisible = true; // the colour legend is on by default; a toggle hides 
 
 function colorFor(node, zoom) {
   // Every tier carries meaning in its colour rather than going flat blue in the
-  // middle: localities and the segments inside them share the locality hue, while
-  // role clusters and devices share the role hue — so a colour you learn at one
-  // zoom still means the same thing at the next.
+  // middle: localities carry the locality hue; segments and role clusters carry the
+  // hue of their DOMINANT device role (so a server subnet reads differently from a
+  // workstation subnet) when the snapshot provides it, falling back to the locality
+  // hue; devices carry their own role hue.
   if (zoom === 0) return LOCALITY_COLOR[node.name] || LOCALITY_COLOR.Unknown;
-  if (zoom === 1) return LOCALITY_COLOR[node.parent] || LOCALITY_COLOR.Unknown;
+  if (zoom === 1) return node.role ? (ROLE_COLOR[node.role] || ROLE_COLOR.unknown) : (LOCALITY_COLOR[node.parent] || LOCALITY_COLOR.Unknown);
   if (zoom === 2) return ROLE_COLOR[node.name] || ROLE_COLOR.unknown;
   return ROLE_COLOR[node.role] || ROLE_COLOR.unknown;
 }
 
-/** Aggregates scale with the devices they contain; devices scale with criticality. */
+// Base on-screen size per device role, so servers/DCs/gateways read as bigger than
+// workstations — which also makes them (not every PC) the nodes that carry a label by
+// default. Critical devices get a bump on top.
+const DEVICE_BASE = {
+  domain_controller: 8, db_server: 8, firewall: 8, gateway: 8,
+  file_server: 7, http_server: 7, web_proxy: 7, dns_server: 7, dhcp_server: 7,
+  nat_gateway: 7, vpn_gateway: 7, load_balancer: 7, medical_device: 6,
+  pc: 5, mobile_device: 5, printer: 5, ip_camera: 5, other: 5, unknown: 5,
+};
+
+/** Aggregates scale with the devices they contain; devices scale with role + criticality. */
 function sizeFor(node, zoom) {
-  if (zoom === 3) return node.critical ? 9 : 5;
+  if (zoom === 3) {
+    const base = DEVICE_BASE[node.role] ?? 5.5;
+    return node.critical ? base + 3 : base;
+  }
   const n = Number(node.device_count) || 1;
   return Math.max(6, Math.min(26, 5 + Math.sqrt(n) * 2.2));
+}
+
+/**
+ * The longest domain suffix shared by most device names (e.g. `.acmelegal.lab`), so the
+ * device tier can show `dc1` instead of `dc1.acmelegal.lab` — the repeated suffix is
+ * noise that makes long labels collide. Returns '' when there is no common suffix.
+ */
+function commonDomainSuffix(names) {
+  const domains = names.map((n) => String(n || '')).filter((n) => n.includes('.') && !/^\d+(\.\d+){3}$/.test(n))
+    .map((n) => n.slice(n.indexOf('.') + 1).toLowerCase());
+  if (domains.length < 3) return '';
+  const counts = new Map();
+  for (const d of domains) counts.set(d, (counts.get(d) || 0) + 1);
+  let best = ''; let bestN = 0;
+  for (const [d, c] of counts) if (c > bestN) { best = d; bestN = c; }
+  // Only strip when it's genuinely shared (covers at least half the dotted names).
+  return bestN >= Math.max(3, domains.length * 0.5) ? best : '';
+}
+
+/** Strip a trailing `.<suffix>` (case-insensitive) from a hostname for display. */
+function stripSuffix(name, suffix) {
+  const s = String(name ?? '');
+  if (!suffix) return s;
+  const tail = `.${suffix}`;
+  return s.toLowerCase().endsWith(tail) ? s.slice(0, -tail.length) : s;
 }
 
 function tierForRatio(ratio, current) {
@@ -446,6 +491,8 @@ function paint(data) {
   // through sigma's image node program; aggregate tiers stay coloured circles. The
   // icon is a data: URI SVG, so it works under the strict CSP with no CDN.
   const useIcons = data.zoom === 3 && Boolean(window.Sigma?.rendering?.createNodeImageProgram);
+  // Drop the domain suffix every device shares, so `dc1` shows instead of the FQDN.
+  const dnsSuffix = data.zoom === 3 ? commonDomainSuffix(data.nodes.map((n) => n.name)) : '';
 
   for (const n of data.nodes) {
     // Neighbor = a one-hop peer pulled in from OUTSIDE the scoped segment/cluster
@@ -453,6 +500,7 @@ function paint(data) {
     // boundary is legible and the in-scope devices stay the focus.
     const isNeighbor = data.zoom === 3 && n.neighbor;
     const color = isNeighbor ? 'rgba(130,138,160,0.55)' : colorFor(n, data.zoom);
+    const short = data.zoom === 3 ? stripSuffix(n.name ?? n.key, dnsSuffix) : String(n.name ?? n.key);
     graph.addNode(n.key, {
       x: Number(n.x) || 0,
       y: Number(n.y) || 0,
@@ -460,7 +508,7 @@ function paint(data) {
       // Sigma renders labels itself into canvas; it never parses HTML, but keep the
       // same escaping discipline as the rest of the UI — device names come off the
       // wire and are attacker-controllable (lib/telemetry-taint.js).
-      label: isNeighbor ? `${n.name ?? n.key} · ${prettySegment(n.segment)}` : String(n.name ?? n.key),
+      label: isNeighbor ? `${short} · ${prettySegment(n.segment)}` : short,
       color,
       ...(useIcons ? { type: 'image', image: roleIconDataUri(n.role, isNeighbor ? '#94a3b8' : color) } : {}),
       neighbor: isNeighbor,
@@ -472,7 +520,9 @@ function paint(data) {
     if (!known.has(e.src) || !known.has(e.dst) || e.src === e.dst) continue;
     if (graph.hasEdge(e.src, e.dst)) continue;
     graph.addEdge(e.src, e.dst, {
-      size: Math.max(0.6, Math.min(6, Math.log10((Number(e.bytes) || 0) + 10) - 0.6)),
+      // Compressed so only genuinely heavy conversations read as thick; the rest stay
+      // hairline, so the view is nodes-with-links rather than a ball of wire.
+      size: Math.max(0.3, Math.min(2.4, (Math.log10((Number(e.bytes) || 0) + 10) - 1.4) * 1.15)),
       color: theme.edge,
       raw: e,
     });
@@ -480,31 +530,53 @@ function paint(data) {
 
   const container = $('topo-canvas');
   if (sigma) { sigma.kill(); sigma = null; }
+  hoveredNode = null;
   const makeImage = window.Sigma?.rendering?.createNodeImageProgram;
   sigma = new window.Sigma(graph, container, {
     ...(makeImage ? { nodeProgramClasses: { image: makeImage() } } : {}),
     renderEdgeLabels: false,
     defaultEdgeColor: theme.edge,
     labelColor: { color: theme.label },
-    labelDensity: 0.6,
-    labelGridCellSize: 90,
-    labelRenderedSizeThreshold: 4,
+    labelDensity: 0.7,
+    labelGridCellSize: 110,
+    // Only the larger nodes (servers/DCs/critical) carry a label by default; the many
+    // workstations stay unlabelled until hovered, which sigma always labels.
+    labelRenderedSizeThreshold: data.zoom === 3 ? 7 : 4,
     labelSize: 12,
     minCameraRatio: 0.02,
     maxCameraRatio: 4,
+    zIndex: true,
   });
 
   // Sigma fits nodes flush to the container edges, which clips the labels of
   // whichever nodes land on the boundary. Pull the camera back slightly so the
   // outermost labels have room. Done before the LOD listener is attached so this
   // deliberate framing can't be mistaken for a user zoom.
-  sigma.getCamera().setState({ ratio: 1.18 });
+  sigma.getCamera().setState({ ratio: data.nodes.length <= 3 ? 1.08 : 1.18 });
 
   sigma.on('clickNode', ({ node }) => {
     const raw = graph.getNodeAttribute(node, 'raw');
     if (raw?.external) { showExternalNode(raw); return; } // C2/exfil: no cluster to drill, no device record
     if (data.zoom === 3) showDevice(raw.key); else drillInto(raw);
   });
+
+  // Hover-to-trace: on the plain map, hovering a node emphasises its own edges and
+  // fades the rest, so one device's dependencies are followable through the tangle.
+  // Skipped while an overlay or drift is active — those own the colouring.
+  if (!overlay && !drift) {
+    sigma.on('enterNode', ({ node }) => { hoveredNode = node; sigma.refresh(); });
+    sigma.on('leaveNode', () => { hoveredNode = null; sigma.refresh(); });
+    sigma.setSetting('edgeReducer', (edge, attrs) => {
+      if (!hoveredNode) return attrs;
+      return graph.hasExtremity(edge, hoveredNode)
+        ? { ...attrs, color: theme.edgeStrong, size: Math.max(attrs.size, 1.6), zIndex: 2 }
+        : { ...attrs, color: theme.edgeFaint };
+    });
+    sigma.setSetting('nodeReducer', (node, attrs) => {
+      if (!hoveredNode || node === hoveredNode || graph.areNeighbors(hoveredNode, node)) return attrs;
+      return { ...attrs, label: '' }; // hide unrelated labels while tracing one node
+    });
+  }
 
   // Camera-driven level of detail: the whole point of the map metaphor.
   sigma.getCamera().on('updated', () => {
@@ -557,12 +629,26 @@ function renderLegend() {
   } else if (drift) {
     title = 'What changed';
     rows = [legendRow('#ef4444', 'High'), legendRow('#f59e0b', 'Medium'), legendRow('#0ea5e9', 'Info')];
-  } else if (z <= 1) {
+  } else if (z === 0) {
     title = 'Locality';
-    const present = new Set(lastData.nodes.map((n) => (z === 0 ? n.name : n.parent)));
+    const present = new Set(lastData.nodes.map((n) => n.name));
     rows = ['Internal', 'External', 'Unknown']
       .filter((k) => k === 'Internal' || present.has(k))
       .map((k) => legendRow(LOCALITY_COLOR[k], k));
+  } else if (z === 1) {
+    // Segments carry the hue of their dominant device role when the snapshot has it;
+    // otherwise they fall back to the locality hue.
+    const roles = [...new Set(lastData.nodes.map((n) => n.role).filter(Boolean))];
+    if (roles.length) {
+      title = 'Segment · dominant role';
+      rows = roles.slice(0, 12).map((r) => legendRow(ROLE_COLOR[r] || ROLE_COLOR.unknown, prettyRole(r)));
+    } else {
+      title = 'Locality';
+      const present = new Set(lastData.nodes.map((n) => n.parent));
+      rows = ['Internal', 'External', 'Unknown']
+        .filter((k) => k === 'Internal' || present.has(k))
+        .map((k) => legendRow(LOCALITY_COLOR[k], k));
+    }
   } else {
     title = 'Device role';
     const roles = [...new Set(lastData.nodes.filter((n) => !n.neighbor).map((n) => (z === 2 ? n.name : n.role)).filter(Boolean))];
