@@ -101,6 +101,13 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
         snapshotId,
         zoom: req.query.zoom,
         parent: typeof req.query.parent === 'string' ? req.query.parent : '',
+        // Which device field a device-tier drill matches `parent` on, so a segment can
+        // drill straight to its devices (skipping the degenerate Role hop).
+        scope: typeof req.query.scope === 'string' ? req.query.scope : '',
+        // Default view hides External; `external=1` opts it back in.
+        external: req.query.external === '1' || req.query.external === 'true',
+        // `neighbors=1` pulls one-hop peers outside a scoped device view.
+        neighbors: req.query.neighbors === '1' || req.query.neighbors === 'true',
         // `keys` is the attack overlay asking for exactly the incident's devices.
         keys: typeof req.query.keys === 'string' && req.query.keys
           ? req.query.keys.split(',').map((k) => k.trim()).filter(Boolean)

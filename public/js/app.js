@@ -85,7 +85,6 @@ export function startApp() {
   initEval();
   initMemory();
   initTopology();
-  initTopology();
   initBackendUpdate();
   initEscapeHandling();
   boot();
