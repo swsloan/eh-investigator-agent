@@ -10,6 +10,13 @@
   --cyan: #00AAEF;
   --gradient: linear-gradient(135deg, #261F63, #7F2854);
 
+  /* The same gradient used AS ink (background-clip: text) rather than as a fill.
+     These pull in opposite directions and must stay separate tokens: --gradient
+     sits *under* white text, so it has to stay dark on both themes; --gradient-ink
+     *is* the text, so on a dark canvas it has to brighten or it goes muddy.
+     Swapping --gradient itself would drop white-on-gradient buttons to ~2.4:1. */
+  --gradient-ink: var(--gradient);
+
   /* Brand foregrounds — used as text/icon color; re-toned in dark */
   --sapphire: #261F63;
   --plum: #7F2854;
@@ -99,6 +106,99 @@
   --c-key:     #261f63;  /* sapphire — JSON keys / titles */
   --c-type:    #8a2150;
 
+  /* ===== Redesign tokens (UI/UX overhaul) =====
+     Merged from the design handoff's parallel --m-* / --a-* palettes into this
+     system, so the map and live-activity work never hardcodes a hex. Grouped by
+     consumer; entries unused until a later phase are marked, and every one is
+     paired with a dark value below.
+
+     Two families deliberately absent: RED and GREEN. The handoff's red
+     (#b03030 / #ff9a9a) and green (#17864f / #3cc98a) are already this app's
+     --danger-text and --ok-text, exactly. Use those; do not add duplicates. */
+
+  /* Incident / active-threat accent. Magenta is the brand's most distinctive
+     hue and is RESERVED for incident and threat surfaces — attack overlay,
+     patient zero, drafting artifacts, threat-hunt plans — never ordinary
+     chrome. Same light/dark rule as --cyan-text: the fill hue is too light to
+     read as small text on white, so text gets a darkened variant. */
+  --magenta: #EC0889;
+  --magenta-text: #b8106b;             /* 6.3:1 on --raised */
+  --magenta-strong: #a30f5f;           /* emphasis text (patient-zero labels) */
+  --magenta-sub: #a86a8c;              /* sub-labels beneath magenta titles */
+  --magenta-border: #efb2d5;
+  --magenta-bg: rgba(236, 8, 137, 0.07);
+
+  /* Cyan tints — live/active surfaces (running tool calls, current finding,
+     traffic volume). --cyan-border is a SOFT container edge for tinted cards;
+     it is not --cyan-edge, which is the 3:1 stateful edge for focus/selection. */
+  --cyan-bg: rgba(0, 170, 239, 0.09);
+  --cyan-bg-soft: rgba(0, 170, 239, 0.06);
+  --cyan-border: #a8d6ee;
+
+  /* Severity / kill-chain amber. Distinct from --warn (#f05918), which is this
+     app's action-required orange; this is the yellower hue the topology layer
+     already uses for medium-severity drift and the credential-access stage. */
+  --amber: #f59e0b;
+  --amber-text: #9a6206;               /* 5.1:1 on --raised */
+  --amber-border: #ecd9b4;
+  --amber-sub: #a8946e;
+
+  /* Frosted floating chrome — zoom stack, kill-chain strip, mini-map, plan card. */
+  --float: rgba(255, 255, 255, 0.94);
+  --float-2: rgba(255, 255, 255, 0.96);
+
+  /* Map canvas (phase 3+). Zone strokes are EXPLICIT per theme rather than one
+     alpha over the canvas: the 4–5% zone fills that read on a dark canvas all
+     but vanish on white, so light needs its own, darker strokes. */
+  --canvas: radial-gradient(circle at 30% 20%, #fbfbfd 0%, #f1f1f6 60%);
+  --grid-dot: #dddbe8;
+  --zone-cyan: #a8cbe2;
+  --zone-cyan-sub: #7593aa;
+  --zone-magenta: #e5b4cf;
+  --zone-magenta-sub: #a87e94;
+  --zone-grey: #d5d2e2;
+  --zone-grey-sub: #a5a2ba;
+  --external-border: #e3c4cd;          /* dashed EXTERNAL strip */
+  --external-text: #a85555;
+  --node-fill: #ffffff;
+  --node-fill-magenta: #fdf3f9;
+  --node-fill-danger: #fdf2f2;
+  --danger-sub: #b07070;               /* sub-labels beneath red node titles */
+  --edge: #c9c6d8;
+  --edge-strong: #a8a4c2;
+
+  /* Snapshot timeline squares, oldest → newest (phase 1). */
+  --snap-1: #dddbe8;
+  --snap-2: #c6c3da;
+  --snap-3: #a9a5c8;
+
+  /* Traffic matrix zero-volume cell (phase 5). */
+  --cell-0: #f2f1f7;
+
+  /* Artifact skeletons + per-kind accents, live-activity rail (phase 6). */
+  --skeleton-1: #e4e1ee;
+  --skeleton-2: #ecebf3;
+  --skeleton-3: #f2f1f7;
+  --skeleton-gradient: linear-gradient(135deg, rgba(38, 31, 99, 0.25), rgba(127, 40, 84, 0.25));
+  --artifact-metrics: #6a3fb2;
+  --artifact-records: #4967b2;
+  --artifact-device: #2f8f7f;
+  --bar-idle: #dcd8ea;
+
+  /* Type scale. DECLARED ONLY — adoption is phase 7, which retires the current
+     27 distinct sizes (286 declarations, 12 of them fractional). New work should
+     use these; --fs-500 is the body/base size. --fs-100 is for uppercase tracked
+     eyebrow labels only, never running text. */
+  --fs-100: 10px;
+  --fs-200: 11px;
+  --fs-300: 12px;
+  --fs-400: 13px;
+  --fs-500: 15px;
+  --fs-600: 18px;
+  --fs-700: 22px;
+  --fs-800: 34px;
+  --tracking-eyebrow: 1.2px;
+
   --radius: 12px;
   --shadow-soft: 0 1px 2px rgba(22, 21, 31, 0.04), 0 8px 24px rgba(38, 31, 99, 0.06);
 }
@@ -168,6 +268,62 @@
   --c-literal: #ff9a5c;  /* tangerine */
   --c-key:     #c3b9ff;  /* lavender — JSON keys / titles */
   --c-type:    #ff85b5;
+
+  /* ===== Redesign tokens ===== (see :root for what each group drives) */
+
+  /* Gradient-as-ink brightens on dark; the fill gradient deliberately does not. */
+  --gradient-ink: linear-gradient(135deg, #8f86e8, #e87fb0);
+
+  --magenta-text: #ff7ec4;
+  --magenta-strong: #ff9ed2;
+  --magenta-sub: #8a6478;
+  --magenta-border: #5a2444;
+  --magenta-bg: rgba(236, 8, 137, 0.10);
+
+  --cyan-bg: rgba(0, 170, 239, 0.08);
+  --cyan-bg-soft: rgba(0, 170, 239, 0.05);
+  --cyan-border: #33406a;
+
+  --amber-text: #e8b45a;
+  --amber-border: #4a3a20;
+  --amber-sub: #6e5c3e;
+
+  --float: rgba(18, 20, 28, 0.92);
+  --float-2: rgba(16, 18, 26, 0.94);
+
+  /* The map canvas runs darker than --bg on purpose: it is a full-bleed data
+     surface, and the extra depth is what lets translucent zone fills read. */
+  --canvas: radial-gradient(circle at 30% 20%, #131722 0%, #0e1016 60%);
+  --grid-dot: #1c2130;
+  --zone-cyan: #24405a;
+  --zone-cyan-sub: #4a5f78;
+  --zone-magenta: #5a2444;
+  --zone-magenta-sub: #7a5468;
+  --zone-grey: #2a3046;
+  --zone-grey-sub: #454e68;
+  --external-border: #3a2430;
+  --external-text: #c46a6a;
+  --node-fill: #161a26;
+  --node-fill-magenta: #1d1420;
+  --node-fill-danger: #241318;
+  --danger-sub: #8a5a5a;
+  --edge: #2b3145;
+  --edge-strong: #3b4569;
+
+  --snap-1: #2a3046;
+  --snap-2: #343c5c;
+  --snap-3: #46507a;
+
+  --cell-0: #171a24;
+
+  --skeleton-1: #2a2333;
+  --skeleton-2: #201c2a;
+  --skeleton-3: #1a1724;
+  --skeleton-gradient: linear-gradient(135deg, rgba(38, 31, 99, 0.5), rgba(127, 40, 84, 0.5));
+  --artifact-metrics: #7b4fc5;
+  --artifact-records: #6f86c9;
+  --artifact-device: #4fb3a1;
+  --bar-idle: #3a3550;
 
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
 }
@@ -486,16 +642,12 @@ html, body {
   font-weight: 900;
   letter-spacing: -0.6px;
   margin: 0 0 10px;
-  background: var(--gradient);
+  /* Gradient-as-ink: --gradient-ink carries the dark-canvas brightening, so this
+     needs no [data-theme="dark"] override of its own. */
+  background: var(--gradient-ink);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-}
-[data-theme="dark"] .empty-hero h1 {
-  /* The Sapphire→Plum gradient goes muddy on a dark canvas; brighten it. */
-  background: linear-gradient(135deg, #8f86e8, #e87fb0);
-  -webkit-background-clip: text;
-  background-clip: text;
 }
 .empty-hero p {
   color: var(--gray);
@@ -2433,7 +2585,7 @@ html, body {
   background: color-mix(in srgb, var(--plan-accent) 4%, var(--surface));
   transition: flex-basis 180ms ease-out, background-color 180ms ease-out;
 }
-.investigation-plan-ribbon[data-plan-type="threat-hunt"] { --plan-accent: #EC0889; --plan-accent-fg: var(--c-keyword); }
+.investigation-plan-ribbon[data-plan-type="threat-hunt"] { --plan-accent: var(--magenta); --plan-accent-fg: var(--magenta-text); }
 .investigation-plan-ribbon[data-plan-type="security-investigation"] { --plan-accent: var(--plum); --plan-accent-fg: var(--plum); }
 .investigation-plan-ribbon[data-plan-type="performance-investigation"] { --plan-accent: var(--cyan); --plan-accent-fg: var(--c-number); }
 .investigation-plan-ribbon.expanded { flex-basis: clamp(270px, 37.5vh, 420px); }
