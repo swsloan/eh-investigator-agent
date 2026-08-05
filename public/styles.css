@@ -2561,12 +2561,8 @@ html, body {
   50% { filter: drop-shadow(0 0 11px var(--cyan)); }
   100% { filter: drop-shadow(0 0 5px var(--cyan)); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .mem-node.entering .mem-node-visual,
-  .mem-node.focus.active .mem-node-shape,
-  .mem-edge.live { animation: none; }
-  .mem-edge.entering { animation: none; stroke-dashoffset: 0; }
-}
+/* Reduced-motion handling for the graph now lives in the consolidated block at
+   the end of this file, alongside every other animation in the app. */
 
 
 /* ===== Investigation plan ribbon (v26.07.20 port) =====
@@ -2811,13 +2807,7 @@ html, body {
 }
 .plan-ribbon-view:hover { background: var(--surface-hover); }
 .plan-ribbon-view:disabled { color: var(--gray); cursor: wait; }
-@media (prefers-reduced-motion: reduce) {
-  .investigation-plan-ribbon,
-  .plan-ribbon-chevron,
-  .plan-ribbon-progress > span {
-    transition: none;
-  }
-}
+/* Reduced-motion: see the consolidated block at the end of this file. */
 
 /* ===== Memory as the right-panel tab (docked) + view toggle + timeline ===== */
 /* When Memory is the active right panel it becomes the sole right column: the
@@ -4078,4 +4068,52 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 /* Active state for the "What changed" toggle. */
 .btn-secondary.slim.active {
   border-color: var(--cyan-edge); color: var(--cyan-text); background: var(--surface-hover);
+}
+
+
+/* ===== Motion =====
+   Shared keyframes for the redesign, and the app's single reduced-motion
+   contract. Both live at the end of the file on purpose: the override block
+   has to win on cascade order against every rule above it without having to
+   out-specify each one.
+
+   Two of the handoff's four keyframes are deliberately absent — this app
+   already has them, and near-duplicates drift apart:
+     soft-pulse / glow-pulse (opacity dip)  ->  use `pulse`
+     slide-up (fade + rise on entry)        ->  use `rise`
+   The handoff's 0.30 / 0.35 / 0.45 opacity dips are interchangeable by eye. */
+
+/* Dash travel for direction-of-flow paths. The offset MUST equal one dash
+   period (dash + gap), or the loop visibly jumps every cycle — the handoff's
+   -22 and -18 are not multiples of their patterns, so they are corrected here.
+     attack-flow  pairs with stroke-dasharray: 10 6  (period 16) — map overlay
+     flow-dash    pairs with stroke-dasharray: 7 5   (period 12) — activity view
+   Change a dasharray and you must change its offset to match. */
+@keyframes attack-flow { to { stroke-dashoffset: -16; } }
+@keyframes flow-dash { to { stroke-dashoffset: -12; } }
+
+/* The reduced-motion contract, in one place.
+
+   The floor is a blanket rule rather than a per-element allowlist. The two
+   allowlists this replaced covered the memory graph and the plan ribbon only,
+   so the tool-call and connection-status pulses, the message rise, the report
+   pulse, the eval spinner and the memory dock transition all kept animating
+   for someone who had asked their OS for less motion. A blanket rule also
+   covers new animations the day they are written, with nothing to remember.
+
+   It stops motion; it does not remove meaning. Every animation here rests in a
+   visible state — pulses return to full opacity, the report ring stays drawn,
+   dashed paths keep their dashes — so freezing is safe, and it is why the map's
+   attack paths still read as static dashed kill-chain routes. Anything whose
+   resting state is NOT its finished state needs an explicit rule below. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Draw-in edges settle fully drawn, whatever the keyframe would have left. */
+  .mem-edge.entering { animation: none; stroke-dashoffset: 0; }
 }
