@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
-import { listSnapshots, latestSnapshotId, readEnrichments, readIdentities, readMixedTier, readNode, readSnapshotForDiff, readTier, topologyGraphName } from '../lib/topology-store.js';
+import { listSnapshots, latestSnapshotId, readEnrichments, readIdentities, readMixedTier, readNode, readNodeHistory, readSnapshotForDiff, readTier, topologyGraphName } from '../lib/topology-store.js';
 import { buildOverlay } from '../lib/attack-overlay.js';
 import { describeDrift, diffSnapshots } from '../lib/topology-drift.js';
 
@@ -200,6 +200,31 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
   });
 
   /** Enrichments recorded for one device (Slice 5). Polled by the device panel. */
+  // One device's traffic over the retained snapshots, for the inspector's trend.
+  // Ordered and stamped here by joining the snapshot headers, so the client gets a
+  // series it can draw without a second request.
+  router.get('/node/:key/history', async (req, res) => {
+    if (!guard(req, res)) return;
+    try {
+      const group = await pickGroup(req);
+      const [rows, snapshots] = await Promise.all([
+        readNodeHistory(client, group, { key: req.params.key, limit: req.query.limit }),
+        listSnapshots(client, group, 100),
+      ]);
+      const stamp = new Map(snapshots.map((s) => [s.id, s.collected_at]));
+      const series = rows
+        .filter((r) => stamp.has(r.snapshot_id))
+        .map((r) => ({
+          snapshot_id: r.snapshot_id,
+          collected_at: stamp.get(r.snapshot_id),
+          bytes_total: Number(r.bytes_total) || 0,
+          peer_count: Number(r.peer_count) || 0,
+        }))
+        .sort((a, b) => String(a.collected_at).localeCompare(String(b.collected_at)));
+      res.json({ group, key: req.params.key, series });
+    } catch (err) { fail(res, err); }
+  });
+
   router.get('/enrichments/:key', async (req, res) => {
     if (!guard(req, res)) return;
     try {

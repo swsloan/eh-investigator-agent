@@ -110,6 +110,22 @@ async function stubTopology(page) {
     });
   });
 
+
+  // Traffic history for the inspector's trend card. Registered AFTER the general
+  // node route on purpose: Playwright checks handlers in reverse registration
+  // order, so the more specific pattern has to come last to win.
+  await page.route('**/api/topology/node/*/history**', (route) => route.fulfill({
+    json: {
+      group: 'test',
+      key: 'dev:nas',
+      series: [
+        { snapshot_id: 'snap-1', collected_at: '2026-08-01T22:48:00Z', bytes_total: 61_000_000, peer_count: 4 },
+        { snapshot_id: 'snap-2', collected_at: '2026-08-02T22:50:00Z', bytes_total: 88_000_000, peer_count: 5 },
+        { snapshot_id: 'snap-3', collected_at: '2026-08-03T22:52:00Z', bytes_total: 412_000_000, peer_count: 7 },
+      ],
+    },
+  }));
+
   // The map payload varies by tier, so answer from the query the client sent.
   await page.route('**/api/topology/map**', (route) => {
     const params = new URL(route.request().url()).searchParams;
@@ -545,6 +561,67 @@ test.describe('network map', () => {
     // ...but the route is still a visible, directed, dashed line. Freeze, don't hide.
     expect(style.dasharray).toMatch(/\d/);
     expect(Number(style.opacity)).toBeGreaterThan(0.5);
+  });
+
+  /** Open the inspector on nas-backup-02 via search. */
+  async function inspectNas(page) {
+    await page.locator('#topo-search').fill('nas-backup');
+    await page.locator('#topo-search-list .topo-combo-item').first().click();
+    await expect(page.locator('.topo-ins-title')).toContainText('nas-backup-02');
+  }
+
+  test('the inspector plots the device across snapshots', async ({ page }) => {
+    await openMap(page);
+    await inspectNas(page);
+
+    const trend = page.locator('#topo-trend');
+    await expect(trend).toContainText('Traffic · 3 snapshots');
+    // The axis names the series honestly: snapshots, not a fixed window.
+    await expect(trend.locator('.topo-spark-axis span').first()).toHaveText(/Aug 1/);
+    await expect(trend.locator('.topo-spark-axis span').last()).toHaveText(/Aug 3/);
+
+    // Latest totals, not a sum over the series.
+    await expect(trend.locator('.topo-tile').first()).toContainText('412.0 MB');
+    await expect(trend.locator('.topo-tile').last()).toContainText('7');
+
+    // The line is a real polyline over the three points, drawn inside its box.
+    const d = await trend.locator('.topo-spark-line').getAttribute('d');
+    expect((d.match(/L/g) || []).length).toBe(2);
+    const ys = [...d.matchAll(/[ML]([\d.]+),([\d.]+)/g)].map((m) => Number(m[2]));
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...ys)).toBeLessThanOrEqual(44);
+    // The peak snapshot is the highest point, i.e. the smallest y.
+    expect(ys[2]).toBeLessThan(ys[0]);
+  });
+
+  test('investigate hands the device to the composer with its context', async ({ page }) => {
+    await openMap(page);
+    await inspectNas(page);
+    await page.locator('#topo-investigate').click();
+
+    // The map closes, because the composer is behind it.
+    await expect(page.locator('#topology-overlay')).toBeHidden();
+    const input = page.locator('#input');
+    await expect(input).toBeFocused();
+    const text = await input.inputValue();
+    // Structured, not a name drop: identity plus which snapshot it was seen in.
+    expect(text).toContain('nas-backup-02.acme.lab');
+    expect(text).toContain('10.42.0.117');
+    expect(text).toContain('dev:nas');
+    expect(text).toMatch(/snapshot Aug 3/);
+  });
+
+  test('investigate carries the incident step when one is drawn', async ({ page }) => {
+    await openMap(page);
+    await overlayIncident(page);
+    await inspectNas(page);
+    await page.locator('#topo-investigate').click();
+
+    const text = await page.locator('#input').inputValue();
+    expect(text).toContain('Lateral movement from nas-backup-02');
+    // nas is the destination of step 1 and the source of steps 2 and 3; the first
+    // step naming it is the one that explains why it is interesting.
+    expect(text).toMatch(/step 1 \(Credential Access\)/);
   });
 
   test('escape closes the incident picker before it closes the map', async ({ page }) => {

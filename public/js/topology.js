@@ -314,6 +314,99 @@ function bytes(n) {
   return `${v} B`;
 }
 
+
+/**
+ * A device's traffic across the retained snapshots: a sparkline plus the current
+ * totals.
+ *
+ * Fetched after the panel is written rather than before it, so the identity and
+ * details never wait on a trend. The card is honest about its own axis — the series
+ * is "the last N snapshots", not a fixed 7 days, because snapshot cadence is
+ * whatever the operator has been running.
+ */
+async function renderDeviceTrend(key) {
+  const host = $('topo-trend');
+  if (!host) return;
+  let series = [];
+  try {
+    const params = new URLSearchParams();
+    if (state.group) params.set('group', state.group);
+    const res = await fetch(`/api/topology/node/${encodeURIComponent(key)}/history?${params}`);
+    if (!res.ok) { host.remove(); return; }
+    ({ series = [] } = await res.json());
+  } catch { host.remove(); return; }
+  // Stale response for a device the user has already navigated away from.
+  if (currentDeviceKey !== key) return;
+  if (!series.length) { host.remove(); return; }
+
+  const latest = series[series.length - 1];
+  const values = series.map((p) => Number(p.bytes_total) || 0);
+  const peak = Math.max(...values, 1);
+  const W = 240;
+  const H = 44;
+  // A single snapshot is a point, not a trend; draw it as a flat line rather than
+  // dividing by zero.
+  const step = series.length > 1 ? W / (series.length - 1) : 0;
+  const pts = values.map((v, i) => `${(i * step).toFixed(1)},${(H - (v / peak) * (H - 4) - 2).toFixed(1)}`);
+  const line = `M${pts.join('L')}`;
+  const area = `${line}L${W},${H}L0,${H}Z`;
+  const span = series.length === 1
+    ? 'one snapshot'
+    : `${series.length} snapshots`;
+
+  host.innerHTML = `
+    <div class="topo-ins-h">Traffic · ${esc(span)}</div>
+    <svg class="topo-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      <path class="topo-spark-area" d="${area}"></path>
+      <path class="topo-spark-line" d="${line}"></path>
+    </svg>
+    <div class="topo-spark-axis">
+      <span>${esc(snapshotStampShort(series[0].collected_at))}</span>
+      <span>${esc(snapshotStampShort(latest.collected_at))}</span>
+    </div>
+    <div class="topo-tiles">
+      <div class="topo-tile"><span class="topo-tile-label">Bytes</span><b>${esc(bytes(latest.bytes_total))}</b></div>
+      <div class="topo-tile"><span class="topo-tile-label">Peers</span><b>${Number(latest.peer_count) || 0}</b></div>
+    </div>`;
+}
+
+/** `Aug 3` — enough to place a point on the axis without crowding it. */
+function snapshotStampShort(raw) {
+  const d = raw ? new Date(raw) : null;
+  return d && !Number.isNaN(d.getTime())
+    ? d.toLocaleString(undefined, { month: 'short', day: 'numeric' })
+    : String(raw || '').slice(0, 10);
+}
+
+/**
+ * Hand the device to the agent. A prefill rather than a spawned session: seeding a
+ * session raises workspace and approval lifecycle questions that this button should
+ * not be deciding. It carries the context the analyst can see — which snapshot, and
+ * which incident step if one is drawn — so the agent starts where they are.
+ */
+function investigateDevice(device) {
+  const parts = [`Investigate ${device.name || device.key}`];
+  const ident = [device.ip, device.key].filter(Boolean).join(', ');
+  if (ident) parts.push(`(${ident})`);
+  const context = [];
+  const snap = snapshots.find((s) => s.id === state.snapshotId);
+  if (snap) context.push(`snapshot ${snapshotStampShort(snap.collected_at)}`);
+  if (overlay) {
+    const step = overlay.events.find((e) => e.src === device.key || e.dst === device.key);
+    context.push(step
+      ? `incident "${overlay.title}" step ${step.seq + 1} (${step.tactic || 'unclassified'})`
+      : `incident "${overlay.title}"`);
+  }
+  const text = `${parts.join(' ')}${context.length ? ` — context: ${context.join(', ')}` : ''}`;
+  close(); // the map is a full-screen overlay; the composer is behind it
+  const input = $('input');
+  if (!input) return;
+  input.value = text;
+  input.focus();
+  input.dispatchEvent(new Event('input', { bubbles: true })); // grow the textarea
+  input.setSelectionRange(text.length, text.length);
+}
+
 async function showDevice(key) {
   inspector('<div class="topo-inspector-empty panel-sub">Loading…</div>');
   try {
@@ -374,8 +467,12 @@ async function showDevice(key) {
         )).join('')}</ul>`
         : '',
       enrichmentsHtml(enrichments),
+      `<div id="topo-trend" class="topo-trend"></div>`,
       rows ? `<div class="topo-ins-h">Top conversations</div><ul class="topo-ins-list topo-peers">${rows}</ul>` : '',
       `<div class="topo-ins-foot panel-sub">Peers reflect the significant-traffic topology (top-N per device), not every connection.</div>`,
+      `<button type="button" id="topo-investigate" class="topo-investigate">`
+      + `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>`
+      + `Investigate this device</button>`,
       askHtml(),
     ].join(''));
     // Clicking a user cross-links to that identity's device set.
@@ -383,6 +480,8 @@ async function showDevice(key) {
     $('topo-inc-back')?.addEventListener('click', backToIncident);
     wireAsk(device.key);
     currentDeviceKey = device.key; // now showing this device; enrichment polls may refresh it
+    $('topo-investigate')?.addEventListener('click', () => investigateDevice(device));
+    renderDeviceTrend(device.key);
   } catch {
     inspector('<div class="topo-inspector-empty panel-sub">Could not load device detail.</div>');
   }
