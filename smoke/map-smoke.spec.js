@@ -302,6 +302,62 @@ test.describe('network map', () => {
     await expect(page.locator('.topo-zone.expanded')).toHaveCount(0);
   });
 
+  test('the mini-map shows every zone plus the camera footprint', async ({ page }) => {
+    await openMap(page);
+
+    await expect(page.locator('#topo-minimap')).toBeVisible();
+    await expect(page.locator('.topo-mini-zone')).toHaveCount(SEGMENTS.length);
+    await expect(page.locator('.topo-mini-view')).toHaveCount(1);
+
+    // Every proxy sits inside the mini-map body — a zone drawn outside it is a
+    // projection bug that no count would catch.
+    const inside = await page.evaluate(() => {
+      const body = document.getElementById('topo-mini-body').getBoundingClientRect();
+      return [...document.querySelectorAll('.topo-mini-zone, .topo-mini-view')].every((el) => {
+        const r = el.getBoundingClientRect();
+        return r.left >= body.left - 1 && r.right <= body.right + 1
+          && r.top >= body.top - 1 && r.bottom <= body.bottom + 1;
+      });
+    });
+    expect(inside, 'a mini-map proxy escaped the mini-map').toBe(true);
+
+    // Opening a zone is reflected there too.
+    const box = await page.evaluate(() => {
+      const g = [...document.querySelectorAll('.topo-zone')]
+        .find((n) => n.querySelector('.topo-zone-title')?.textContent === 'VLAN 20');
+      const r = g.querySelector('.topo-zone-rect'); const v = (a) => Number(r.getAttribute(a));
+      return { x: v('x'), y: v('y'), w: v('width'), h: v('height') };
+    });
+    await page.locator('#topo-canvas').click({ position: { x: box.x + box.w / 2, y: box.y + box.h / 2 } });
+    await expect(page.locator('.topo-mini-zone.expanded')).toHaveCount(1);
+  });
+
+  test('clicking the mini-map pans the camera there', async ({ page }) => {
+    await openMap(page);
+    const body = page.locator('#topo-mini-body');
+    await expect(body).toBeVisible();
+
+    // The viewport box is what moves; compare where it sits before and after.
+    const viewLeft = () => page.evaluate(() => {
+      const v = document.querySelector('.topo-mini-view');
+      const b = document.getElementById('topo-mini-body').getBoundingClientRect();
+      return v ? Math.round(v.getBoundingClientRect().left - b.left) : null;
+    });
+    const before = await viewLeft();
+
+    // Zoom in first, or the viewport covers the whole estate and cannot move.
+    await page.locator('#topo-zoom-in').click();
+    await page.locator('#topo-zoom-in').click();
+    await page.waitForTimeout(400);
+
+    const rect = await body.boundingBox();
+    await page.mouse.click(rect.x + rect.width * 0.85, rect.y + rect.height * 0.5);
+    await page.waitForTimeout(500);
+
+    const after = await viewLeft();
+    expect(after, 'the camera footprint should have moved right').not.toBe(before);
+  });
+
   test('zone strokes are explicit per theme, not an alpha of the fill', async ({ page }) => {
     for (const theme of ['light', 'dark']) {
       await page.goto('/');

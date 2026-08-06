@@ -636,6 +636,11 @@
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/></svg>
               </button>
             </div>
+            <!-- Orientation, not navigation: where the camera is within the estate. -->
+            <div id="topo-minimap" class="topo-minimap hidden">
+              <div class="topo-mini-title">Estate</div>
+              <div id="topo-mini-body" class="topo-mini-body"></div>
+            </div>
           </div>
           <!-- Identity for the node under the cursor. Sits outside .topo-canvas because
                sigma owns that element's children, and is aria-hidden because it mirrors

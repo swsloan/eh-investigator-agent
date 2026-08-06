@@ -122,6 +122,123 @@ export function clearZones(svg) {
   svg?.querySelector('.topo-zone-group')?.replaceChildren();
 }
 
+// ---- Mini-map ---------------------------------------------------------------
+// Orientation, not navigation: at any zoom it answers "where am I in the estate".
+// Zones are drawn in GRAPH space, so the picture is stable while the camera moves
+// and only the viewport rectangle travels across it.
+
+let miniBox = null; // graph-space bounds the mini-map is currently showing
+
+/** Graph-space bounds of every drawn node, padded so edge nodes are not flush. */
+function graphBounds(graph) {
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+  graph.forEachNode((_key, attrs) => {
+    const x = Number(attrs.x) || 0; const y = Number(attrs.y) || 0;
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  });
+  if (!Number.isFinite(minX)) return null;
+  const padX = Math.max((maxX - minX) * 0.08, 1);
+  const padY = Math.max((maxY - minY) * 0.08, 1);
+  return { minX: minX - padX, maxX: maxX + padX, minY: minY - padY, maxY: maxY + padY };
+}
+
+function zoneGraphBox(graph, memberKeys) {
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+  for (const key of memberKeys) {
+    if (!graph.hasNode(key)) continue;
+    const x = Number(graph.getNodeAttribute(key, 'x')) || 0;
+    const y = Number(graph.getNodeAttribute(key, 'y')) || 0;
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  }
+  return Number.isFinite(minX) ? { minX, maxX, minY, maxY } : null;
+}
+
+/**
+ * Redraw the mini-map for the current frame.
+ *
+ * The viewport rectangle comes from converting the canvas corners back to graph
+ * space, so it stays honest under any pan or zoom without tracking camera state.
+ */
+export function renderMiniMap(mini, sigma, graph, zones) {
+  if (!mini || !sigma || !graph) return;
+  const body = mini.querySelector('.topo-mini-body');
+  if (!body) return;
+  const bounds = graphBounds(graph);
+  miniBox = bounds;
+  if (!bounds) { body.replaceChildren(); return; }
+
+  const w = body.clientWidth || 134;
+  const h = body.clientHeight || 60;
+  const spanX = bounds.maxX - bounds.minX || 1;
+  const spanY = bounds.maxY - bounds.minY || 1;
+  const toMini = (x, y) => ({
+    x: ((x - bounds.minX) / spanX) * w,
+    y: ((y - bounds.minY) / spanY) * h,
+  });
+
+  const frag = document.createDocumentFragment();
+  for (const zone of zones) {
+    const box = zoneGraphBox(graph, zone.memberKeys);
+    if (!box) continue;
+    const a = toMini(box.minX, box.minY);
+    const b = toMini(box.maxX, box.maxY);
+    // A collapsed segment has one member, so its box is a point. Give it a footprint
+    // scaled to the devices it stands for — otherwise the whole estate reduces to a
+    // scatter of identical 4px dots and the mini-map says nothing about its shape.
+    const floor = Math.min(22, 7 + Math.sqrt(Math.max(1, zone.count || 1)) * 1.4);
+    const width = Math.max(floor, b.x - a.x);
+    const height = Math.max(floor, b.y - a.y);
+    const cx = (a.x + b.x) / 2;
+    const cy = (a.y + b.y) / 2;
+    const div = document.createElement('div');
+    div.className = `topo-mini-zone${zone.expanded ? ' expanded' : ''}`;
+    // Centred on the members, then clamped so a proxy never leaves the mini-map.
+    div.style.left = `${Math.max(0, Math.min(w - width, cx - width / 2))}px`;
+    div.style.top = `${Math.max(0, Math.min(h - height, cy - height / 2))}px`;
+    div.style.width = `${width}px`;
+    div.style.height = `${height}px`;
+    if (zone.accent) div.style.setProperty('--zone-accent', zone.accent);
+    frag.appendChild(div);
+  }
+
+  // Where the camera is looking, in the same graph space.
+  const canvas = sigma.getContainer();
+  const tl = sigma.viewportToGraph({ x: 0, y: 0 });
+  const br = sigma.viewportToGraph({ x: canvas.clientWidth, y: canvas.clientHeight });
+  const v1 = toMini(Math.min(tl.x, br.x), Math.min(tl.y, br.y));
+  const v2 = toMini(Math.max(tl.x, br.x), Math.max(tl.y, br.y));
+  const view = document.createElement('div');
+  view.className = 'topo-mini-view';
+  view.style.left = `${Math.max(0, v1.x)}px`;
+  view.style.top = `${Math.max(0, v1.y)}px`;
+  view.style.width = `${Math.max(3, Math.min(w, v2.x) - Math.max(0, v1.x))}px`;
+  view.style.height = `${Math.max(3, Math.min(h, v2.y) - Math.max(0, v1.y))}px`;
+  frag.appendChild(view);
+
+  body.replaceChildren(frag);
+}
+
+/**
+ * The graph point a mini-map click refers to, or null.
+ *
+ * Callers turn this into a camera move: `graphToViewport` then
+ * `viewportToFramedGraph` gives the framed coordinate the camera centres on, which
+ * is the only conversion sigma exposes between the two spaces.
+ */
+export function miniMapPointAt(body, clientX, clientY) {
+  if (!body || !miniBox) return null;
+  const rect = body.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  const fx = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+  const fy = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+  return {
+    x: miniBox.minX + fx * (miniBox.maxX - miniBox.minX),
+    y: miniBox.minY + fy * (miniBox.maxY - miniBox.minY),
+  };
+}
+
 /**
  * Which zone owns a viewport point.
  *

@@ -17,7 +17,9 @@
 
 import { $ } from './dom.js';
 import { avatarSvg, identityType, roleGlyphInline, roleIconDataUri } from './topo-glyphs.js';
-import { clearZones, drawZones, ensureZoneLayer, zoneAt } from './topo-layers.js';
+import {
+  clearZones, drawZones, ensureZoneLayer, miniMapPointAt, renderMiniMap, zoneAt,
+} from './topo-layers.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -722,6 +724,7 @@ function zonesFor(data) {
     const count = expanded ? zone.devices : (Number(zone.node?.device_count) || 0);
     return {
       key,
+      count,
       title: prettySegment(key).toUpperCase(),
       sub: expanded
         ? `${count} device${count === 1 ? '' : 's'} · open`
@@ -885,8 +888,13 @@ function paint(data) {
   // the camera exactly rather than lagging a pan by a frame.
   const layer = ensureZoneLayer($('topo-canvas'));
   const zones = zonesFor(data);
+  const mini = $('topo-minimap');
+  mini?.classList.toggle('hidden', zones.length === 0);
   if (zones.length) {
-    const redraw = () => drawZones(layer, sigma, graph, zones);
+    const redraw = () => {
+      drawZones(layer, sigma, graph, zones);
+      renderMiniMap(mini, sigma, graph, zones);
+    };
     redraw();
     sigma.on('afterRender', redraw);
   } else {
@@ -1762,6 +1770,18 @@ export function initTopology() {
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     e.preventDefault();
     $('topo-search')?.focus();
+  });
+
+  // Mini-map click pans to that part of the estate. Graph space is converted to the
+  // camera's framed space by round-tripping through the viewport, which is the only
+  // path sigma exposes between the two.
+  $('topo-mini-body')?.addEventListener('click', (e) => {
+    if (!sigma) return;
+    const point = miniMapPointAt($('topo-mini-body'), e.clientX, e.clientY);
+    if (!point) return;
+    const framed = sigma.viewportToFramedGraph(sigma.graphToViewport(point));
+    state.autoTier = false;
+    sigma.getCamera().animate({ x: framed.x, y: framed.y }, { duration: camDuration(300) });
   });
 
   $('topo-zoom-in')?.addEventListener('click', () => zoomCamera(1 / ZOOM_STEP));

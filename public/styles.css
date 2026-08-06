@@ -4064,7 +4064,11 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
    go together and #topo-empty can take the space. */
 .topo-viewport { flex: 1 1 auto; min-height: 0; position: relative; display: flex; flex-direction: column; }
 .topo-viewport.hidden { display: none; }
-.topo-canvas { flex: 1 1 auto; min-height: 0; position: relative; }
+/* The map is a full-bleed data surface, not app chrome, so it gets its own
+   background: fractionally darker than --bg on dark, fractionally warmer than white
+   on light. That is also what gives the floating controls something to sit on —
+   --float over a pure white canvas is white on white. */
+.topo-canvas { flex: 1 1 auto; min-height: 0; position: relative; background: var(--canvas); }
 
 /* Zone layer: the segment containers drawn beneath sigma's canvases.
    Pointer-transparent — hit-testing runs the other way, from sigma's stage click
@@ -4104,6 +4108,33 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
   fill: var(--zone-grey-sub);
 }
 .topo-zone.expanded .topo-zone-sub { fill: var(--zone-cyan-sub); }
+
+/* Mini-map: the estate in miniature, with the camera's footprint on it. Drawn in
+   graph space, so the picture holds still and only the viewport box travels. */
+.topo-minimap {
+  position: absolute; right: 12px; bottom: 12px; z-index: 5;
+  width: 150px; padding: 8px 8px 9px;
+  border: 1px solid var(--border-strong); border-radius: 10px;
+  background: var(--float); box-shadow: var(--shadow-soft); backdrop-filter: blur(4px);
+}
+.topo-minimap.hidden { display: none; }
+.topo-mini-title {
+  font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-faint); margin-bottom: 5px;
+}
+.topo-mini-body { position: relative; height: 60px; cursor: pointer; }
+.topo-mini-zone {
+  position: absolute; border-radius: 3px;
+  background: color-mix(in srgb, var(--zone-accent, var(--zone-grey)) 34%, transparent);
+}
+.topo-mini-zone.expanded {
+  background: color-mix(in srgb, var(--cyan) 26%, transparent);
+  outline: 1px solid var(--cyan-edge);
+}
+.topo-mini-view {
+  position: absolute; border: 1.5px solid var(--cyan); border-radius: 3px;
+  background: color-mix(in srgb, var(--cyan) 8%, transparent); pointer-events: none;
+}
 
 /* Zoom stack + fit-to-view, floating over the top-left of the canvas. The legend
    owns the bottom-left corner; these keep the same 12px inset. The soft shadow is
@@ -4168,8 +4199,12 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 .topo-legend-toggle.hidden { display: none; }
 .topo-legend {
   position: absolute; left: 12px; bottom: 44px; z-index: 5; max-width: 220px;
-  background: var(--raised); border: 1px solid var(--hairline); border-radius: 10px;
-  box-shadow: var(--shadow-soft); padding: 10px 12px; pointer-events: none;
+  /* Frosted rather than opaque: with zones filling the canvas any floating panel
+     now covers map content, and the blur keeps what is under it legible enough to
+     see that something is there. Toggling it off is still the real escape. */
+  background: var(--float); border: 1px solid var(--border-strong); border-radius: 10px;
+  box-shadow: var(--shadow-soft); backdrop-filter: blur(6px);
+  padding: 10px 12px; pointer-events: none;
 }
 .topo-legend.hidden { display: none; }
 .topo-leg-h {
