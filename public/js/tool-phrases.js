@@ -192,3 +192,107 @@ export function phraseFor(toolName, args) {
   if (lower === 'glob' || lower === 'grep') return args?.pattern ? `Searching files for ${String(args.pattern).slice(0, 40)}` : '';
   return '';
 }
+
+// ---- What came back ---------------------------------------------------------
+// The result of a call is the part an analyst is actually waiting for, and it used
+// to be visible only by expanding the card into a wall of JSON. These summaries
+// report the shape the payload really has — counts, and emptiness where emptiness
+// is the finding — and stop there. Anything requiring a name the payload does not
+// contain (which object was the top talker, say) is left to the agent's own prose
+// rather than guessed at here.
+//
+// Returned as segments so the caller can build DOM text nodes: no markup, nothing
+// to escape, and the key fact can be emphasised wherever it falls in the sentence.
+
+const num = (n) => Number(n).toLocaleString();
+
+/** First JSON value in a stdout blob, tolerating leading or trailing noise. */
+export function parseJsonOutput(output) {
+  const text = String(output || '').trim();
+  if (!text) return null;
+  try { return JSON.parse(text); } catch { /* fall through to a bracket scan */ }
+  const start = text.search(/[[{]/);
+  if (start === -1) return null;
+  const open = text[start];
+  const close = open === '{' ? '}' : ']';
+  const end = text.lastIndexOf(close);
+  if (end <= start) return null;
+  try { return JSON.parse(text.slice(start, end + 1)); } catch { return null; }
+}
+
+const isObj = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+
+/** Every stat across the sensors envelope ExtraHop metric queries come back in. */
+function metricStats(value) {
+  if (!Array.isArray(value?.sensors)) return [];
+  return value.sensors.flatMap((sensor) => {
+    const response = sensor?.response || sensor;
+    return Array.isArray(response?.stats) ? response.stats : [];
+  });
+}
+
+function countPhrase(n, singular, pluralWord, tail) {
+  const word = n === 1 ? singular : pluralWord;
+  return [{ text: num(n), strong: true }, { text: ` ${word}${tail ? ` ${tail}` : ''}` }];
+}
+
+/**
+ * A sentence about what a finished call returned, as segments, or null when the
+ * output is not a shape worth claiming anything about.
+ */
+export function resultSummary({ output, isError } = {}) {
+  const text = String(output || '').trim();
+  if (!text) return null;
+
+  if (isError) {
+    const firstLine = text.split('\n').find((l) => l.trim());
+    return firstLine ? [{ text: 'Failed: ' }, { text: firstLine.trim().slice(0, 140), strong: true }] : null;
+  }
+
+  const value = parseJsonOutput(text);
+  if (!isObj(value)) {
+    if (Array.isArray(value)) return countPhrase(value.length, 'item', 'items', 'returned');
+    return null;
+  }
+
+  if (Array.isArray(value.detections)) {
+    return value.detections.length === 0
+      ? [{ text: 'No detections', strong: true }, { text: ' in this window' }]
+      : countPhrase(value.detections.length, 'detection', 'detections', 'returned');
+  }
+  if (Array.isArray(value.activity)) return countPhrase(value.activity.length, 'activity entry', 'activity entries', 'returned');
+  if (Array.isArray(value.records)) {
+    const total = Number(value.total);
+    const segs = value.records.length === 0
+      ? [{ text: 'No records', strong: true }, { text: ' matched' }]
+      : countPhrase(value.records.length, 'record', 'records', 'returned');
+    if (Number.isFinite(total) && total > value.records.length) segs.push({ text: ` of ${num(total)} matching` });
+    return segs;
+  }
+  if (Array.isArray(value.devices)) {
+    return value.devices.length === 0
+      ? [{ text: 'No devices', strong: true }, { text: ' matched' }]
+      : countPhrase(value.devices.length, 'device', 'devices', 'returned');
+  }
+  if (Array.isArray(value.entities)) return countPhrase(value.entities.length, 'entity', 'entities', 'returned');
+  if (Array.isArray(value.metrics)) return countPhrase(value.metrics.length, 'metric', 'metrics', 'in the catalog');
+  if (Array.isArray(value.results)) return countPhrase(value.results.length, 'result', 'results', 'returned');
+
+  const stats = metricStats(value);
+  if (stats.length) {
+    const points = stats.reduce((sum, s) => sum + (Array.isArray(s?.values) ? s.values.length : 1), 0);
+    const objects = new Set(stats.map((s) => s?.oid).filter((o) => o !== undefined && o !== null)).size;
+    const segs = countPhrase(points, 'data point', 'data points', '');
+    if (objects > 1) segs.push({ text: ` across ${num(objects)} objects` });
+    return segs;
+  }
+
+  // A single device record: `entityPresentation` recognises these by the same fields.
+  if (value.device_class !== undefined || value.extrahop_id !== undefined
+    || value.ipaddr4 !== undefined || value.macaddr !== undefined) {
+    const label = value.display_name || value.name || value.ipaddr4 || value.macaddr;
+    return label ? [{ text: 'Device ' }, { text: String(label).slice(0, 60), strong: true }] : null;
+  }
+
+  return null;
+}

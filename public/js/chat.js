@@ -9,7 +9,7 @@ import {
   integrationSourceForToolCall,
 } from './integration-badges.js';
 import { newUsage, state } from './state.js';
-import { phraseFor } from './tool-phrases.js';
+import { phraseFor, resultSummary } from './tool-phrases.js';
 import { fmtBytes, fmtTime, fmtTokens } from './utils.js';
 import { applyIdleStatus, setStatus } from './status.js';
 
@@ -332,14 +332,8 @@ export function agentErrorText(raw) {
   return `${prefix}${body}`.slice(0, 1200);
 }
 
-/**
- * The line beside a tool name. Prefers a statement of intent ("Searching DNS records
- * over the last 14 days"); falls back to the raw arguments when no honest phrase can
- * be derived, which for a plain shell command is the command itself.
- */
-function toolSummary(name, args) {
-  const phrase = phraseFor(name, args);
-  if (phrase) return phrase;
+/** The literal arguments, for when no honest phrase can be derived from them. */
+function rawSummary(name, args) {
   if (!args) return '';
   if (name === 'bash') return args.command || '';
   if (name === 'read' || name === 'write' || name === 'edit') return args.path || args.file_path || '';
@@ -356,12 +350,18 @@ export function addToolCard(ev) {
       <span class="tool-summary"></span>
       <svg class="tool-chevron" viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3l5 5-5 5"/></svg>
     </div>
+    <div class="tool-result hidden"></div>
     <div class="tool-detail">
       <div class="label">Input</div><pre class="tool-args"></pre>
       <div class="label out-label hidden">Output</div><pre class="tool-out hidden"></pre>
     </div>`;
   card.querySelector('.tool-name').textContent = ev.toolName;
-  card.querySelector('.tool-summary').textContent = toolSummary(ev.toolName, ev.args);
+  // A derived phrase is prose and a raw command is a literal, so the typography
+  // switches with it rather than setting every summary in monospace.
+  const phrase = phraseFor(ev.toolName, ev.args);
+  const summary = card.querySelector('.tool-summary');
+  summary.textContent = phrase || rawSummary(ev.toolName, ev.args);
+  summary.classList.toggle('phrase', Boolean(phrase));
   card.querySelector('.tool-args').textContent = JSON.stringify(ev.args, null, 2);
   const integrationSource = integrationSourceForToolCall(ev);
   if (integrationSource) card.dataset.integrationSource = integrationSource;
@@ -414,6 +414,18 @@ export function finishToolCard(ev) {
     out.textContent = text.length > 4000 ? text.slice(0, 4000) + '\n… (truncated)' : text;
     out.classList.remove('hidden');
     card.querySelector('.out-label').classList.remove('hidden');
+  }
+  // What it found, in the stream itself. Built from text nodes rather than markup:
+  // this is tool output, so nothing here should ever be parsed as HTML.
+  const summary = resultSummary({ output: text, isError: ev.isError });
+  const line = card.querySelector('.tool-result');
+  if (summary && line) {
+    line.replaceChildren(...summary.map((seg) => {
+      const node = document.createElement(seg.strong ? 'strong' : 'span');
+      node.textContent = seg.text;
+      return node;
+    }));
+    line.classList.remove('hidden');
   }
   autoscroll();
 }

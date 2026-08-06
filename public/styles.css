@@ -821,6 +821,24 @@ html, body {
   text-overflow: ellipsis;
   flex: 1;
 }
+/* A derived phrase is prose, not a literal, so it drops the monospace the raw
+   argument fallback keeps. */
+.tool-summary.phrase {
+  font-family: inherit;
+  font-size: 12.5px;
+}
+
+/* What the call found, readable without expanding the card. */
+.tool-result {
+  padding: 0 13px 9px 34px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.tool-result.hidden { display: none; }
+.tool-result strong { color: var(--ink); font-weight: 700; }
+.tool-card.error .tool-result strong { color: var(--danger-text); }
+
 .tool-chevron { color: var(--gray); transition: transform 0.15s; flex-shrink: 0; }
 .tool-card.open .tool-chevron { transform: rotate(90deg); }
 .tool-detail { display: none; border-top: 1px solid var(--hairline); }

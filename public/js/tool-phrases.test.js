@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { humanWindow, jsonArg, phraseFor } from './tool-phrases.js';
+import {
+  humanWindow, jsonArg, parseJsonOutput, phraseFor, resultSummary,
+} from './tool-phrases.js';
 
 const bash = (command) => phraseFor('bash', { command });
 
@@ -98,4 +100,74 @@ test('never throws on malformed input', () => {
     assert.doesNotThrow(() => phraseFor('bash', bad));
     assert.doesNotThrow(() => phraseFor(bad, { command: 'x' }));
   }
+});
+
+// ---- result summaries --------------------------------------------------------
+
+const plain = (segs) => (segs || []).map((s) => s.text).join('');
+const strong = (segs) => (segs || []).filter((s) => s.strong).map((s) => s.text).join('');
+
+test('finds JSON inside noisy stdout', () => {
+  assert.deepEqual(parseJsonOutput('{"a":1}'), { a: 1 });
+  assert.deepEqual(parseJsonOutput('warning: slow\n{"a":1}\n'), { a: 1 });
+  assert.deepEqual(parseJsonOutput('[1,2]'), [1, 2]);
+  assert.equal(parseJsonOutput('not json at all'), null);
+  assert.equal(parseJsonOutput(''), null);
+});
+
+test('counts what came back, and emphasises the count', () => {
+  const devices = resultSummary({ output: JSON.stringify({ devices: new Array(200).fill({}) }) });
+  assert.equal(plain(devices), '200 devices returned');
+  assert.equal(strong(devices), '200');
+
+  const records = resultSummary({ output: JSON.stringify({ records: new Array(184).fill({}) }) });
+  assert.equal(plain(records), '184 records returned');
+
+  const one = resultSummary({ output: JSON.stringify({ detections: [{}] }) });
+  assert.equal(plain(one), '1 detection returned', 'singular, not "1 detections"');
+});
+
+test('treats emptiness as the finding it is', () => {
+  const none = resultSummary({ output: JSON.stringify({ detections: [] }) });
+  assert.equal(plain(none), 'No detections in this window');
+  assert.equal(strong(none), 'No detections');
+  assert.equal(plain(resultSummary({ output: JSON.stringify({ devices: [] }) })), 'No devices matched');
+});
+
+test('reports the total behind a truncated record page', () => {
+  const segs = resultSummary({ output: JSON.stringify({ records: new Array(100).fill({}), total: 4213 }) });
+  assert.equal(plain(segs), '100 records returned of 4,213 matching');
+  // A total that merely equals the page adds nothing.
+  const exact = resultSummary({ output: JSON.stringify({ records: new Array(7).fill({}), total: 7 }) });
+  assert.equal(plain(exact), '7 records returned');
+});
+
+test('summarises the metric sensors envelope by points and objects', () => {
+  const output = JSON.stringify({
+    sensors: [{ response: { stats: [
+      { oid: 1, time: 1, values: [1, 2, 3] },
+      { oid: 2, time: 1, values: [4, 5, 6] },
+    ] } }],
+  });
+  const segs = resultSummary({ output });
+  assert.equal(plain(segs), '6 data points across 2 objects');
+  assert.equal(strong(segs), '6');
+});
+
+test('names a single device record', () => {
+  const segs = resultSummary({ output: JSON.stringify({ extrahop_id: 'abc', display_name: 'nas-backup-02' }) });
+  assert.equal(plain(segs), 'Device nas-backup-02');
+  assert.equal(strong(segs), 'nas-backup-02');
+});
+
+test('leads with the reason when a call failed', () => {
+  const segs = resultSummary({ output: 'ExtraHop CLI broker is not running.\ntrace...', isError: true });
+  assert.equal(plain(segs), 'Failed: ExtraHop CLI broker is not running.');
+});
+
+test('claims nothing about output it does not recognise', () => {
+  assert.equal(resultSummary({ output: 'total 48\ndrwxr-xr-x 4 user staff' }), null);
+  assert.equal(resultSummary({ output: '' }), null);
+  assert.equal(resultSummary({}), null);
+  assert.equal(resultSummary({ output: JSON.stringify({ something: 'else' }) }), null);
 });
