@@ -122,6 +122,153 @@ export function clearZones(svg) {
   svg?.querySelector('.topo-zone-group')?.replaceChildren();
 }
 
+// ---- Attack layer -----------------------------------------------------------
+// Zones sit under sigma's canvases; attack paths sit over them, because a step badge
+// behind a node is a badge you cannot read. Same projection, same afterRender hook,
+// same pointer-transparency — badges are hit-tested from a stage click instead.
+
+let badges = [];      // last drawn badge geometry, viewport px, for hit-testing
+let emphasis = '';    // pair id to light, if any
+const BADGE_R = 11;      // drawn radius, from the design
+const BADGE_HIT_R = 13;  // ≥20px target: these are hover/click anchors for the inspector
+
+/** The SVG layer above sigma's canvases, created on first use. */
+export function ensureAttackLayer(container) {
+  if (!container) return null;
+  let svg = container.querySelector('svg.topo-attack-layer');
+  if (svg) return svg;
+  svg = el('svg', { class: 'topo-attack-layer', 'aria-hidden': 'true' });
+  svg.appendChild(el('defs'));
+  svg.appendChild(el('g', { class: 'topo-attack-group' }));
+  container.append(svg); // above sigma's canvases
+  return svg;
+}
+
+/** An arrowhead in `color`, reused across frames. Markers cannot inherit a stroke. */
+function arrowFor(svg, color) {
+  const id = `topo-arrow-${color.replace(/[^a-z0-9]/gi, '')}`;
+  const defs = svg.querySelector('defs');
+  if (!defs.querySelector(`#${id}`)) {
+    const marker = el('marker', {
+      id, viewBox: '0 0 8 8', refX: 7, refY: 4, markerWidth: 7, markerHeight: 7,
+      orient: 'auto-start-reverse',
+    });
+    marker.appendChild(el('path', { d: 'M0 0L8 4L0 8z', fill: color }));
+    defs.appendChild(marker);
+  }
+  return `url(#${id})`;
+}
+
+const at = (sigma, graph, key) => (graph.hasNode(key)
+  ? sigma.graphToViewport({ x: graph.getNodeAttribute(key, 'x'), y: graph.getNodeAttribute(key, 'y') })
+  : null);
+
+/**
+ * Draw the incident: its paths, their step numbers, patient zero, and the endpoints
+ * outside the estate.
+ *
+ * Paths bow rather than run straight, so two hosts that talk in both directions do
+ * not draw one line over the other, and so a path between adjacent zones is
+ * distinguishable from the ordinary traffic edge beneath it.
+ */
+export function drawAttack(svg, sigma, graph, model) {
+  if (!svg || !sigma || !graph) return;
+  const group = svg.querySelector('.topo-attack-group');
+  if (!group) return;
+  const frag = document.createDocumentFragment();
+  const next = [];
+
+  for (const path of model?.paths || []) {
+    const a = at(sigma, graph, path.from);
+    const b = at(sigma, graph, path.to);
+    if (!a || !b) continue;
+    // Perpendicular bow, scaled to the span so it stays proportionate at any zoom.
+    const dx = b.x - a.x; const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const bow = Math.min(60, len * 0.18);
+    const mx = (a.x + b.x) / 2 - (dy / len) * bow;
+    const my = (a.y + b.y) / 2 + (dx / len) * bow;
+
+    const line = el('path', {
+      class: 'topo-attack-path',
+      d: `M${a.x} ${a.y} Q${mx} ${my} ${b.x} ${b.y}`,
+      stroke: path.color,
+      'marker-end': arrowFor(svg, path.color),
+    });
+    line.dataset.pair = path.id;
+    frag.appendChild(line);
+
+    // Badge at the curve's midpoint (t=0.5 on a quadratic).
+    const bxm = 0.25 * a.x + 0.5 * mx + 0.25 * b.x;
+    const bym = 0.25 * a.y + 0.5 * my + 0.25 * b.y;
+    const badge = el('g', { class: 'topo-attack-badge' });
+    badge.dataset.pair = path.id;
+    badge.appendChild(el('circle', { class: 'topo-attack-badge-hit', cx: bxm, cy: bym, r: BADGE_HIT_R }));
+    badge.appendChild(el('circle', { class: 'topo-attack-badge-dot', cx: bxm, cy: bym, r: BADGE_R, fill: path.color }));
+    const text = el('text', { class: 'topo-attack-badge-num', x: bxm, y: bym + 4 });
+    text.textContent = path.badge;
+    badge.appendChild(text);
+    const title = el('title');
+    title.textContent = path.title;
+    badge.appendChild(title);
+    frag.appendChild(badge);
+    next.push({ x: bxm, y: bym, r: BADGE_HIT_R, pair: path.id });
+  }
+
+  // Patient zero: where the incident started, which nothing on the map said before.
+  const zero = at(sigma, graph, model?.patientZero);
+  if (zero) {
+    const halo = el('circle', { class: 'topo-attack-zero', cx: zero.x, cy: zero.y, r: 26 });
+    frag.appendChild(halo);
+  }
+
+  // Endpoints outside the estate: dashed, because they are not devices we know.
+  for (const key of model?.externals || []) {
+    const p = at(sigma, graph, key);
+    if (!p) continue;
+    const g = el('g', { class: 'topo-attack-external' });
+    g.appendChild(el('circle', { class: 'topo-attack-external-ring', cx: p.x, cy: p.y, r: 17 }));
+    g.appendChild(el('path', {
+      class: 'topo-attack-external-x',
+      d: `M${p.x - 5} ${p.y - 5}L${p.x + 5} ${p.y + 5}M${p.x + 5} ${p.y - 5}L${p.x - 5} ${p.y + 5}`,
+    }));
+    frag.appendChild(g);
+  }
+
+  group.replaceChildren(frag);
+  badges = next;
+  // Emphasis is state, not a class someone set: this rebuilds its elements on every
+  // frame, so anything applied from outside would vanish on the next render.
+  applyEmphasis(svg);
+}
+
+export function clearAttack(svg) {
+  badges = [];
+  emphasis = '';
+  svg?.querySelector('.topo-attack-group')?.replaceChildren();
+}
+
+function applyEmphasis(svg) {
+  for (const node of svg.querySelectorAll('[data-pair]')) {
+    node.classList.toggle('muted', Boolean(emphasis) && node.dataset.pair !== emphasis);
+    node.classList.toggle('lit', Boolean(emphasis) && node.dataset.pair === emphasis);
+  }
+}
+
+/** The step badge under a viewport point, or null. */
+export function badgeAt(x, y) {
+  for (const b of badges) {
+    if (Math.hypot(x - b.x, y - b.y) <= b.r) return b.pair;
+  }
+  return null;
+}
+
+/** Emphasise one path and its badge; pass '' to clear. Survives redraws. */
+export function emphasisePath(svg, pairId) {
+  emphasis = pairId || '';
+  if (svg) applyEmphasis(svg);
+}
+
 // ---- Mini-map ---------------------------------------------------------------
 // Orientation, not navigation: at any zoom it answers "where am I in the estate".
 // Zones are drawn in GRAPH space, so the picture is stable while the camera moves

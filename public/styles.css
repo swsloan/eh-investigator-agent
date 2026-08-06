@@ -4109,6 +4109,54 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 }
 .topo-zone.expanded .topo-zone-sub { fill: var(--zone-cyan-sub); }
 
+/* Attack layer: the incident's geometry, above sigma's canvases because a step
+   badge behind a node is a badge nobody can read. Pointer-transparent like the zone
+   layer; badges are hit-tested from a stage click. The explicit size is the same
+   replaced-element trap the zone layer hit — without it an <svg> keeps its intrinsic
+   300x150 and clips everything outside it. */
+.topo-attack-layer {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  z-index: 4; pointer-events: none;
+}
+.topo-canvas.badge-hover { cursor: pointer; }
+
+.topo-attack-path {
+  fill: none; stroke-width: 3; stroke-linecap: round;
+  stroke-dasharray: 10 6;
+  /* Travel is one dash period, so the loop does not jump. Under reduced motion the
+     phase-0 floor freezes this: the dashes stay, only the movement stops, and the
+     kill chain is still readable as a set of directed dashed routes. */
+  animation: attack-flow 1.4s linear infinite;
+}
+.topo-attack-path.muted { opacity: .25; }
+.topo-attack-path.lit { stroke-width: 4.5; }
+
+.topo-attack-badge-hit { fill: transparent; pointer-events: none; }
+.topo-attack-badge-dot { stroke: var(--canvas-ink, transparent); stroke-width: 0; }
+.topo-attack-badge-num {
+  font-family: inherit; font-size: 11px; font-weight: 800; text-anchor: middle;
+  fill: var(--danger-button-fg);
+}
+.topo-attack-badge.muted { opacity: .3; }
+.topo-attack-badge.lit .topo-attack-badge-dot { r: 13; }
+
+/* Patient zero: where it started. */
+.topo-attack-zero {
+  fill: none; stroke: var(--magenta); stroke-width: 1.6; opacity: .55;
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+/* Endpoints outside the estate are dashed, because they are not devices we know. */
+.topo-attack-external-ring {
+  fill: none; stroke: var(--danger); stroke-width: 2.2; stroke-dasharray: 4 3;
+}
+.topo-attack-external-x { stroke: var(--danger); stroke-width: 2.2; stroke-linecap: round; }
+
+/* A sequence row that is drawn on the map is a control, not just prose. */
+.topo-ev.linked { cursor: pointer; border-radius: 8px; }
+.topo-ev.linked:hover { background: var(--surface-hover); }
+.topo-ev.lit { background: var(--cyan-bg); }
+
 /* Incident overlay entry point. Magenta is this app's reserved incident accent, so
    the button changes colour only when an incident is actually drawn — the rest of
    the time it is ordinary chrome. */

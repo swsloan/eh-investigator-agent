@@ -18,7 +18,8 @@
 import { $ } from './dom.js';
 import { avatarSvg, identityType, roleGlyphInline, roleIconDataUri } from './topo-glyphs.js';
 import {
-  clearZones, drawZones, ensureZoneLayer, miniMapPointAt, renderMiniMap, zoneAt,
+  badgeAt, clearAttack, clearZones, drawAttack, drawZones, emphasisePath,
+  ensureAttackLayer, ensureZoneLayer, miniMapPointAt, renderMiniMap, zoneAt,
 } from './topo-layers.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -132,6 +133,19 @@ let hoveredNode = null; // device under the cursor, to trace its dependencies (p
 let lastData = null;   // last painted tier, so a theme flip can repaint without refetching
 let overlay = null;    // the incident currently drawn on top, or null for the plain map
 let overlayStats = { steps: 0, paths: 0, nodes: 0 }; // last overlay panel counts (for back-to-incident)
+let attackModel = null; // {paths, patientZero, externals, pairBySeq} for the vector layer
+let hoveredPair = null; // step badge under the cursor, so hover work is done once
+
+/** Light the inspector row for the step a badge stands for, and scroll it into view. */
+function highlightIncidentStep(pairId) {
+  let first = null;
+  for (const row of document.querySelectorAll('.topo-ev[data-pair]')) {
+    const match = row.dataset.pair === pairId;
+    row.classList.toggle('lit', match);
+    if (match && !first) first = row;
+  }
+  first?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
 let drift = null;      // the active snapshot comparison, or null
 let identitiesCache = []; // [{name, principal, devices:[{key,name,ip,role,locality}]}]
 let snapshots = []; // [{id, collected_at, device_count, ...}], newest first as served
@@ -837,12 +851,32 @@ function paint(data) {
   // is asked what was under it. Only the label band collapses an open zone: its body
   // is empty canvas as far as the user is concerned.
   sigma.on('clickStage', ({ event }) => {
+    // A step badge takes precedence over the zone under it: it is the smaller,
+    // more deliberate target.
+    const pair = attackModel ? badgeAt(event.x, event.y) : null;
+    if (pair) { highlightIncidentStep(pair); return; }
     if (!zones.length) return;
     const hit = zoneAt(event.x, event.y);
     if (!hit) return;
     if (hit.expanded && hit.region === 'label') toggleZone(hit.key);
     else if (!hit.expanded) toggleZone(hit.key);
   });
+
+  // Hovering the map lights the badge under the cursor, so the numbers read as
+  // targets rather than decoration.
+  if (attackModel) {
+    const container = $('topo-canvas');
+    container?.addEventListener('mousemove', (e) => {
+      if (!attackModel) return;
+      const rect = container.getBoundingClientRect();
+      const pair = badgeAt(e.clientX - rect.left, e.clientY - rect.top);
+      if (pair !== hoveredPair) {
+        hoveredPair = pair;
+        emphasisePath(attackLayer, pair || '');
+        container.classList.toggle('badge-hover', Boolean(pair));
+      }
+    });
+  }
 
   // Hover-to-trace: on the plain map, hovering a node emphasises its own edges and
   // fades the rest, so one device's dependencies are followable through the tangle.
@@ -887,22 +921,28 @@ function paint(data) {
   // Zones re-project from graph space on every frame sigma paints, so they track
   // the camera exactly rather than lagging a pan by a frame.
   const layer = ensureZoneLayer($('topo-canvas'));
+  const attackLayer = ensureAttackLayer($('topo-canvas'));
   const zones = zonesFor(data);
   const mini = $('topo-minimap');
   mini?.classList.toggle('hidden', zones.length === 0);
-  if (zones.length) {
-    const redraw = () => {
-      drawZones(layer, sigma, graph, zones);
-      renderMiniMap(mini, sigma, graph, zones);
-    };
-    redraw();
-    sigma.on('afterRender', redraw);
-  } else {
-    clearZones(layer);
-  }
 
+  // applyOverlay builds the attack model from the payload, so it runs before the
+  // first projection; both layers then re-project on every frame sigma paints.
+  attackModel = null;
   applyOverlay(data);
   applyDrift(data);
+
+  const redraw = () => {
+    if (zones.length) {
+      drawZones(layer, sigma, graph, zones);
+      renderMiniMap(mini, sigma, graph, zones);
+    }
+    if (attackModel) drawAttack(attackLayer, sigma, graph, attackModel);
+  };
+  if (!zones.length) clearZones(layer);
+  if (!attackModel) clearAttack(attackLayer);
+  redraw();
+  sigma.on('afterRender', redraw);
 
   const count = data.nodes.length;
   const base = `<b>${TIERS[data.zoom]}</b> · ${count} node${count === 1 ? '' : 's'} · ${data.edges.length} link${data.edges.length === 1 ? '' : 's'}`;
@@ -1145,11 +1185,15 @@ function applyOverlay(data) {
 
   const involved = new Set();
   const steps = [];
+  const pairBySeq = new Map(); // event seq -> the path it is drawn on
   for (const ev of overlay.events) {
     const src = liftKey(ev.src);
     const dst = liftKey(ev.dst);
     for (const k of [src, dst]) if (k) involved.add(k);
-    if (src && dst && src !== dst) steps.push({ ...ev, from: src, to: dst });
+    if (src && dst && src !== dst) {
+      steps.push({ ...ev, from: src, to: dst });
+      pairBySeq.set(ev.seq, `${src} ${dst}`);
+    }
   }
 
   // Dim everything the incident didn't touch.
@@ -1174,26 +1218,34 @@ function applyOverlay(data) {
     byPair.get(id).steps.push(step);
   }
 
+  // Attack paths are drawn on the vector layer, not as sigma edges. A sigma edge is a
+  // straight line with a flat colour and a text label: it cannot bow, cannot carry a
+  // direction arrow, cannot animate, and its label collides with the node labels. The
+  // steps are the story, so they get real geometry.
+  const paths = [];
   for (const pair of byPair.values()) {
     // Colour by the furthest-along stage on this link: how bad it eventually got.
     const peak = pair.steps.reduce((a, b) => ((b.stage ?? -1) > (a.stage ?? -1) ? b : a));
-    const color = STAGE_COLOR[peak.stage ?? 0] || '#ef4444';
-    const numbers = pair.steps.map((s) => s.seq + 1).join(',');
-    const label = pair.steps.length === 1
-      ? `${numbers}. ${peak.tactic || 'step'}`
-      : `${numbers} · ${peak.tactic || 'steps'}`;
-    if (graph.hasEdge(pair.from, pair.to)) {
-      graph.setEdgeAttribute(pair.from, pair.to, 'color', color);
-      graph.setEdgeAttribute(pair.from, pair.to, 'size', 4);
-      graph.setEdgeAttribute(pair.from, pair.to, 'label', label);
-    } else {
-      // This conversation isn't in the significant-traffic topology (net_detail
-      // returns top-N peers), but the incident says it happened — draw it rather
-      // than dropping a real attack step off the map.
-      graph.addEdge(pair.from, pair.to, { color, size: 4, label, forced: true });
-    }
+    const numbers = pair.steps.map((st) => st.seq + 1).sort((a, b) => a - b);
+    paths.push({
+      id: `${pair.from} ${pair.to}`,
+      from: pair.from,
+      to: pair.to,
+      color: STAGE_COLOR[peak.stage ?? 0] || '#ef4444',
+      badge: String(numbers[0]),
+      title: pair.steps.length === 1
+        ? `Step ${numbers[0]}: ${peak.tactic || 'step'}`
+        : `Steps ${numbers.join(', ')} · ${peak.tactic || 'steps'}`,
+    });
   }
-  sigma.setSetting('renderEdgeLabels', byPair.size > 0);
+
+  // Patient zero: the source of the first step. Nothing on the map said where an
+  // incident began, and it is the first thing an analyst looks for.
+  const first = overlay.events.find((e) => e.seq === 0) || overlay.events[0];
+  const patientZero = first ? liftKey(first.src) : '';
+  const externals = (overlay.externals || []).map((e) => e.key).filter((k) => graph.hasNode(k));
+  attackModel = { paths, patientZero, externals, pairBySeq };
+  sigma.setSetting('renderEdgeLabels', false);
   overlayStats = { steps: steps.length, paths: byPair.size, nodes: involved.size };
   renderIncidentChrome();
   renderOverlayPanel(overlayStats.steps, overlayStats.paths, overlayStats.nodes);
@@ -1213,7 +1265,8 @@ function renderOverlayPanel(drawnSteps, drawnPaths, involvedNodes) {
   }).join('');
   const rows = overlay.events.map((e) => {
     const idx = overlay.tacticOrder.indexOf(e.tactic);
-    return `<li class="topo-ev">
+    const pair = attackModel?.pairBySeq?.get(e.seq) || '';
+    return `<li class="topo-ev${pair ? ' linked' : ''}"${pair ? ` data-pair="${esc(pair)}"` : ''}>
       <span class="topo-ev-dot" style="--stage:${STAGE_COLOR[idx] || '#94a3b8'}"></span>
       <div>
         <div class="topo-ev-head">${esc(e.event)}${e.inferred ? ' <span class="topo-inferred" title="The devices for this step were inferred from the write-up, not stated in the verdict">inferred</span>' : ''}</div>
@@ -1236,6 +1289,14 @@ function renderOverlayPanel(drawnSteps, drawnPaths, involvedNodes) {
       + (overlay.unbound ? ` ${overlay.unbound} event${overlay.unbound === 1 ? '' : 's'} name no device in this snapshot and are listed but not drawn.` : '')
       + `</div>`,
   ].join(''));
+
+  // Hovering a step lights its path on the map, which is the whole reason the
+  // sequence and the geometry are the same object rather than two lists.
+  const attackLayer = $('topo-canvas')?.querySelector('svg.topo-attack-layer');
+  for (const row of document.querySelectorAll('.topo-ev[data-pair]')) {
+    row.addEventListener('mouseenter', () => emphasisePath(attackLayer, row.dataset.pair));
+    row.addEventListener('mouseleave', () => emphasisePath(attackLayer, ''));
+  }
 }
 
 export async function load({ keepCamera = false } = {}) {

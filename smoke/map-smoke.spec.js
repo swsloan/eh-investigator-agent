@@ -457,6 +457,96 @@ test.describe('network map', () => {
     await expect(page.locator('.topo-inspector')).toContainText('SMB writes to dc1 SYSVOL share');
   });
 
+  /** Draw the one fixture incident over the map. */
+  async function overlayIncident(page) {
+    await page.locator('#topo-incident-btn').click();
+    await page.locator('#topo-overlay-list .topo-combo-item', { hasText: 'Lateral movement' }).click();
+    await expect(page.locator('#topo-incident-btn')).toHaveClass(/active/);
+  }
+
+  test('the incident is drawn as directed, numbered, staged paths', async ({ page }) => {
+    await openMap(page);
+    await overlayIncident(page);
+
+    const paths = page.locator('.topo-attack-layer .topo-attack-path');
+    await expect(paths).toHaveCount(3); // ws→nas, nas→dc1, nas→external
+
+    // Direction: every path carries an arrowhead. A sigma edge could not.
+    const markers = await paths.evaluateAll((els) => els.map((e) => e.getAttribute('marker-end')));
+    expect(markers.every((m) => /^url\(#topo-arrow-/.test(m || ''))).toBe(true);
+
+    // Stage colour, not one alert red: three steps, three MITRE stages.
+    const strokes = await paths.evaluateAll((els) => els.map((e) => getComputedStyle(e).stroke));
+    expect(new Set(strokes).size, `path colours: ${strokes.join(', ')}`).toBe(3);
+
+    // Numbered in sequence order.
+    const nums = await page.locator('.topo-attack-badge-num').allTextContents();
+    expect(nums.sort()).toEqual(['1', '2', '3']);
+
+    // Patient zero is marked, and the endpoint outside the estate is dashed.
+    await expect(page.locator('.topo-attack-zero')).toHaveCount(1);
+    await expect(page.locator('.topo-attack-external-ring')).toHaveCount(1);
+  });
+
+  test('the layer covers the canvas and sits above it', async ({ page }) => {
+    await openMap(page);
+    await overlayIncident(page);
+    const geom = await page.evaluate(() => {
+      const canvas = document.getElementById('topo-canvas');
+      const attack = canvas.querySelector('svg.topo-attack-layer');
+      const zone = canvas.querySelector('svg.topo-zone-layer');
+      const kids = [...canvas.children];
+      const box = (el) => { const r = el.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; };
+      const c = canvas.getBoundingClientRect();
+      return {
+        attack: box(attack),
+        canvas: { w: Math.round(c.width), h: Math.round(c.height) },
+        zoneBeforeCanvases: kids.indexOf(zone) < kids.findIndex((k) => k.tagName === 'CANVAS'),
+        attackAfterCanvases: kids.indexOf(attack) > kids.findLastIndex((k) => k.tagName === 'CANVAS'),
+      };
+    });
+    // Same replaced-element trap the zone layer hit: an <svg> without an explicit
+    // size keeps its intrinsic 300x150 and clips everything outside it.
+    expect(geom.attack).toEqual(geom.canvas);
+    // Zones under the nodes, attack paths over them — a badge behind a node is unreadable.
+    expect(geom.zoneBeforeCanvases).toBe(true);
+    expect(geom.attackAfterCanvases).toBe(true);
+  });
+
+  test('a sequence step and its path on the map are the same object', async ({ page }) => {
+    await openMap(page);
+    await overlayIncident(page);
+
+    const rows = page.locator('.topo-ev[data-pair]');
+    await expect(rows).toHaveCount(3);
+
+    // Hovering a step lights its path and mutes the others.
+    await rows.nth(1).hover();
+    await expect(page.locator('.topo-attack-path.lit')).toHaveCount(1);
+    await expect(page.locator('.topo-attack-path.muted')).toHaveCount(2);
+
+    await page.locator('#topo-incident-btn').hover(); // away from the row
+    await expect(page.locator('.topo-attack-path.lit')).toHaveCount(0);
+  });
+
+  test('reduced motion freezes the attack paths without erasing them', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await openMap(page);
+    await overlayIncident(page);
+
+    const path = page.locator('.topo-attack-path').first();
+    await expect(path).toHaveCount(1);
+    const style = await path.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { duration: cs.animationDuration, dasharray: cs.strokeDasharray, opacity: cs.opacity };
+    });
+    // Motion stops...
+    expect(parseFloat(style.duration)).toBeLessThan(0.05);
+    // ...but the route is still a visible, directed, dashed line. Freeze, don't hide.
+    expect(style.dasharray).toMatch(/\d/);
+    expect(Number(style.opacity)).toBeGreaterThan(0.5);
+  });
+
   test('escape closes the incident picker before it closes the map', async ({ page }) => {
     await openMap(page);
     await page.locator('#topo-incident-btn').click();
