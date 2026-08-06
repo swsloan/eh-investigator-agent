@@ -3928,8 +3928,42 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 .topo-crumb:focus-visible { outline: 2px solid var(--focus-border); outline-offset: 1px; }
 .topo-crumb-sep { color: var(--text-faint); font-size: 12px; }
 
+/* Viewport = canvas + the chrome floating over it, and the positioning context for
+   that chrome. Sigma empties its container on kill(), which it does on every
+   repaint, so floating chrome has to be a SIBLING of the canvas rather than a
+   child of it. Hiding is done on the stage so the canvas and its chrome come and
+   go together and #topo-empty can take the space. */
+.topo-viewport { flex: 1 1 auto; min-height: 0; position: relative; display: flex; flex-direction: column; }
+.topo-viewport.hidden { display: none; }
 .topo-canvas { flex: 1 1 auto; min-height: 0; position: relative; }
-.topo-canvas.hidden { display: none; }
+
+/* Zoom stack + fit-to-view, floating over the top-left of the canvas. The legend
+   owns the bottom-left corner; these keep the same 12px inset. The soft shadow is
+   load-bearing, not decoration: --float over the light theme's white canvas is
+   white-on-white, so the shadow is what separates the control from the map. */
+.topo-zoom {
+  position: absolute; left: 12px; top: 12px; z-index: 5;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.topo-zoom-stack {
+  display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid var(--border-strong); border-radius: 10px;
+  background: var(--float); box-shadow: var(--shadow-soft); backdrop-filter: blur(4px);
+}
+.topo-zoom-btn {
+  width: 34px; height: 32px; border: none; background: transparent;
+  color: var(--text-2); font-family: inherit; font-size: 16px; line-height: 1;
+  display: grid; place-items: center; cursor: pointer;
+}
+.topo-zoom-btn:hover { background: var(--surface-hover); color: var(--ink); }
+.topo-zoom-btn:focus-visible { outline: 2px solid var(--focus-border); outline-offset: -2px; }
+.topo-zoom-btn.solo {
+  border: 1px solid var(--border-strong); border-radius: 10px;
+  background: var(--float); color: var(--gray);
+  box-shadow: var(--shadow-soft); backdrop-filter: blur(4px);
+}
+.topo-zoom-btn.solo:hover { color: var(--ink); }
+.topo-zoom-div { height: 1px; background: var(--border-strong); }
 
 /* Hover card: who the node under the cursor is. Fixed-positioned against the
    canvas' client rect (no offset maths against the panel chrome) and pointer

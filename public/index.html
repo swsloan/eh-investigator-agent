@@ -609,7 +609,22 @@
             <button id="topo-neighbors" class="btn-secondary slim hidden" type="button" aria-pressed="false" title="Also show devices outside this segment that these devices depend on">Show outside dependencies</button>
             <div id="topo-status" class="topo-status panel-sub"></div>
           </div>
-          <div id="topo-canvas" class="topo-canvas hidden"></div>
+          <!-- The stage is the positioning context for chrome floating over the map.
+               That chrome CANNOT live inside #topo-canvas: sigma.kill() empties its
+               container, so anything in there is destroyed on the next repaint. -->
+          <div id="topo-viewport" class="topo-viewport hidden">
+            <div id="topo-canvas" class="topo-canvas"></div>
+            <div class="topo-zoom">
+              <div class="topo-zoom-stack">
+                <button id="topo-zoom-in" class="topo-zoom-btn" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+                <span class="topo-zoom-div" aria-hidden="true"></span>
+                <button id="topo-zoom-out" class="topo-zoom-btn" type="button" title="Zoom out" aria-label="Zoom out">&#8722;</button>
+              </div>
+              <button id="topo-fit" class="topo-zoom-btn solo" type="button" title="Fit to view" aria-label="Fit to view">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/></svg>
+              </button>
+            </div>
+          </div>
           <!-- Identity for the node under the cursor. Sits outside .topo-canvas because
                sigma owns that element's children, and is aria-hidden because it mirrors
                what clicking the node puts in the inspector — there is no hover for AT. -->

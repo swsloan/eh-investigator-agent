@@ -481,6 +481,46 @@ function updateNeighborBtn() {
   }
 }
 
+// ---- Camera chrome ----------------------------------------------------------
+// Ratio bounds are shared with the sigma settings below so the buttons and the
+// wheel can never disagree about how far the map zooms. Remember that sigma's
+// ratio SHRINKS as you zoom in, so zooming in divides.
+const MIN_RATIO = 0.02;
+const MAX_RATIO = 4;
+const ZOOM_STEP = 1.4; // per button press
+
+/** Camera animations are JS, so the CSS reduced-motion floor cannot reach them. */
+function camDuration(ms) {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : ms;
+}
+
+/**
+ * The camera state that frames the whole graph. Sigma normalises node coordinates
+ * into the unit square, so (0.5, 0.5) always centres everything and the ratio is
+ * the only real choice — slightly over 1 so the outermost labels have room instead
+ * of being clipped flush against the container edge.
+ */
+function fitState(nodeCount) {
+  return { x: 0.5, y: 0.5, ratio: nodeCount <= 3 ? 1.08 : 1.18 };
+}
+
+function zoomCamera(factor) {
+  if (!sigma) return;
+  const cam = sigma.getCamera();
+  const ratio = Math.min(Math.max(cam.ratio * factor, MIN_RATIO), MAX_RATIO);
+  cam.animate({ ratio }, { duration: camDuration(180) });
+}
+
+/**
+ * Frame everything currently loaded. While auto-tier is on this can pull the camera
+ * back past a tier band and trigger a refetch of the wider tier — which is the right
+ * answer for a control that means "show me all of it".
+ */
+function fitToView() {
+  if (!sigma || !lastData) return;
+  sigma.getCamera().animate(fitState(lastData.nodes.length), { duration: camDuration(260) });
+}
+
 // Above this many nodes, labelling everything stops helping: sigma paints them all
 // and they overlap into a smear. Measured against this renderer — 11 and 20 nodes
 // read cleanly with the roomy policy, 30 starts colliding, 48 is unreadable. Under
@@ -649,16 +689,17 @@ function paint(data) {
     labelColor: { color: theme.label },
     ...labelPolicy(data),
     labelSize: 12,
-    minCameraRatio: 0.02,
-    maxCameraRatio: 4,
+    minCameraRatio: MIN_RATIO,
+    maxCameraRatio: MAX_RATIO,
     zIndex: true,
   });
 
   // Sigma fits nodes flush to the container edges, which clips the labels of
   // whichever nodes land on the boundary. Pull the camera back slightly so the
   // outermost labels have room. Done before the LOD listener is attached so this
-  // deliberate framing can't be mistaken for a user zoom.
-  sigma.getCamera().setState({ ratio: data.nodes.length <= 3 ? 1.08 : 1.18 });
+  // deliberate framing can't be mistaken for a user zoom. Same state the
+  // fit-to-view button animates to.
+  sigma.getCamera().setState(fitState(data.nodes.length));
 
   sigma.on('clickNode', ({ node }) => {
     const raw = graph.getNodeAttribute(node, 'raw');
@@ -1048,7 +1089,7 @@ export async function load({ keepCamera = false } = {}) {
       return;
     }
     $('topo-empty').classList.add('hidden');
-    $('topo-canvas').classList.remove('hidden');
+    $('topo-viewport').classList.remove('hidden');
     paint(data);
     if (cam) sigma.getCamera().setState(cam);
     renderCrumbs();
@@ -1063,7 +1104,7 @@ export async function load({ keepCamera = false } = {}) {
 
 function showEmpty(message) {
   if (sigma) { sigma.kill(); sigma = null; }
-  $('topo-canvas').classList.add('hidden');
+  $('topo-viewport').classList.add('hidden');
   $('topo-legend')?.classList.add('hidden');
   $('topo-legend-toggle')?.classList.add('hidden');
   const el = $('topo-empty');
@@ -1335,6 +1376,9 @@ export function initTopology() {
     b?.classList.toggle('active', state.showNeighbors);
     load({ keepCamera: true });
   });
+  $('topo-zoom-in')?.addEventListener('click', () => zoomCamera(1 / ZOOM_STEP));
+  $('topo-zoom-out')?.addEventListener('click', () => zoomCamera(ZOOM_STEP));
+  $('topo-fit')?.addEventListener('click', fitToView);
   $('topo-legend-toggle')?.addEventListener('click', () => { legendVisible = !legendVisible; renderLegend(); });
   $('topo-refresh')?.addEventListener('click', () => { loadSnapshots().then(() => load()); });
   window.addEventListener('resize', () => { if (isTopologyOpen() && sigma) sigma.refresh(); });
