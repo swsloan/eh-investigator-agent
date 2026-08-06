@@ -610,6 +610,10 @@
             <div id="topo-status" class="topo-status panel-sub"></div>
           </div>
           <div id="topo-canvas" class="topo-canvas hidden"></div>
+          <!-- Identity for the node under the cursor. Sits outside .topo-canvas because
+               sigma owns that element's children, and is aria-hidden because it mirrors
+               what clicking the node puts in the inspector — there is no hover for AT. -->
+          <div id="topo-hovercard" class="topo-hovercard hidden" aria-hidden="true"></div>
           <button id="topo-legend-toggle" class="topo-legend-toggle" type="button" aria-pressed="true" title="Show or hide the colour legend">Legend</button>
           <div id="topo-legend" class="topo-legend" aria-label="Map legend"></div>
           <div id="topo-empty" class="topo-empty">

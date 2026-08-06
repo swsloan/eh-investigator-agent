@@ -481,8 +481,118 @@ function updateNeighborBtn() {
   }
 }
 
+// Above this many nodes, labelling everything stops helping: sigma paints them all
+// and they overlap into a smear. Measured against this renderer — 11 and 20 nodes
+// read cleanly with the roomy policy, 30 starts colliding, 48 is unreadable. Under
+// the cap every node is named; over it, only the bigger nodes (servers, DCs,
+// gateways, critical hosts) keep a label and the hover card covers the rest.
+const LABEL_ALL_MAX = 24;
+
+/** Sigma label settings for this payload: name everything, or triage by size. */
+function labelPolicy(data) {
+  if (data.nodes.length <= LABEL_ALL_MAX) {
+    return { labelRenderedSizeThreshold: 0, labelDensity: 4, labelGridCellSize: 60 };
+  }
+  return {
+    labelRenderedSizeThreshold: data.zoom === 3 ? 7 : 4,
+    labelDensity: 0.7,
+    labelGridCellSize: 110,
+  };
+}
+
+// ---- Hover card -------------------------------------------------------------
+// Sigma labels what it can fit (see the label policy in paint), but past a couple
+// of dozen nodes it has to drop labels or they pile into an unreadable smear. The
+// hover card is what makes that safe: whatever the label grid decided, a node under
+// the cursor always states who it is.
+
+let hoverCardNode = null; // graph key the card is currently describing, or null
+
+/** Identity markup for a node. Names come off the wire — escape everything. */
+function hoverCardHtml(raw, zoom) {
+  if (!raw) return '';
+  const name = esc(raw.name ?? raw.key ?? '');
+  if (!name) return '';
+  if (raw.external) {
+    return `<div class="topo-hc-name">${name}</div>
+      <div class="topo-hc-meta">External endpoint · outside the estate</div>`;
+  }
+
+  const bits = [];
+  let tags = '';
+  if (zoom === 3) {
+    if (raw.ip) bits.push(esc(raw.ip));
+    if (raw.role) bits.push(esc(prettyRole(raw.role)));
+    const seg = prettySegment(raw.segment);
+    if (seg) bits.push(esc(seg));
+    if (raw.critical) tags += '<span class="topo-hc-tag crit">Critical</span>';
+    if (raw.neighbor) tags += '<span class="topo-hc-tag">Outside this segment</span>';
+  } else {
+    const n = Number(raw.device_count) || 0;
+    if (n) bits.push(`${n} device${n === 1 ? '' : 's'}`);
+    // On aggregates `role` is the segment's DOMINANT role, not a device's own.
+    if (raw.role) bits.push(`mostly ${esc(prettyRole(raw.role).toLowerCase())}`);
+  }
+
+  const hint = zoom === 3 ? 'Click for details' : 'Click to drill in';
+  return `<div class="topo-hc-name">${name}</div>
+    ${bits.length ? `<div class="topo-hc-meta">${bits.join(' · ')}</div>` : ''}
+    ${tags ? `<div class="topo-hc-tags">${tags}</div>` : ''}
+    <div class="topo-hc-hint">${hint}</div>`;
+}
+
+/** Clamp v into [lo, hi], preferring lo when the span is too small to hold it. */
+function clamp(v, lo, hi) {
+  return hi < lo ? lo : Math.min(Math.max(v, lo), hi);
+}
+
+/**
+ * Park the card beside its node. Fixed-positioned off the canvas' client rect, so
+ * it needs no offset maths against the panel chrome and sigma's canvas teardown
+ * can't disturb it.
+ *
+ * Side preference is right-of-node, flipping left when that would overflow — but
+ * the flip is only a preference. On a narrow canvas (the inspector takes 320px,
+ * and the layout sheds the right column entirely under 1100px) neither side may
+ * fit, so the result is clamped into the canvas afterwards. Without that, flipping
+ * a 200px card beside a node 45px from the left edge puts it off-screen.
+ */
+function positionHoverCard(nodeKey) {
+  const el = $('topo-hovercard');
+  const container = $('topo-canvas');
+  if (!el || !container || !sigma || !graph?.hasNode(nodeKey)) return;
+  const p = sigma.graphToViewport({
+    x: graph.getNodeAttribute(nodeKey, 'x'),
+    y: graph.getNodeAttribute(nodeKey, 'y'),
+  });
+  const rect = container.getBoundingClientRect();
+  const gap = Math.max(14, (Number(graph.getNodeAttribute(nodeKey, 'size')) || 6) + 10);
+  el.classList.remove('hidden'); // must be laid out before it can be measured
+  const { offsetWidth: w, offsetHeight: h } = el;
+  let left = rect.left + p.x + gap;
+  if (left + w > rect.right - 8) left = rect.left + p.x - gap - w;
+  el.style.left = `${Math.round(clamp(left, rect.left + 8, rect.right - w - 8))}px`;
+  el.style.top = `${Math.round(clamp(rect.top + p.y - h / 2, rect.top + 8, rect.bottom - h - 8))}px`;
+}
+
+function showHoverCard(nodeKey) {
+  const el = $('topo-hovercard');
+  if (!el || !graph?.hasNode(nodeKey)) return;
+  const html = hoverCardHtml(graph.getNodeAttribute(nodeKey, 'raw'), lastData?.zoom ?? 3);
+  if (!html) return;
+  el.innerHTML = html;
+  hoverCardNode = nodeKey;
+  positionHoverCard(nodeKey);
+}
+
+function hideHoverCard() {
+  hoverCardNode = null;
+  $('topo-hovercard')?.classList.add('hidden');
+}
+
 function paint(data) {
   lastData = data;
+  hideHoverCard(); // the graph is about to be rebuilt; any open card is stale
   const theme = themeColors();
   const G = window.graphology?.Graph || window.graphology;
   graph = new G({ type: 'undirected', allowSelfLoops: false, multi: false });
@@ -537,11 +647,7 @@ function paint(data) {
     renderEdgeLabels: false,
     defaultEdgeColor: theme.edge,
     labelColor: { color: theme.label },
-    labelDensity: 0.7,
-    labelGridCellSize: 110,
-    // Only the larger nodes (servers/DCs/critical) carry a label by default; the many
-    // workstations stay unlabelled until hovered, which sigma always labels.
-    labelRenderedSizeThreshold: data.zoom === 3 ? 7 : 4,
+    ...labelPolicy(data),
     labelSize: 12,
     minCameraRatio: 0.02,
     maxCameraRatio: 4,
@@ -562,10 +668,22 @@ function paint(data) {
 
   // Hover-to-trace: on the plain map, hovering a node emphasises its own edges and
   // fades the rest, so one device's dependencies are followable through the tangle.
-  // Skipped while an overlay or drift is active — those own the colouring.
-  if (!overlay && !drift) {
-    sigma.on('enterNode', ({ node }) => { hoveredNode = node; sigma.refresh(); });
-    sigma.on('leaveNode', () => { hoveredNode = null; sigma.refresh(); });
+  // Skipped while an overlay or drift is active — those own the colouring. The hover
+  // CARD is not gated that way: identifying what you are pointing at matters just as
+  // much mid-incident, and it only paints HTML beside the canvas.
+  const trace = !overlay && !drift;
+  sigma.on('enterNode', ({ node }) => {
+    if (trace) { hoveredNode = node; sigma.refresh(); }
+    showHoverCard(node);
+  });
+  sigma.on('leaveNode', () => {
+    if (trace) { hoveredNode = null; sigma.refresh(); }
+    hideHoverCard();
+  });
+  // Panning or zooming under an open card would leave it pointing at empty space.
+  sigma.getCamera().on('updated', () => { if (hoverCardNode) positionHoverCard(hoverCardNode); });
+
+  if (trace) {
     sigma.setSetting('edgeReducer', (edge, attrs) => {
       if (!hoveredNode) return attrs;
       return graph.hasExtremity(edge, hoveredNode)
@@ -1171,6 +1289,7 @@ function open() {
 
 function close({ activate = 'files' } = {}) {
   $('topology-overlay').classList.add('hidden');
+  hideHoverCard(); // fixed-positioned: it would outlive the overlay otherwise
   if (sigma) { sigma.kill(); sigma = null; }
   setRpTab(activate);
 }
