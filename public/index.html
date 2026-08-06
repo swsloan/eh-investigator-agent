@@ -585,6 +585,12 @@
           <button class="rp-tab" data-rp="memory" type="button" role="tab">Memory</button>
           <button class="rp-tab active" data-rp="map" type="button" role="tab">Map</button>
         </div>
+        <!-- Deliberately absent until now: a segmented control with one segment is
+             dead UI. It arrives with the views it switches between. -->
+        <div class="topo-views" role="tablist" aria-label="Map view">
+          <button class="topo-view active" data-view="topology" type="button" role="tab" aria-selected="true">Topology</button>
+          <button class="topo-view" data-view="matrix" type="button" role="tab" aria-selected="false">Traffic matrix</button>
+        </div>
         <div class="topo-combo topo-find">
           <input id="topo-search" class="topo-select topo-combo-input topo-find-input" type="search"
                  placeholder="Find device, IP, user…" autocomplete="off" role="combobox"
@@ -613,6 +619,13 @@
             <ul id="topo-overlay-list" class="topo-combo-list" role="listbox"></ul>
           </div>
         </div>
+        <label id="topo-matrix-controls" class="topo-select-wrap hidden">Group by
+          <select id="topo-matrix-groupby" class="topo-select">
+            <option value="segment">Segment</option>
+            <option value="locality">Locality</option>
+            <option value="role_key">Role</option>
+          </select>
+        </label>
         <button id="topo-users" class="btn-secondary slim hidden" type="button" title="Browse the users seen in this snapshot and the devices they authenticated on">Users</button>
         <button id="topo-external" class="btn-secondary slim" type="button" aria-pressed="false" title="Show devices outside the internal network (External locality)">Show external</button>
         <button id="topo-drift" class="btn-secondary slim" type="button" aria-pressed="false">What changed</button>
@@ -667,6 +680,7 @@
           <div id="topo-hovercard" class="topo-hovercard hidden" aria-hidden="true"></div>
           <button id="topo-legend-toggle" class="topo-legend-toggle" type="button" aria-pressed="true" title="Show or hide the colour legend">Legend</button>
           <div id="topo-legend" class="topo-legend" aria-label="Map legend"></div>
+          <div id="topo-matrix" class="topo-matrix hidden"></div>
           <div id="topo-empty" class="topo-empty">
             <div class="topo-empty-inner">Loading the network map…</div>
           </div>

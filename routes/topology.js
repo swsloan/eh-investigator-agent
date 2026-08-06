@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
-import { listSnapshots, latestSnapshotId, readEnrichments, readIdentities, readMixedTier, readNode, readNodeHistory, readSnapshotForDiff, readTier, topologyGraphName } from '../lib/topology-store.js';
+import { listSnapshots, latestSnapshotId, readEnrichments, readIdentities, readMatrix, readMatrixPairs, readMixedTier, readNode, readNodeHistory, readSnapshotForDiff, readTier, topologyGraphName } from '../lib/topology-store.js';
 import { buildOverlay } from '../lib/attack-overlay.js';
 import { describeDrift, diffSnapshots } from '../lib/topology-drift.js';
 
@@ -203,6 +203,41 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
   // One device's traffic over the retained snapshots, for the inspector's trend.
   // Ordered and stamped here by joining the snapshot headers, so the client gets a
   // series it can draw without a second request.
+  // Who talks to whom, as a square. Its own endpoint because a matrix is not a
+  // node/edge payload and has no zoom.
+  router.get('/matrix', async (req, res) => {
+    if (!guard(req, res)) return;
+    try {
+      const group = await pickGroup(req);
+      const snapshotId = await pickSnapshot(req, group);
+      if (!snapshotId) return res.json({ group, snapshot_id: '', axes: [], cells: [], empty: true });
+      const matrix = await readMatrix(client, group, {
+        snapshotId,
+        groupBy: typeof req.query.groupBy === 'string' ? req.query.groupBy : 'segment',
+        external: req.query.external === '1' || req.query.external === 'true',
+        limit: req.query.limit,
+      });
+      res.json({ group, ...matrix });
+    } catch (err) { fail(res, err); }
+  });
+
+  router.get('/matrix/pairs', async (req, res) => {
+    if (!guard(req, res)) return;
+    try {
+      const group = await pickGroup(req);
+      const snapshotId = await pickSnapshot(req, group);
+      if (!snapshotId) return res.json({ group, snapshot_id: '', pairs: [] });
+      const pairs = await readMatrixPairs(client, group, {
+        snapshotId,
+        groupBy: typeof req.query.groupBy === 'string' ? req.query.groupBy : 'segment',
+        src: typeof req.query.src === 'string' ? req.query.src : '',
+        dst: typeof req.query.dst === 'string' ? req.query.dst : '',
+        limit: req.query.limit,
+      });
+      res.json({ group, snapshot_id: snapshotId, pairs });
+    } catch (err) { fail(res, err); }
+  });
+
   router.get('/node/:key/history', async (req, res) => {
     if (!guard(req, res)) return;
     try {

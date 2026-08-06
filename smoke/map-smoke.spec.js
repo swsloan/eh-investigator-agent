@@ -126,6 +126,36 @@ async function stubTopology(page) {
     },
   }));
 
+
+  // The matrix: a square of segment-to-segment totals. The diagonal is deliberately
+  // the largest cell, because on a real estate it usually is.
+  await page.route('**/api/topology/matrix**', (route) => route.fulfill({
+    json: {
+      group: 'test', snapshot_id: SNAPSHOT, groupBy: 'segment',
+      axes: SEGMENTS.map((sg) => ({ key: sg.key, name: sg.name, device_count: sg.device_count, role: sg.role })),
+      cells: [
+        { src: 'vlan:20', dst: 'vlan:20', bytes: 13_800_000_000, links: 4 },  // diagonal, the biggest
+        { src: 'vlan:30', dst: 'vlan:20', bytes: 1_600_000_000, links: 27 },
+        { src: 'vlan:10', dst: 'vlan:20', bytes: 400_000_000, links: 9 },
+        { src: 'vlan:20', dst: 'vlan:10', bytes: 12_000_000, links: 3 },
+      ],
+    },
+  }));
+
+  await page.route('**/api/topology/matrix/pairs**', (route) => {
+    const q = new URL(route.request().url()).searchParams;
+    return route.fulfill({
+      json: {
+        group: 'test', snapshot_id: SNAPSHOT,
+        pairs: [
+          { src_key: 'dev:nas', src_name: 'nas-backup-02.acme.lab', dst_key: 'dev:dc1', dst_name: 'dc1.acme.lab', bytes: 4_200_000, protocols: ['SMB'] },
+          { src_key: 'dev:sql', src_name: 'sql-erp-01.acme.lab', dst_key: 'dev:dc1', dst_name: 'dc1.acme.lab', bytes: 900_000, protocols: ['LDAP'] },
+        ],
+        asked: { src: q.get('src'), dst: q.get('dst') },
+      },
+    });
+  });
+
   // The map payload varies by tier, so answer from the query the client sent.
   await page.route('**/api/topology/map**', (route) => {
     const params = new URL(route.request().url()).searchParams;
@@ -622,6 +652,71 @@ test.describe('network map', () => {
     // nas is the destination of step 1 and the source of steps 2 and 3; the first
     // step naming it is the one that explains why it is interesting.
     expect(text).toMatch(/step 1 \(Credential Access\)/);
+  });
+
+  test('the matrix squares off traffic, and keeps the diagonal', async ({ page }) => {
+    await openMap(page);
+    await page.locator('.topo-view[data-view="matrix"]').click();
+
+    const grid = page.locator('.topo-matrix-grid');
+    await expect(grid).toBeVisible();
+    // 3 groups: 3 column heads, 3 row heads, 9 cells.
+    await expect(page.locator('.topo-matrix-col')).toHaveCount(3);
+    await expect(page.locator('.topo-matrix-row')).toHaveCount(3);
+    await expect(page.locator('.topo-cell')).toHaveCount(9);
+    await expect(page.locator('.topo-cell.diagonal')).toHaveCount(3);
+
+    // The topology is put away rather than left underneath.
+    await expect(page.locator('#topo-viewport')).toBeHidden();
+    await expect(page.locator('#topo-matrix-controls')).toBeVisible();
+  });
+
+  test('the diagonal has its own scale, so it cannot flatten the rest', async ({ page }) => {
+    await openMap(page);
+    await page.locator('.topo-view[data-view="matrix"]').click();
+
+    const alpha = (src, dst) => page.locator(`.topo-cell[data-src="${src}"][data-dst="${dst}"]`)
+      .evaluate((el) => Number(el.style.getPropertyValue('--cell-alpha')));
+
+    // vlan:20→itself is 13.8 GB, an order of magnitude over the heaviest pair. If it
+    // shared the ramp, every off-diagonal cell would collapse toward invisible.
+    const diagonal = await alpha('vlan:20', 'vlan:20');
+    const heaviestPair = await alpha('vlan:30', 'vlan:20');
+    const lightPair = await alpha('vlan:20', 'vlan:10');
+
+    expect(diagonal).toBeGreaterThan(0.6);       // saturated on its own scale
+    expect(heaviestPair).toBeGreaterThan(0.6);   // and so is the heaviest real pair
+    // The off-diagonal cells still separate from each other.
+    expect(heaviestPair - lightPair).toBeGreaterThan(0.1);
+  });
+
+  test('a cell opens the conversations behind it, and hands them to the topology', async ({ page }) => {
+    await openMap(page);
+    await page.locator('.topo-view[data-view="matrix"]').click();
+    await page.locator('.topo-cell[data-src="vlan:30"][data-dst="vlan:20"]').click();
+
+    const rail = page.locator('.topo-inspector');
+    await expect(rail).toContainText('VLAN 30 → VLAN 20');
+    // The cell's own total, from the matrix model rather than a second fetch.
+    await expect(rail).toContainText('1.6 GB');
+    await expect(rail).toContainText('27 conversations');
+    await expect(rail).toContainText('nas-backup-02.acme.lab');
+    await expect(rail).toContainText('dc1.acme.lab');
+
+    // "Show these pairs" returns to the topology scoped to exactly those devices.
+    await page.locator('#topo-pairs-show').click();
+    await expect(page.locator('#topo-viewport')).toBeVisible();
+    await expect(page.locator('.topo-view[data-view="topology"]')).toHaveClass(/active/);
+    await expect(page.locator('#topo-crumbs')).toContainText('VLAN 30 → VLAN 20');
+  });
+
+  test('a diagonal cell says what it is', async ({ page }) => {
+    await openMap(page);
+    await page.locator('.topo-view[data-view="matrix"]').click();
+    await page.locator('.topo-cell[data-src="vlan:20"][data-dst="vlan:20"]').click();
+    const rail = page.locator('.topo-inspector');
+    await expect(rail).toContainText('within the group');
+    await expect(rail).toContainText(/East-west movement looks like this/);
   });
 
   test('escape closes the incident picker before it closes the map', async ({ page }) => {

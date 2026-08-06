@@ -17,6 +17,7 @@
 
 import { $ } from './dom.js';
 import { avatarSvg, identityType, roleGlyphInline, roleIconDataUri } from './topo-glyphs.js';
+import { matrixModel, pairId, renderMatrix, renderPairs } from './topo-matrix.js';
 import {
   badgeAt, clearAttack, clearZones, drawAttack, drawZones, emphasisePath,
   ensureAttackLayer, ensureZoneLayer, miniMapPointAt, renderMiniMap, zoneAt,
@@ -135,6 +136,15 @@ let overlay = null;    // the incident currently drawn on top, or null for the p
 let overlayStats = { steps: 0, paths: 0, nodes: 0 }; // last overlay panel counts (for back-to-incident)
 let attackModel = null; // {paths, patientZero, externals, pairBySeq} for the vector layer
 let hoveredPair = null; // step badge under the cursor, so hover work is done once
+let matrixGroupBy = 'segment';
+
+/** The status line for whatever the topology last painted. */
+function statusForData() {
+  if (!lastData) return '';
+  const count = lastData.nodes.length;
+  return `<b>${TIERS[lastData.zoom]}</b> · ${count} node${count === 1 ? '' : 's'} · `
+    + `${lastData.edges.length} link${lastData.edges.length === 1 ? '' : 's'}`;
+}
 
 /** Light the inspector row for the step a badge stands for, and scroll it into view. */
 function highlightIncidentStep(pairId) {
@@ -1209,6 +1219,101 @@ function renderDriftPanel(markedNodes) {
   ].join(''));
 }
 
+
+// ---- View switch ------------------------------------------------------------
+// Topology, matrix, changes. They share the snapshot, the group and the external
+// filter; everything else about them is different, so each owns its own surface
+// rather than trying to be the same canvas in three moods.
+
+let view = 'topology';
+let matrixState = null; // {model, selected} for the traffic matrix
+
+function setView(next) {
+  if (next === view) return;
+  view = next;
+  for (const b of document.querySelectorAll('.topo-view')) {
+    const on = b.dataset.view === next;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', String(on));
+  }
+  $('topo-viewport')?.classList.toggle('hidden', next !== 'topology' || !lastData);
+  $('topo-matrix')?.classList.toggle('hidden', next !== 'matrix');
+  $('topo-empty')?.classList.toggle('hidden', next !== 'topology' || Boolean(lastData));
+  // Chrome that belongs to the map only.
+  for (const id of ['topo-neighbors', 'topo-chips']) $(id)?.classList.toggle('hidden', next !== 'topology');
+  $('topo-matrix-controls')?.classList.toggle('hidden', next !== 'matrix');
+  if (next === 'matrix') loadMatrix();
+  if (next === 'topology') { setStatus(statusForData()); sigma?.refresh(); }
+}
+
+async function loadMatrix() {
+  const host = $('topo-matrix');
+  if (!host) return;
+  host.innerHTML = '<div class="topo-matrix-empty panel-sub">Loading traffic matrix…</div>';
+  setStatus('Traffic matrix');
+  try {
+    const params = new URLSearchParams({ groupBy: matrixGroupBy });
+    if (state.group) params.set('group', state.group);
+    if (state.snapshotId) params.set('snapshot', state.snapshotId);
+    if (state.showExternal) params.set('external', '1');
+    const res = await fetch(`/api/topology/matrix?${params}`);
+    const data = await res.json();
+    if (!res.ok) { host.innerHTML = `<div class="topo-matrix-empty panel-sub">${esc(data.error || 'Could not load the matrix.')}</div>`; return; }
+    matrixState = { model: matrixModel(data), selected: '' };
+    renderMatrix(host, matrixState.model);
+    setStatus(`<b>Traffic matrix</b> · ${matrixState.model.axes.length} groups · ${matrixState.model.byPair.size} pairs`);
+    wireMatrixCells();
+    inspector('<div class="topo-inspector-empty panel-sub">Click a cell to see the conversations behind it.</div>');
+  } catch {
+    host.innerHTML = '<div class="topo-matrix-empty panel-sub">Could not load the matrix.</div>';
+  }
+}
+
+function wireMatrixCells() {
+  for (const cell of $('topo-matrix')?.querySelectorAll('.topo-cell:not([disabled])') || []) {
+    cell.addEventListener('click', () => selectCell(cell.dataset.src, cell.dataset.dst));
+  }
+}
+
+async function selectCell(src, dst) {
+  if (!matrixState) return;
+  const id = pairId(src, dst);
+  matrixState.selected = id;
+  renderMatrix($('topo-matrix'), matrixState.model, { selected: id });
+  wireMatrixCells();
+
+  const axis = (key) => matrixState.model.axes.find((a) => a.key === key);
+  const nameOf = (key) => prettySegment(axis(key)?.name || key);
+  const hit = matrixState.model.byPair.get(id) || { bytes: 0, links: 0 };
+  const detail = {
+    srcLabel: nameOf(src), dstLabel: nameOf(dst),
+    bytes: hit.bytes, links: hit.links, diagonal: src === dst,
+  };
+  renderPairs($('topo-inspector'), { ...detail, loading: true });
+  try {
+    const params = new URLSearchParams({ groupBy: matrixGroupBy, src, dst });
+    if (state.group) params.set('group', state.group);
+    if (state.snapshotId) params.set('snapshot', state.snapshotId);
+    const res = await fetch(`/api/topology/matrix/pairs?${params}`);
+    const data = await res.json();
+    if (matrixState.selected !== id) return; // the user moved on
+    renderPairs($('topo-inspector'), { ...detail, pairs: res.ok ? data.pairs || [] : [] });
+    $('topo-pairs-show')?.addEventListener('click', () => {
+      // Hand the cell's devices to the topology, which already knows how to scope
+      // itself to an explicit key set.
+      const keys = [...new Set((data.pairs || []).flatMap((pr) => [pr.src_key, pr.dst_key]))].filter(Boolean);
+      if (!keys.length) return;
+      state.keys = keys; state.zoom = 3; state.parent = ''; state.scope = '';
+      state.zones = false; state.autoTier = false;
+      state.crumbs = [{ zoom: 3, parent: '', scope: '', label: `${detail.srcLabel} → ${detail.dstLabel}`, keys }];
+      setView('topology');
+      load();
+    });
+  } catch {
+    renderPairs($('topo-inspector'), { ...detail, pairs: [] });
+  }
+}
+
 /** Toggle the snapshot comparison on/off. */
 async function toggleDrift() {
   const btn = $('topo-drift');
@@ -1312,7 +1417,7 @@ function applyOverlay(data) {
   // each step separately would silently leave only the last one's label visible.
   const byPair = new Map();
   for (const step of steps) {
-    const id = `${step.from} ${step.to}`;
+    const id = `${step.from}\u0000${step.to}`;
     if (!byPair.has(id)) byPair.set(id, { from: step.from, to: step.to, steps: [] });
     byPair.get(id).steps.push(step);
   }
@@ -1885,6 +1990,7 @@ function open() {
   legendVisible = true;
   const os = $('topo-overlay-search'); if (os) os.value = '';
   renderIncidentChrome();
+  setView('topology');
   $('topo-drift')?.setAttribute('aria-pressed', 'false');
   $('topo-drift')?.classList.remove('active');
   for (const id of ['topo-external', 'topo-neighbors']) {
@@ -2005,13 +2111,21 @@ export function initTopology() {
     sigma.getCamera().animate({ x: framed.x, y: framed.y }, { duration: camDuration(300) });
   });
 
+  for (const b of document.querySelectorAll('.topo-view')) {
+    b.addEventListener('click', () => setView(b.dataset.view));
+  }
+  $('topo-matrix-groupby')?.addEventListener('change', (e) => {
+    matrixGroupBy = e.target.value;
+    if (view === 'matrix') loadMatrix();
+  });
+
   $('topo-zoom-in')?.addEventListener('click', () => zoomCamera(1 / ZOOM_STEP));
   $('topo-zoom-out')?.addEventListener('click', () => zoomCamera(ZOOM_STEP));
   $('topo-fit')?.addEventListener('click', fitToView);
   $('topo-legend-toggle')?.addEventListener('click', () => { legendVisible = !legendVisible; renderLegend(); });
   $('topo-refresh')?.addEventListener('click', () => {
     invalidateDeviceIndex();
-    loadSnapshots().then(() => load());
+    loadSnapshots().then(() => (view === 'matrix' ? loadMatrix() : load()));
   });
   window.addEventListener('resize', () => { if (isTopologyOpen() && sigma) sigma.refresh(); });
 

@@ -4528,3 +4528,91 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
   /* Draw-in edges settle fully drawn, whatever the keyframe would have left. */
   .mem-edge.entering { animation: none; stroke-dashoffset: 0; }
 }
+
+
+/* ===== Map views: the segmented switch, and the traffic matrix ===== */
+
+.topo-views {
+  display: inline-flex; align-items: center; gap: 2px;
+  background: var(--input-bg); border: 1px solid var(--hairline);
+  border-radius: 8px; padding: 3px;
+}
+.topo-view {
+  border: none; border-radius: 6px; padding: 5px 12px;
+  background: transparent; color: var(--gray);
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.topo-view:hover { color: var(--ink); }
+.topo-view.active { background: var(--raised); color: var(--ink); font-weight: 700; box-shadow: var(--shadow-soft); }
+.topo-view:focus-visible { outline: 2px solid var(--focus-border); outline-offset: 1px; }
+
+.topo-matrix { flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--canvas); }
+.topo-matrix.hidden { display: none; }
+.topo-matrix-scroll { padding: 24px 28px; min-width: min-content; }
+.topo-matrix-empty { padding: 32px; text-align: center; }
+.topo-matrix-grid { display: grid; gap: 3px; align-items: stretch; }
+.topo-matrix-corner { display: block; }
+.topo-matrix-col {
+  font-size: 10.5px; font-weight: 800; color: var(--gray); text-align: center;
+  align-self: end; padding-bottom: 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.topo-matrix-row {
+  font-size: 11.5px; font-weight: 700; color: var(--gray);
+  align-self: center; text-align: right; padding-right: 10px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Volume is a cyan alpha ramp over the zero-cell colour. */
+.topo-cell {
+  height: 56px; border: none; border-radius: 6px; padding: 0;
+  background: color-mix(in srgb, var(--cyan) calc(var(--cell-alpha, 0) * 100%), var(--cell-0));
+  color: #fff; font: inherit; font-size: 10.5px; font-weight: 800; cursor: pointer;
+}
+.topo-cell.empty { background: var(--cell-0); cursor: default; }
+.topo-cell:hover:not([disabled]) { outline: 2px solid var(--cyan-edge); outline-offset: -2px; }
+.topo-cell.selected { outline: 2px solid var(--cyan); outline-offset: -2px; }
+.topo-cell:focus-visible { outline: 2px solid var(--focus-border); outline-offset: -2px; }
+
+/* Self-traffic is not pair traffic, so it never looks like it. Hatched, on its own
+   scale, and called out in the legend. */
+.topo-cell.diagonal {
+  background-image: repeating-linear-gradient(
+    45deg, transparent, transparent 4px,
+    color-mix(in srgb, var(--ink) 12%, transparent) 4px,
+    color-mix(in srgb, var(--ink) 12%, transparent) 8px);
+  color: var(--ink);
+}
+
+.topo-matrix-legend {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  margin-top: 18px; font-size: 11px; color: var(--text-faint);
+}
+.topo-matrix-eyebrow {
+  font-size: 9.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+}
+.topo-matrix-ramp {
+  width: 90px; height: 8px; border-radius: 4px;
+  background: linear-gradient(90deg, var(--cell-0), color-mix(in srgb, var(--cyan) 68%, var(--cell-0)));
+}
+.topo-matrix-swatch.diagonal {
+  width: 10px; height: 10px; border-radius: 3px; background: var(--cell-0);
+  background-image: repeating-linear-gradient(
+    45deg, transparent, transparent 3px,
+    color-mix(in srgb, var(--ink) 22%, transparent) 3px,
+    color-mix(in srgb, var(--ink) 22%, transparent) 6px);
+}
+.topo-matrix-hint { margin-left: auto; }
+.topo-matrix-note {
+  border: 1px solid var(--cyan-border); background: var(--cyan-bg);
+  border-radius: 10px; padding: 9px 11px; margin: 10px 0;
+  font-size: 12px; line-height: 1.45; color: var(--text-2);
+}
+.topo-pairs li {
+  display: flex; justify-content: space-between; gap: 8px;
+  padding: 6px 0; border-bottom: 1px solid var(--hairline); font-size: 12px;
+}
+.topo-pairs li:last-child { border-bottom: none; }
+.topo-pair-name { color: var(--text-2); min-width: 0; overflow-wrap: anywhere; }
+.topo-pair-arrow { color: var(--text-faint); }
+.topo-pair-bytes { color: var(--gray); font-family: ui-monospace, Menlo, monospace; flex-shrink: 0; }
