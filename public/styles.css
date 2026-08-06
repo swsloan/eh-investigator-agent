@@ -821,6 +821,64 @@ html, body {
   text-overflow: ellipsis;
   flex: 1;
 }
+/* Findings the agent states mid-turn. Cyan is this app's "live/active" accent, so
+   an unqualified finding reads as in-progress reasoning; a leaning tints it toward
+   its verdict without pre-empting the report. */
+.finding-chip {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px;
+  margin: 10px 0; padding: 9px 12px;
+  border: 1px solid var(--cyan-border); border-left-width: 3px;
+  border-radius: 10px; background: var(--cyan-bg);
+  font-size: 13px; line-height: 1.5;
+}
+.finding-tag {
+  font-size: 9.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--cyan-text); flex-shrink: 0;
+}
+.finding-text { color: var(--text-2); flex: 1; min-width: 0; }
+.finding-leaning {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  border: 1px solid var(--hairline); border-radius: 999px; padding: 1px 8px; color: var(--gray);
+}
+.finding-chip[data-leaning="expected-behavior"] {
+  border-color: var(--ok-edge); background: color-mix(in srgb, var(--ok) 7%, var(--surface));
+}
+.finding-chip[data-leaning="expected-behavior"] .finding-tag,
+.finding-chip[data-leaning="expected-behavior"] .finding-leaning { color: var(--ok-text); }
+.finding-chip[data-leaning="suspicious"] {
+  border-color: var(--amber); background: color-mix(in srgb, var(--amber) 8%, var(--surface));
+}
+.finding-chip[data-leaning="suspicious"] .finding-tag,
+.finding-chip[data-leaning="suspicious"] .finding-leaning { color: var(--amber-text); }
+.finding-chip[data-leaning="malicious"] {
+  border-color: var(--danger-border); background: var(--danger-bg);
+}
+.finding-chip[data-leaning="malicious"] .finding-tag,
+.finding-chip[data-leaning="malicious"] .finding-leaning { color: var(--danger-text); }
+
+/* The plan's current task, on the turn that is working on it. */
+.plan-strip {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 0 8px 26px; padding: 5px 11px;
+  border: 1px solid var(--hairline); border-radius: 999px;
+  background: var(--surface-sub); font-size: 11.5px; color: var(--text-2);
+}
+.plan-strip.hidden { display: none; }
+.plan-strip-task { font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-strip-meter {
+  flex: 0 0 64px; height: 3px; border-radius: 999px;
+  background: var(--track); overflow: hidden; margin-left: auto;
+}
+.plan-strip-meter > span {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--cyan), var(--magenta));
+  transition: width 240ms ease-out;
+}
+.plan-strip-count {
+  font-family: ui-monospace, Menlo, monospace; font-size: 10.5px;
+  font-weight: 800; color: var(--gray); flex-shrink: 0;
+}
+
 /* A derived phrase is prose, not a literal, so it drops the monospace the raw
    argument fallback keeps. */
 .tool-summary.phrase {

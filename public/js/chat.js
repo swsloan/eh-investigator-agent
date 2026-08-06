@@ -9,6 +9,7 @@ import {
   integrationSourceForToolCall,
 } from './integration-badges.js';
 import { newUsage, state } from './state.js';
+import { replaceFindingPlaceholders, splitFindings } from './findings.js';
 import { phraseFor, resultSummary } from './tool-phrases.js';
 import { fmtBytes, fmtTime, fmtTokens } from './utils.js';
 import { applyIdleStatus, setStatus } from './status.js';
@@ -24,6 +25,7 @@ export function autoscroll(force = false) {
 
 export function setRunning(isRunning) {
   state.running = isRunning;
+  updatePlanStrip();
   updateSessionModelButton();
   dom.sendBtn.classList.toggle('hidden', isRunning);
   dom.stopBtn.classList.toggle('hidden', !isRunning);
@@ -226,11 +228,44 @@ export function startAgentMessage() {
   wrap.className = 'msg msg-agent';
   wrap.innerHTML = `
     <div class="agent-head"><div class="agent-dot"></div>Investigation Agent</div>
+    <div class="plan-strip hidden">
+      <span class="plan-strip-task"></span>
+      <span class="plan-strip-meter"><span></span></span>
+      <span class="plan-strip-count"></span>
+    </div>
     <div class="agent-body"></div>`;
   dom.chatEl.appendChild(wrap);
   state.currentAgentMsg = wrap.querySelector('.agent-body');
   state.blocks = new Map();
+  updatePlanStrip();
   autoscroll();
+}
+
+/**
+ * The plan's current task, on the turn that is working on it.
+ *
+ * The ribbon remains the full plan; this is the one line worth reading while text
+ * is streaming, and the review's point that the most narrative-rich element of the
+ * app was also its least legible. Shown only during a running turn — afterwards the
+ * message is history and the ribbon is the live view again.
+ */
+export function updatePlanStrip() {
+  const strip = state.currentAgentMsg?.parentElement?.querySelector('.plan-strip');
+  if (!strip) return;
+  const view = state.investigationPlan;
+  const progress = view?.progress;
+  const title = progress?.currentTask?.title || '';
+  if (!state.running || !view?.initialized || !title) { strip.classList.add('hidden'); return; }
+
+  const total = Number(progress.total) || 0;
+  const resolved = Number(progress.resolved) || 0;
+  const percent = Number.isFinite(Number(progress.percent))
+    ? Math.max(0, Math.min(100, Number(progress.percent)))
+    : (total ? (resolved / total) * 100 : 0);
+  strip.querySelector('.plan-strip-task').textContent = title;
+  strip.querySelector('.plan-strip-count').textContent = total ? `${resolved}/${total}` : '';
+  strip.querySelector('.plan-strip-meter > span').style.width = `${percent.toFixed(0)}%`;
+  strip.classList.remove('hidden');
 }
 
 function agentBody() {
@@ -273,6 +308,17 @@ export function discardEmptyReasoningBlock(block) {
   block.marker?.remove();
 }
 
+/**
+ * Markdown, with the agent's FINDING lines lifted out into chips. Two steps rather
+ * than one so a finding keeps its place in the narrative while none of the model's
+ * text is ever concatenated into an HTML string.
+ */
+function renderAgentMarkdown(el, raw) {
+  const { text, findings } = splitFindings(raw);
+  renderMarkdown(el, text);
+  replaceFindingPlaceholders(el, findings);
+}
+
 export function queueRender() {
   if (state.renderQueued) return;
   state.renderQueued = true;
@@ -280,7 +326,7 @@ export function queueRender() {
     state.renderQueued = false;
     for (const block of state.blocks.values()) {
       if (block.dirty) {
-        renderMarkdown(block.el, block.raw, { workspaceFiles: [...state.workspaceFiles.values()] });
+        renderAgentMarkdown(block.el, block.raw);
         // Only surface a reasoning block once it actually has visible content.
         if (/\S/.test(block.raw || '')) revealReasoningBlock(block);
         block.dirty = false;

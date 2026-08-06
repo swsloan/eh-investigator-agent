@@ -1,3 +1,4 @@
+import { updatePlanStrip } from './chat.js';
 import { getInvestigationPlan, getRenderedInvestigationPlan } from './api.js';
 import { dom } from './dom.js';
 import { state } from './state.js';
@@ -293,6 +294,7 @@ function applyInvestigationPlanView(view, { announce = false, sessionId = '' } =
   state.investigationPlan = view || null;
   state.investigationPlanRevision = incomingRevision;
   renderPlanView(state.investigationPlan);
+  updatePlanStrip(); // the streaming turn shows the current task inline
   if (announce && view?.initialized && view?.plan) {
     const progress = normalizedProgress(view);
     const current = currentTaskTitle(view.plan, progress);
