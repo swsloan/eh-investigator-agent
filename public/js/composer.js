@@ -27,9 +27,55 @@ function addFiles(fileListLike) {
   renderAttachList();
 }
 
+/**
+ * A message typed while the agent is working.
+ *
+ * The server refuses a message mid-turn (409, "agent is already working"), and the
+ * composer used to refuse it first — so "steer the running investigation", the whole
+ * promise of watching a turn, was the one thing you could not do.
+ *
+ * The client already knows when the turn ends, so it holds the message and sends it
+ * at the boundary. Queued locally, so a reload loses it; a server-side queue that
+ * survives that is the durable version and is a separate change.
+ */
+let queued = null;
+
+function renderQueued() {
+  const box = $('composer-queued');
+  if (!box) return;
+  box.classList.toggle('hidden', !queued);
+  if (queued) $('composer-queued-text').textContent = queued.text;
+}
+
+export function clearQueuedMessage() {
+  queued = null;
+  renderQueued();
+}
+
+/** Called when a turn ends: send whatever was typed during it. */
+export function flushQueuedMessage() {
+  if (!queued) return;
+  const pending = queued;
+  queued = null;
+  renderQueued();
+  dom.inputEl.value = pending.text;
+  sendMessage();
+}
+
 async function sendMessage() {
   const text = dom.inputEl.value.trim();
-  if ((!text && !state.pendingFiles.length) || state.running || !state.session) return;
+  if ((!text && !state.pendingFiles.length) || !state.session) return;
+
+  if (state.running) {
+    // Attachments are not queued: they upload into the workspace immediately and
+    // would be a side effect the user did not ask for yet.
+    if (!text) return;
+    queued = { text };
+    dom.inputEl.value = '';
+    dom.inputEl.style.height = 'auto';
+    renderQueued();
+    return;
+  }
 
   let attachments = [];
   if (state.pendingFiles.length) {
@@ -84,6 +130,7 @@ export function initComposer() {
     dom.inputEl.style.height = 'auto';
     dom.inputEl.style.height = Math.min(dom.inputEl.scrollHeight, 180) + 'px';
   });
+  $('composer-queued-cancel')?.addEventListener('click', clearQueuedMessage);
 
   dom.sendBtn.addEventListener('click', sendMessage);
   dom.stopBtn.addEventListener('click', () => {

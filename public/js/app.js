@@ -40,6 +40,7 @@ import { closeApprovals, initApprovals, isApprovalsOpen } from './approvals.js';
 import { initTheme } from './theme.js';
 import { closeBackendUpdateDialog, initBackendUpdate, isBackendUpdateDialogOpen, refreshBackendUpdate } from './backend-update.js';
 import { initAuth } from './auth.js';
+import { initActivity } from './activity.js';
 
 function initEscapeHandling() {
   document.addEventListener('keydown', (event) => {
@@ -79,6 +80,7 @@ export function startApp() {
   initInvestigationPlan({ openGeneratedHtml: openGeneratedHtmlViewer });
   initSettings();
   initComposer();
+  initActivity();
   initSessionStream({ refreshFiles, loadSessions });
   initSessionMenus();
   initApprovals();

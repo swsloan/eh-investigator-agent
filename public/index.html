@@ -93,6 +93,57 @@
         </div>
       </div>
 
+      <!-- ===== Live activity: what the agent is doing, while it does it =====
+           A sibling of the transcript rather than an overlay, because the composer
+           below is already the docked composer this design calls for. -->
+      <section id="activity" class="activity hidden" aria-label="Live investigation">
+        <header class="activity-head">
+          <img class="activity-mark" src="/assets/eh-monogram-secondary.svg" alt="" width="20" height="20">
+          <strong class="activity-title">Live Investigation</strong>
+          <span id="activity-context" class="activity-context hidden"></span>
+          <div class="activity-status">
+            <span id="activity-dot" class="activity-dot"></span>
+            <span id="activity-state">Idle</span>
+          </div>
+          <button id="activity-transcript" class="btn-secondary slim" type="button">Transcript</button>
+        </header>
+        <div class="activity-grid">
+          <div class="activity-col activity-left">
+            <div id="activity-tools-head" class="activity-eyebrow">Tool activity</div>
+            <div id="activity-tools" class="activity-scroll"></div>
+          </div>
+          <div class="activity-col activity-centre">
+            <div class="activity-orb" aria-hidden="true">
+              <span class="activity-ring outer"></span>
+              <span class="activity-ring inner"></span>
+              <span class="activity-orb-core">
+                <img src="/assets/eh-monogram-secondary.svg" alt="" width="40" height="40">
+              </span>
+            </div>
+            <div class="activity-caption">
+              <div class="activity-name">Investigation Agent</div>
+              <div id="activity-doing" class="activity-doing"></div>
+            </div>
+            <div id="activity-plan" class="activity-card activity-plan hidden">
+              <div class="activity-card-head">
+                <span class="activity-eyebrow">Plan</span>
+                <span id="activity-plan-count" class="activity-plan-count"></span>
+              </div>
+              <div class="activity-meter"><span id="activity-plan-fill"></span></div>
+              <ul id="activity-plan-tasks" class="activity-plan-tasks"></ul>
+            </div>
+            <div id="activity-finding" class="activity-card activity-finding hidden">
+              <div class="activity-eyebrow cyan">Current finding</div>
+              <div id="activity-finding-text" class="activity-finding-text"></div>
+            </div>
+          </div>
+          <div class="activity-col activity-right">
+            <div id="activity-artifacts-head" class="activity-eyebrow">Artifacts</div>
+            <div id="activity-artifacts" class="activity-scroll"></div>
+          </div>
+        </div>
+      </section>
+
       <div id="actions-tray" class="actions-tray hidden" aria-live="polite"></div>
 
       <div class="composer-wrap">
@@ -108,6 +159,11 @@
           <button id="stop-btn" class="send-btn stop hidden" title="Stop">
             <svg viewBox="0 0 24 24" width="14" height="14"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>
           </button>
+        </div>
+        <div id="composer-queued" class="composer-queued hidden">
+          <span class="composer-queued-label">Queued</span>
+          <span id="composer-queued-text" class="composer-queued-text"></span>
+          <button id="composer-queued-cancel" class="composer-queued-cancel" type="button" title="Discard the queued message">&times;</button>
         </div>
         <div class="composer-hint">Enter to send · Shift+Enter for a new line · drop files anywhere</div>
       </div>

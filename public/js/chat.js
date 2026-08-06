@@ -8,6 +8,8 @@ import {
   integrationForToolCall,
   integrationSourceForToolCall,
 } from './integration-badges.js';
+import { onRunningChanged, setCurrentFinding } from './activity.js';
+import { flushQueuedMessage } from './composer.js';
 import { newUsage, state } from './state.js';
 import { replaceFindingPlaceholders, splitFindings } from './findings.js';
 import { phraseFor, resultSummary } from './tool-phrases.js';
@@ -25,7 +27,11 @@ export function autoscroll(force = false) {
 }
 
 export function setRunning(isRunning) {
+  const was = state.running;
   state.running = isRunning;
+  onRunningChanged(isRunning);
+  // A message typed during the turn goes out at the boundary, not into a 409.
+  if (was && !isRunning) flushQueuedMessage();
   updatePlanStrip();
   updateSessionModelButton();
   dom.sendBtn.classList.toggle('hidden', isRunning);
@@ -318,6 +324,9 @@ function renderAgentMarkdown(el, raw) {
   const { text, findings } = splitFindings(raw);
   renderMarkdown(el, text);
   replaceFindingPlaceholders(el, findings);
+  // The live view's current-finding card reads the same parse, so the chip in the
+  // transcript and the card beside the orb can never say different things.
+  if (findings.length) setCurrentFinding(findings[findings.length - 1]);
 }
 
 export function queueRender() {
