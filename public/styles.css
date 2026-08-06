@@ -4066,6 +4066,45 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 .topo-viewport.hidden { display: none; }
 .topo-canvas { flex: 1 1 auto; min-height: 0; position: relative; }
 
+/* Zone layer: the segment containers drawn beneath sigma's canvases.
+   Pointer-transparent — hit-testing runs the other way, from sigma's stage click
+   back into the layer, so there is no z-order fight with sigma's mouse canvas. */
+/* The explicit width/height are load-bearing. <svg> is a replaced element with an
+   intrinsic 300x150 size, so `inset: 0` alone leaves it at that size — the offsets
+   are over-constrained against `width: auto` and simply dropped — and every zone
+   outside that box is clipped away. */
+.topo-zone-layer {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  z-index: 0; pointer-events: none;
+}
+.topo-grid-dot { fill: var(--grid-dot); }
+.topo-grid { opacity: .9; }
+
+/* The boundary is an explicit per-theme stroke, not an alpha of the fill. A 4–5%
+   tint reads on the dark canvas and all but disappears on white, which is why the
+   light values here are their own darker colours rather than the same colour
+   faded. The fill is decoration; the stroke is what says "this is a region". */
+.topo-zone-rect {
+  fill: color-mix(in srgb, var(--zone-grey) 12%, transparent);
+  stroke: var(--zone-grey);
+  stroke-width: 1.2;
+}
+.topo-zone.expanded .topo-zone-rect {
+  fill: color-mix(in srgb, var(--zone-cyan) 14%, transparent);
+  stroke: var(--zone-cyan);
+  stroke-width: 1.4;
+}
+.topo-zone-title {
+  font-family: inherit; font-size: 11px; font-weight: 800; letter-spacing: .12em;
+  fill: var(--zone-accent, var(--gray));
+}
+.topo-zone.expanded .topo-zone-title { fill: var(--cyan-text); }
+.topo-zone-sub {
+  font-family: inherit; font-size: 10.5px; font-weight: 600;
+  fill: var(--zone-grey-sub);
+}
+.topo-zone.expanded .topo-zone-sub { fill: var(--zone-cyan-sub); }
+
 /* Zoom stack + fit-to-view, floating over the top-left of the canvas. The legend
    owns the bottom-left corner; these keep the same 12px inset. The soft shadow is
    load-bearing, not decoration: --float over the light theme's white canvas is

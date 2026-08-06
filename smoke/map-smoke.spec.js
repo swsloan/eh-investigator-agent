@@ -72,13 +72,30 @@ async function stubTopology(page) {
     const params = new URL(route.request().url()).searchParams;
     const zoom = Number(params.get('zoom') || 0);
     const parent = params.get('parent') || '';
+    const asked = params.get('snapshot') || SNAPSHOT;
+    const expandedParam = params.get('expanded');
+    mapRequests.push({ zoom, parent, snapshot: asked, expanded: expandedParam });
+
+    // `expanded` selects the mixed payload, exactly as readMixedTier does: devices
+    // for the named segments, aggregates for the rest, each node stamped with `tier`.
+    if (expandedParam !== null) {
+      const open = expandedParam.split(',').map((k) => k.trim()).filter(Boolean);
+      const nodes = [
+        ...DEVICES.filter((d) => open.includes(d.segment)).map((d) => ({ ...d, tier: 'device' })),
+        ...SEGMENTS.filter((sg) => !open.includes(sg.key)).map((sg) => ({ ...sg, tier: 'segment' })),
+      ];
+      return route.fulfill({
+        json: {
+          group: 'test', nodes, edges: edgesFor(nodes), zoom: 1, parent: '',
+          expanded: open, mixed: true, snapshot_id: asked,
+        },
+      });
+    }
+
     let nodes;
     if (zoom === 3) nodes = parent ? DEVICES.filter((d) => d.segment === parent) : DEVICES;
-    else if (zoom === 1) nodes = SEGMENTS;
-    else if (zoom === 2) nodes = SEGMENTS;
+    else if (zoom === 1 || zoom === 2) nodes = SEGMENTS;
     else nodes = LOCALITIES;
-    const asked = params.get('snapshot') || SNAPSHOT;
-    mapRequests.push({ zoom, parent, snapshot: asked });
     return route.fulfill({
       json: { group: 'test', nodes, edges: edgesFor(nodes), zoom, parent, snapshot_id: asked },
     });
@@ -105,7 +122,7 @@ test.describe('network map', () => {
     await openMap(page);
 
     await expect(page.locator('#topo-canvas canvas').first()).toBeVisible();
-    await expect(page.locator('#topo-status')).toContainText('Localities');
+    await expect(page.locator('#topo-status')).toContainText('Segments');
 
     // Zoom + fit chrome is present...
     await expect(page.locator('.topo-zoom .topo-zoom-btn')).toHaveCount(3);
@@ -148,8 +165,8 @@ test.describe('network map', () => {
 
   test('selecting an off-screen device drills to its segment and inspects it', async ({ page }) => {
     await openMap(page);
-    // Opens at the locality tier, so no device is painted yet.
-    await expect(page.locator('#topo-status')).toContainText('Localities');
+    // Opens on the zone view: segments as containers, none opened, so no device yet.
+    await expect(page.locator('#topo-status')).toContainText('Segments');
 
     await page.locator('#topo-search').fill('nas-backup');
     await page.locator('#topo-search-list .topo-combo-item').first().click();
@@ -203,7 +220,7 @@ test.describe('network map', () => {
 
     // Aggregate tier: a node's role is its DOMINANT role, so there is nothing
     // truthful to count and the chips stay empty.
-    await expect(page.locator('#topo-status')).toContainText('Localities');
+    await expect(page.locator('#topo-status')).toContainText('Segments');
     await expect(page.locator('#topo-chips')).toBeEmpty();
 
     // Device tier: real per-device roles, so real counts.
@@ -215,6 +232,88 @@ test.describe('network map', () => {
     await expect(chips).toHaveCount(1); // vlan:20 holds a file server and a db server
     await expect(chips.first()).toContainText('Servers');
     await expect(chips.first()).toContainText('2');
+  });
+
+  test('opens on the zone view: a labelled container per segment, none opened', async ({ page }) => {
+    await openMap(page);
+
+    const zones = page.locator('.topo-zone-layer .topo-zone');
+    await expect(zones).toHaveCount(SEGMENTS.length);
+    await expect(page.locator('.topo-zone-layer .topo-zone-title').first()).toHaveText(/VLAN/);
+    await expect(page.locator('.topo-zone-layer .topo-zone-sub').first()).toHaveText(/collapsed/);
+    await expect(page.locator('.topo-zone.expanded')).toHaveCount(0);
+
+    // The zone view asks for the mixed payload, with nothing open.
+    expect(mapRequests.at(-1).expanded).toBe('');
+
+    // The layer must cover the canvas. <svg> is a replaced element with an intrinsic
+    // 300x150 size, so it silently keeps that size unless width/height are set — and
+    // every zone outside that box is clipped, which looks like "zones do not work".
+    const fits = await page.evaluate(() => {
+      const layer = document.querySelector('.topo-zone-layer').getBoundingClientRect();
+      const canvas = document.getElementById('topo-canvas').getBoundingClientRect();
+      return {
+        layer: { w: Math.round(layer.width), h: Math.round(layer.height) },
+        canvas: { w: Math.round(canvas.width), h: Math.round(canvas.height) },
+      };
+    });
+    expect(fits.layer).toEqual(fits.canvas);
+  });
+
+  test('a zone opens in place and closes again, without replacing the view', async ({ page }) => {
+    await openMap(page);
+
+    // Drive the click from the zone's own geometry rather than a guessed pixel.
+    const box = async (title) => page.evaluate((want) => {
+      const g = [...document.querySelectorAll('.topo-zone')]
+        .find((n) => n.querySelector('.topo-zone-title')?.textContent === want);
+      if (!g) return null;
+      const r = g.querySelector('.topo-zone-rect');
+      const v = (a) => Number(r.getAttribute(a));
+      return {
+        x: v('x'), y: v('y'), w: v('width'), h: v('height'),
+        expanded: g.classList.contains('expanded'),
+      };
+    }, title);
+
+    const collapsed = await box('VLAN 20');
+    expect(collapsed, 'vlan:20 zone is drawn').not.toBeNull();
+    expect(collapsed.expanded).toBe(false);
+
+    // Clicking a collapsed zone opens it.
+    await page.locator('#topo-canvas').click({
+      position: { x: collapsed.x + collapsed.w / 2, y: collapsed.y + collapsed.h / 2 },
+    });
+    await expect.poll(() => mapRequests.at(-1)?.expanded).toBe('vlan:20');
+    await expect(page.locator('.topo-zone.expanded')).toHaveCount(1);
+
+    // Opening is not a drill: the other segments are still drawn, and the
+    // breadcrumb has not moved.
+    await expect(page.locator('.topo-zone-layer .topo-zone')).toHaveCount(SEGMENTS.length);
+    await expect(page.locator('#topo-crumbs')).toContainText('All');
+    await expect(page.locator('#topo-crumbs')).not.toContainText('VLAN 20');
+    await expect(page.locator('#topo-status')).toContainText('4 nodes'); // 2 devices + 2 segments
+
+    // Its label band closes it again.
+    const open = await box('VLAN 20');
+    expect(open.expanded).toBe(true);
+    await page.locator('#topo-canvas').click({ position: { x: open.x + 40, y: open.y + 12 } });
+    await expect.poll(() => mapRequests.at(-1)?.expanded).toBe('');
+    await expect(page.locator('.topo-zone.expanded')).toHaveCount(0);
+  });
+
+  test('zone strokes are explicit per theme, not an alpha of the fill', async ({ page }) => {
+    for (const theme of ['light', 'dark']) {
+      await page.goto('/');
+      await page.evaluate((t) => localStorage.setItem('eh-theme', t), theme);
+      await openMap(page);
+      const stroke = await page.locator('.topo-zone-rect').first()
+        .evaluate((el) => getComputedStyle(el).stroke);
+      // A resolved colour, and not transparent: the boundary is what says "region",
+      // and a 4-5% tint of the fill all but disappears on the light canvas.
+      expect(stroke, `${theme} zone stroke`).toMatch(/^rgb\(/);
+      expect(stroke, `${theme} zone stroke`).not.toBe('rgba(0, 0, 0, 0)');
+    }
   });
 
   test('slash focuses search, and escape closes the list without closing the map', async ({ page }) => {

@@ -17,6 +17,7 @@
 
 import { $ } from './dom.js';
 import { avatarSvg, identityType, roleGlyphInline, roleIconDataUri } from './topo-glyphs.js';
+import { clearZones, drawZones, ensureZoneLayer, zoneAt } from './topo-layers.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -144,8 +145,17 @@ let state = {
   showExternal: false, // default view is internal-only; toggle reveals External nodes
   showNeighbors: false, // in a scoped device view, pull one-hop peers outside the scope
   loading: false,
-  autoTier: true,      // camera-driven LOD; suspended while drilled into a cluster
+  autoTier: true,      // camera-driven LOD; only live under ?lod=camera (see CAMERA_LOD)
+  zones: true,         // the zone view: segments as containers, opened in place
+  expanded: [],        // segment keys currently opened into their devices
 };
+
+// Camera-ratio level-of-detail is retired: zooming past a band refetched and
+// repainted the whole graph, so the map teleported under the cursor. Expansion is
+// explicit now. The old behaviour stays reachable for one release for estates where
+// zones degenerate — a single segment, or roles unknown everywhere — after which
+// this flag and the TIER_BANDS machinery go.
+const CAMERA_LOD = new URLSearchParams(window.location.search).get('lod') === 'camera';
 
 /** A segment key (`vlan:204`, `net:10.0.0.0/24`, `loc:Internal`) as a short label. */
 function prettySegment(s) {
@@ -158,6 +168,19 @@ function prettyRole(r) {
 }
 
 let legendVisible = true; // the colour legend is on by default; a toggle hides it
+
+/**
+ * The tier a single node is drawn at.
+ *
+ * A zone payload is mixed — devices inside opened segments, aggregates everywhere
+ * else — so colour, size and labelling are per node rather than per payload. Nodes
+ * from the old single-tier reads carry no `tier` and fall back to the payload's.
+ */
+function tierOf(node, zoom) {
+  if (node?.tier === 'device') return 3;
+  if (node?.tier === 'segment') return 1;
+  return zoom;
+}
 
 function colorFor(node, zoom) {
   // Every tier carries meaning in its colour rather than going flat blue in the
@@ -246,10 +269,13 @@ function renderCrumbs() {
     state.crumbs = idx < 0 ? [] : state.crumbs.slice(0, idx + 1);
     const last = state.crumbs[state.crumbs.length - 1];
     state.parent = last?.parent || '';
-    state.zoom = last ? last.zoom : 0;
+    state.zoom = last ? last.zoom : (CAMERA_LOD ? 0 : 1);
     state.scope = last?.scope || '';
     state.keys = last?.keys || null;   // leaving the incident view drops its key scope
     state.autoTier = state.crumbs.length === 0;
+    // "All" is the zone view again; anything deeper is a scoped single-tier read and
+    // must stop asking for the mixed payload, which ignores parent/scope/keys.
+    state.zones = !CAMERA_LOD && state.crumbs.length === 0;
     updateNeighborBtn();
     load();
   }));
@@ -465,6 +491,7 @@ function drillInto(node) {
   state.scope = scope;
   state.keys = null;
   state.autoTier = false;
+  state.zones = false; // a drill is a scoped single-tier read
   updateNeighborBtn();
   load();
 }
@@ -571,8 +598,11 @@ function labelPolicy(data) {
   if (data.nodes.length <= LABEL_ALL_MAX) {
     return { labelRenderedSizeThreshold: 0, labelDensity: 4, labelGridCellSize: 60 };
   }
+  // Over the cap the threshold triages by size. A mixed payload is mostly devices
+  // once anything is open, so it uses the device threshold.
+  const deviceHeavy = data.nodes.some((n) => tierOf(n, data.zoom) === 3);
   return {
-    labelRenderedSizeThreshold: data.zoom === 3 ? 7 : 4,
+    labelRenderedSizeThreshold: deviceHeavy ? 7 : 4,
     labelDensity: 0.7,
     labelGridCellSize: 110,
   };
@@ -668,6 +698,53 @@ function hideHoverCard() {
   $('topo-hovercard')?.classList.add('hidden');
 }
 
+/**
+ * The zones for a payload: one per segment, each owning the nodes drawn inside it.
+ *
+ * A collapsed segment owns exactly its own aggregate node, so the container still
+ * frames it — that is what makes opening one read as the same object changing
+ * resolution rather than the view being replaced.
+ */
+function zonesFor(data) {
+  if (!data?.mixed) return [];
+  const open = new Set(data.expanded || []);
+  const bySegment = new Map();
+  for (const n of data.nodes) {
+    const key = tierOf(n, data.zoom) === 3 ? n.segment : n.key;
+    if (!key) continue;
+    if (!bySegment.has(key)) bySegment.set(key, { members: [], node: null, devices: 0 });
+    const zone = bySegment.get(key);
+    zone.members.push(n.key);
+    if (tierOf(n, data.zoom) === 3) zone.devices += 1; else zone.node = n;
+  }
+  return [...bySegment.entries()].map(([key, zone]) => {
+    const expanded = open.has(key);
+    const count = expanded ? zone.devices : (Number(zone.node?.device_count) || 0);
+    return {
+      key,
+      title: prettySegment(key).toUpperCase(),
+      sub: expanded
+        ? `${count} device${count === 1 ? '' : 's'} · open`
+        : `${count} device${count === 1 ? '' : 's'} · collapsed`,
+      memberKeys: zone.members,
+      expanded,
+      // The role hue tints the label; the boundary itself uses the zone tokens, which
+      // are tuned per theme. A 20-hue palette cannot be trusted to stay legible as a
+      // hairline on white.
+      accent: zone.node?.role ? (ROLE_COLOR[zone.node.role] || '') : '',
+    };
+  });
+}
+
+/** Open or close a zone, keeping the camera so the map does not jump underfoot. */
+function toggleZone(key) {
+  if (!key) return;
+  const open = new Set(state.expanded);
+  if (open.has(key)) open.delete(key); else open.add(key);
+  state.expanded = [...open];
+  load({ keepCamera: true });
+}
+
 function paint(data) {
   lastData = data;
   hideHoverCard(); // the graph is about to be rebuilt; any open card is stale
@@ -678,27 +755,33 @@ function paint(data) {
   // Device-tier nodes render as role ICONS (a white glyph on the role-coloured disc)
   // through sigma's image node program; aggregate tiers stay coloured circles. The
   // icon is a data: URI SVG, so it works under the strict CSP with no CDN.
-  const useIcons = data.zoom === 3 && Boolean(window.Sigma?.rendering?.createNodeImageProgram);
+  // A zone payload can contain devices at any zoom, so the image program is enabled
+  // whenever the payload holds one; `tier` decides per node whether it is used.
+  const hasDevices = data.nodes.some((n) => tierOf(n, data.zoom) === 3);
+  const useIcons = hasDevices && Boolean(window.Sigma?.rendering?.createNodeImageProgram);
   // Drop the domain suffix every device shares, so `dc1` shows instead of the FQDN.
-  const dnsSuffix = data.zoom === 3 ? commonDomainSuffix(data.nodes.map((n) => n.name)) : '';
+  const dnsSuffix = hasDevices
+    ? commonDomainSuffix(data.nodes.filter((n) => tierOf(n, data.zoom) === 3).map((n) => n.name))
+    : '';
 
   for (const n of data.nodes) {
     // Neighbor = a one-hop peer pulled in from OUTSIDE the scoped segment/cluster
     // ("show outside dependencies"). Muted and labelled with where it lives, so the
     // boundary is legible and the in-scope devices stay the focus.
-    const isNeighbor = data.zoom === 3 && n.neighbor;
-    const color = isNeighbor ? 'rgba(130,138,160,0.55)' : colorFor(n, data.zoom);
-    const short = data.zoom === 3 ? stripSuffix(n.name ?? n.key, dnsSuffix) : String(n.name ?? n.key);
+    const tier = tierOf(n, data.zoom);
+    const isNeighbor = tier === 3 && n.neighbor;
+    const color = isNeighbor ? 'rgba(130,138,160,0.55)' : colorFor(n, tier);
+    const short = tier === 3 ? stripSuffix(n.name ?? n.key, dnsSuffix) : String(n.name ?? n.key);
     graph.addNode(n.key, {
       x: Number(n.x) || 0,
       y: Number(n.y) || 0,
-      size: isNeighbor ? sizeFor(n, data.zoom) * 0.72 : sizeFor(n, data.zoom),
+      size: isNeighbor ? sizeFor(n, tier) * 0.72 : sizeFor(n, tier),
       // Sigma renders labels itself into canvas; it never parses HTML, but keep the
       // same escaping discipline as the rest of the UI — device names come off the
       // wire and are attacker-controllable (lib/telemetry-taint.js).
       label: isNeighbor ? `${short} · ${prettySegment(n.segment)}` : short,
       color,
-      ...(useIcons ? { type: 'image', image: roleIconDataUri(n.role, isNeighbor ? '#94a3b8' : color) } : {}),
+      ...(useIcons && tier === 3 ? { type: 'image', image: roleIconDataUri(n.role, isNeighbor ? '#94a3b8' : color) } : {}),
       neighbor: isNeighbor,
       raw: n,
     });
@@ -742,7 +825,20 @@ function paint(data) {
   sigma.on('clickNode', ({ node }) => {
     const raw = graph.getNodeAttribute(node, 'raw');
     if (raw?.external) { showExternalNode(raw); return; } // C2/exfil: no cluster to drill, no device record
-    if (data.zoom === 3) showDevice(raw.key); else drillInto(raw);
+    if (tierOf(raw, data.zoom) === 3) { showDevice(raw.key); return; }
+    // In the zone view a segment opens in place; elsewhere it still replaces the view.
+    if (data.mixed) toggleZone(raw.key); else drillInto(raw);
+  });
+
+  // The zone layer is pointer-transparent, so sigma reports the click and the layer
+  // is asked what was under it. Only the label band collapses an open zone: its body
+  // is empty canvas as far as the user is concerned.
+  sigma.on('clickStage', ({ event }) => {
+    if (!zones.length) return;
+    const hit = zoneAt(event.x, event.y);
+    if (!hit) return;
+    if (hit.expanded && hit.region === 'label') toggleZone(hit.key);
+    else if (!hit.expanded) toggleZone(hit.key);
   });
 
   // Hover-to-trace: on the plain map, hovering a node emphasises its own edges and
@@ -775,12 +871,27 @@ function paint(data) {
     });
   }
 
-  // Camera-driven level of detail: the whole point of the map metaphor.
-  sigma.getCamera().on('updated', () => {
-    if (!state.autoTier || state.loading) return;
-    const next = tierForRatio(sigma.getCamera().ratio, state.zoom);
-    if (next !== state.zoom) { state.zoom = next; load({ keepCamera: true }); }
-  });
+  // Camera-driven level of detail, only under ?lod=camera. Zoom is otherwise purely
+  // visual and resolution is chosen by opening a zone.
+  if (CAMERA_LOD) {
+    sigma.getCamera().on('updated', () => {
+      if (!state.autoTier || state.loading || state.zones) return;
+      const next = tierForRatio(sigma.getCamera().ratio, state.zoom);
+      if (next !== state.zoom) { state.zoom = next; load({ keepCamera: true }); }
+    });
+  }
+
+  // Zones re-project from graph space on every frame sigma paints, so they track
+  // the camera exactly rather than lagging a pan by a frame.
+  const layer = ensureZoneLayer($('topo-canvas'));
+  const zones = zonesFor(data);
+  if (zones.length) {
+    const redraw = () => drawZones(layer, sigma, graph, zones);
+    redraw();
+    sigma.on('afterRender', redraw);
+  } else {
+    clearZones(layer);
+  }
 
   applyOverlay(data);
   applyDrift(data);
@@ -869,6 +980,25 @@ function renderLegend() {
  * halo whose colour carries severity. Devices roll up to whatever the current tier
  * draws, so a change stays visible when zoomed out.
  */
+/**
+ * The drawn node that stands for a device, most-resolved first.
+ *
+ * Overlay and drift both key their findings by device, and the map may be drawing
+ * that device itself, its segment, its role cluster, or its locality — and in the
+ * zone view, different answers for different devices in the same payload. Indexing a
+ * fixed field by the payload's zoom cannot express that: a change inside an opened
+ * zone would lift to a segment node that is no longer drawn, and vanish.
+ */
+const LIFT_ORDER = ['key', 'role_key', 'segment', 'locality'];
+function liftToDrawn(tiers) {
+  if (!tiers || !graph) return '';
+  for (const field of LIFT_ORDER) {
+    const key = tiers[field];
+    if (key && graph.hasNode(key)) return key;
+  }
+  return '';
+}
+
 function applyDrift(data) {
   if (!drift || !graph || overlay) return;
   const HALO = { high: '#ef4444', medium: '#f59e0b', info: '#0ea5e9' };
@@ -881,13 +1011,12 @@ function applyDrift(data) {
     const current = worst.get(key);
     if (!current || RANK[severity] < RANK[current]) worst.set(key, severity);
   };
-  const FIELD = ['locality', 'segment', 'role_key', 'key'];
   for (const change of drift.changes) {
     const tiers = drift.tierMap?.[change.key];
-    if (tiers) { noteKey(tiers[FIELD[data.zoom]], change.severity); continue; }
+    if (tiers) { noteKey(liftToDrawn(tiers), change.severity); continue; }
     for (const endpoint of change.endpoints || change.devices || []) {
       const t = drift.tierMap?.[endpoint];
-      if (t) noteKey(t[FIELD[data.zoom]], change.severity);
+      if (t) noteKey(liftToDrawn(t), change.severity);
     }
   }
 
@@ -979,8 +1108,6 @@ function applyOverlay(data) {
   // a device isn't drawn, its locality is. The server ships each involved device's
   // tier coordinates for exactly this. External actors carry the same key at every
   // tier, so once injected they lift to themselves.
-  const FIELD = ['locality', 'segment', 'role_key', 'key'];
-
   // Inject external actor nodes (C2 / exfil) — they belong to no cluster and draw as
   // themselves at every zoom. Place each near the incident's internal footprint so the
   // path out of the estate reads clearly. Done before lifting, so they can be lifted to.
@@ -988,7 +1115,7 @@ function applyOverlay(data) {
   for (const ev of overlay.events) {
     for (const k of [ev.src, ev.dst]) {
       const t = overlay.tierMap?.[k];
-      if (t && !t.external) { const key = t[FIELD[data.zoom]]; if (key && graph.hasNode(key)) footprint.push(key); }
+      if (t && !t.external) { const key = liftToDrawn(t); if (key) footprint.push(key); }
     }
   }
   const center = centroidOfNodes(footprint);
@@ -1005,8 +1132,7 @@ function applyOverlay(data) {
   const liftKey = (deviceKey) => {
     const tiers = overlay.tierMap?.[deviceKey];
     if (!tiers) return '';
-    const key = tiers[FIELD[data.zoom]] || '';
-    return key && graph.hasNode(key) ? key : '';
+    return liftToDrawn(tiers);
   };
 
   const involved = new Set();
@@ -1111,6 +1237,10 @@ export async function load({ keepCamera = false } = {}) {
     const params = new URLSearchParams({ zoom: String(state.zoom) });
     if (state.group) params.set('group', state.group);
     if (state.snapshotId) params.set('snapshot', state.snapshotId);
+    // The zone view is a whole-estate read with holes punched in it, so it takes no
+    // parent/scope: `expanded` is the only thing that varies. An empty value is still
+    // sent, since it is what selects the mixed payload.
+    if (state.zones) params.set('expanded', state.expanded.join(','));
     if (state.parent) params.set('parent', state.parent);
     if (state.scope) params.set('scope', state.scope);
     if (state.showExternal) params.set('external', '1');
@@ -1320,9 +1450,11 @@ async function selectSearchResult(hit) {
   if (segment) {
     state.crumbs = [{ zoom: 3, parent: segment, scope: 'segment', label: prettySegment(segment) }];
     state.zoom = 3; state.parent = segment; state.scope = 'segment'; state.keys = null;
+    state.zones = false;
   } else {
     state.crumbs = [{ zoom: 3, parent: '', scope: '', label: hit.label, keys: [hit.id] }];
     state.zoom = 3; state.parent = ''; state.scope = ''; state.keys = [hit.id];
+    state.zones = false;
   }
   state.autoTier = false;
   updateNeighborBtn();
@@ -1339,7 +1471,8 @@ async function selectOverlay(sessionId) {
     $('topo-external')?.setAttribute('aria-pressed', 'false');
     $('topo-external')?.classList.remove('active');
     // Returning to the plain map leaves any incident framing behind.
-    state.keys = null; state.crumbs = []; state.zoom = 0; state.parent = ''; state.scope = ''; state.autoTier = true;
+    state.keys = null; state.crumbs = []; state.zoom = CAMERA_LOD ? 0 : 1; state.parent = ''; state.scope = ''; state.autoTier = true;
+    state.zones = !CAMERA_LOD; state.expanded = [];
     load();
     inspector('<div class="topo-inspector-empty panel-sub">Zoom in to devices, then click one to inspect it.</div>');
     return;
@@ -1362,6 +1495,7 @@ async function selectOverlay(sessionId) {
     // External-locality device, so make sure those are shown while an overlay is active.
     state.keys = null; state.parent = ''; state.scope = ''; state.crumbs = [];
     state.zoom = 1; state.autoTier = true;
+    state.zones = false; // the overlay owns the framing until it is cleared
     state.showExternal = true;
     $('topo-external')?.setAttribute('aria-pressed', 'true');
     $('topo-external')?.classList.add('active');
@@ -1442,6 +1576,7 @@ async function showUser(name) {
   if (keys.length) {
     state.crumbs = [{ zoom: 3, parent: '', scope: '', label: `User: ${name}`, keys }];
     state.zoom = 3; state.parent = ''; state.scope = ''; state.keys = keys; state.autoTier = false;
+    state.zones = false;
     await load();
   }
   const devRows = identity.devices.map((d) => (
@@ -1506,8 +1641,9 @@ function renderSnapshotTimeline() {
 function selectSnapshot(id, { focus = false } = {}) {
   if (!id || id === state.snapshotId) return;
   state.snapshotId = id;
-  state.crumbs = []; state.parent = ''; state.scope = ''; state.zoom = 0;
+  state.crumbs = []; state.parent = ''; state.scope = ''; state.zoom = CAMERA_LOD ? 0 : 1;
   state.keys = null; state.autoTier = true;
+  state.zones = !CAMERA_LOD; state.expanded = [];
   invalidateDeviceIndex();
   renderSnapshotTimeline();
   if (focus) $('topo-snaps')?.querySelector('.topo-snap.active')?.focus();
@@ -1530,7 +1666,15 @@ async function loadSnapshots() {
 function open() {
   $('topology-overlay').classList.remove('hidden');
   setRpTab('map');
-  state = { ...state, zoom: 0, parent: '', scope: '', crumbs: [], keys: null, showExternal: false, showNeighbors: false, autoTier: true };
+  // The map opens on the zone view: every segment as a labelled container, none of
+  // them opened. Under ?lod=camera it opens on the old locality tier instead.
+  state = {
+    ...state,
+    zoom: CAMERA_LOD ? 0 : 1,
+    parent: '', scope: '', crumbs: [], keys: null,
+    showExternal: false, showNeighbors: false, autoTier: true,
+    zones: !CAMERA_LOD, expanded: [],
+  };
   overlay = null; // the map always opens plain; an incident is something you choose
   drift = null;
   legendVisible = true;
