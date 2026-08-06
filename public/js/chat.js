@@ -9,6 +9,7 @@ import {
   integrationSourceForToolCall,
 } from './integration-badges.js';
 import { newUsage, state } from './state.js';
+import { phraseFor } from './tool-phrases.js';
 import { fmtBytes, fmtTime, fmtTokens } from './utils.js';
 import { applyIdleStatus, setStatus } from './status.js';
 
@@ -331,7 +332,14 @@ export function agentErrorText(raw) {
   return `${prefix}${body}`.slice(0, 1200);
 }
 
+/**
+ * The line beside a tool name. Prefers a statement of intent ("Searching DNS records
+ * over the last 14 days"); falls back to the raw arguments when no honest phrase can
+ * be derived, which for a plain shell command is the command itself.
+ */
 function toolSummary(name, args) {
+  const phrase = phraseFor(name, args);
+  if (phrase) return phrase;
   if (!args) return '';
   if (name === 'bash') return args.command || '';
   if (name === 'read' || name === 'write' || name === 'edit') return args.path || args.file_path || '';
