@@ -149,6 +149,11 @@ export function setCurrentFinding(finding) {
   text.textContent = finding.text;
 }
 
+/** Called by files.js after every workspace refresh. */
+export function onFilesChanged() {
+  if (active) renderArtifacts();
+}
+
 export function renderAll() {
   if (!active) return;
   renderStatus();
@@ -158,14 +163,170 @@ export function renderAll() {
   renderArtifacts();
 }
 
-// Filled in by phase 6.3; declared here so renderAll has one shape from the start.
-let renderToolStream = () => {};
-let renderArtifacts = () => {};
+// How many finished calls stay expanded before the rest fold away. The newest work
+// is the work being watched; older calls are context, not content.
+const VISIBLE_CALLS = 6;
 
-/** Let the stream and artifact renderers register themselves. */
-export function registerActivityRenderers({ tools, artifacts }) {
-  if (tools) renderToolStream = tools;
-  if (artifacts) renderArtifacts = artifacts;
+/** Segments from tool-phrases, as text nodes — tool output is never markup. */
+function summaryNode(summary) {
+  const wrap = document.createElement('div');
+  wrap.className = 'act-call-result';
+  for (const seg of summary) {
+    const node = document.createElement(seg.strong ? 'strong' : 'span');
+    node.textContent = seg.text;
+    wrap.appendChild(node);
+  }
+  return wrap;
+}
+
+function callCard(record, { faded = false } = {}) {
+  const card = document.createElement('div');
+  card.className = `act-call ${record.status}${faded ? ' faded' : ''}`;
+
+  const head = document.createElement('div');
+  head.className = 'act-call-head';
+  const dot = document.createElement('span');
+  dot.className = 'act-call-dot';
+  const name = document.createElement('strong');
+  name.className = 'act-call-name';
+  name.textContent = record.name || 'tool';
+  const timing = document.createElement('span');
+  timing.className = 'act-call-timing';
+  const ms = callDuration(record);
+  timing.textContent = record.status === 'running'
+    ? `running · ${fmtElapsed(Date.now() - record.startedAt)}`
+    : fmtElapsed(ms);
+  head.append(dot, name, timing);
+  card.appendChild(head);
+
+  if (record.phrase) {
+    const phrase = document.createElement('div');
+    phrase.className = 'act-call-phrase';
+    phrase.textContent = record.phrase;
+    card.appendChild(phrase);
+  }
+  if (record.status === 'running' && record.progress) {
+    const progress = document.createElement('div');
+    progress.className = 'act-call-progress';
+    progress.textContent = record.progress;
+    card.appendChild(progress);
+  }
+  if (record.summary?.length) card.appendChild(summaryNode(record.summary));
+  return card;
+}
+
+/**
+ * The tool stream, newest first.
+ *
+ * Reversed relative to the transcript on purpose: the transcript is a record you
+ * read forwards, this is a monitor where the interesting line is the last one.
+ */
+function renderToolStream() {
+  const host = $('activity-tools');
+  const head = $('activity-tools-head');
+  if (!host) return;
+  const calls = allCalls();
+  if (head) {
+    head.textContent = calls.length
+      ? `Tool activity · ${calls.length} call${calls.length === 1 ? '' : 's'}`
+      : 'Tool activity';
+  }
+  if (!calls.length) {
+    host.innerHTML = '<div class="act-empty">Nothing has run yet this turn.</div>';
+    return;
+  }
+  const newestFirst = [...calls].reverse();
+  const shown = newestFirst.slice(0, VISIBLE_CALLS);
+  const hidden = newestFirst.length - shown.length;
+
+  const frag = document.createDocumentFragment();
+  shown.forEach((record, i) => frag.appendChild(callCard(record, { faded: i >= 3 && record.status !== 'running' })));
+  if (hidden > 0) {
+    const more = document.createElement('div');
+    more.className = 'act-more';
+    more.textContent = `${hidden} earlier call${hidden === 1 ? '' : 's'}`;
+    frag.appendChild(more);
+  }
+  host.replaceChildren(frag);
+}
+
+/**
+ * Artifacts, and the one being written right now.
+ *
+ * A file the agent is mid-write has no entry in the workspace listing yet — the list
+ * is polled when a tool call ends. So a running write/edit is read as a drafting
+ * card, which is what makes the rail show work in progress rather than only its
+ * results.
+ */
+function draftingPaths() {
+  const paths = new Set();
+  for (const record of allCalls()) {
+    if (record.status !== 'running') continue;
+    const name = String(record.name || '').toLowerCase();
+    if (name !== 'write' && name !== 'edit') continue;
+    const path = record.args?.path || record.args?.file_path;
+    if (path) paths.add(String(path).split('/').filter(Boolean).join('/'));
+  }
+  return paths;
+}
+
+function artifactCard({ name, tag, drafting = false, meta = '' }) {
+  const card = document.createElement('div');
+  card.className = `act-artifact${drafting ? ' drafting' : ''}`;
+  const head = document.createElement('div');
+  head.className = 'act-artifact-head';
+  if (drafting) {
+    const dot = document.createElement('span');
+    dot.className = 'act-artifact-dot';
+    head.appendChild(dot);
+  }
+  const title = document.createElement('strong');
+  title.className = 'act-artifact-name';
+  title.textContent = name;
+  const kind = document.createElement('span');
+  kind.className = 'act-artifact-tag';
+  kind.textContent = drafting ? 'Drafting' : (tag || '');
+  head.append(title, kind);
+  card.appendChild(head);
+  if (meta) {
+    const sub = document.createElement('div');
+    sub.className = 'act-artifact-meta';
+    sub.textContent = meta;
+    card.appendChild(sub);
+  }
+  return card;
+}
+
+function renderArtifacts() {
+  const host = $('activity-artifacts');
+  const head = $('activity-artifacts-head');
+  if (!host) return;
+  const files = [...state.workspaceFiles.values()].filter((f) => f.reveal);
+  const drafting = draftingPaths();
+  // A file being written that is not yet in the listing still deserves a card.
+  const unlisted = [...drafting].filter((p) => !state.workspaceFiles.has(p));
+
+  if (head) {
+    const total = files.length + unlisted.length;
+    head.textContent = total ? `Artifacts · ${total}` : 'Artifacts';
+  }
+  if (!files.length && !unlisted.length) {
+    host.innerHTML = '<div class="act-empty">Evidence and reports appear here as they are written.</div>';
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  const short = (p) => String(p).split('/').pop();
+  for (const path of unlisted) frag.appendChild(artifactCard({ name: short(path), drafting: true }));
+  for (const file of files) {
+    frag.appendChild(artifactCard({
+      name: short(file.path),
+      tag: file.tag || '',
+      drafting: drafting.has(file.path),
+      meta: file.path.includes('/') ? file.path.replace(/\/[^/]+$/, '') : '',
+    }));
+  }
+  host.replaceChildren(frag);
 }
 
 export function initActivity() {

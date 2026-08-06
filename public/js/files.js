@@ -6,6 +6,7 @@ import { themeReportHtml } from './theme.js';
 import { dom, $ } from './dom.js';
 import { captureSessionScope, isCurrentSessionScope, state } from './state.js';
 import { csvDownloadName, downloadName, fmtBytes, fmtTime, pdfDownloadName, triggerDownload } from './utils.js';
+import { onFilesChanged } from './activity.js';
 
 const ICON_FILE = '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>';
 const ICON_UPLOAD = '<path d="M12 17V7M7 11l5-5 5 5"/><path d="M4 21h16"/>';
@@ -248,6 +249,7 @@ export async function refreshFiles() {
   state.knownFiles = currentFiles;
   state.workspaceFiles = new Map(files.map((file) => [file.path, file]));
   renderTree(files, newPaths);
+  onFilesChanged(); // the live view's artifacts rail reads the same list
   dom.chatEl.querySelectorAll('.msg-agent .md').forEach((element) => {
     linkWorkspaceFileReferences(element, files);
   });

@@ -4814,3 +4814,58 @@ body.activity-on .files-panel { display: none; }
   cursor: pointer; flex-shrink: 0; padding: 0 2px;
 }
 .composer-queued-cancel:hover { color: var(--ink); }
+
+
+/* ===== Live activity: the tool stream and the artifacts rail ===== */
+
+.act-empty { font-size: 12px; color: var(--text-faint); padding: 6px 0; line-height: 1.5; }
+.act-more { text-align: center; font-size: 11px; color: var(--text-faint); padding: 4px 0; flex-shrink: 0; }
+
+.act-call {
+  flex-shrink: 0; border: 1px solid var(--hairline); border-radius: 12px;
+  background: var(--surface); padding: 10px 12px;
+}
+/* Older finished calls are context, not content. */
+.act-call.faded { opacity: .72; }
+.act-call.running { border-color: var(--cyan-border); background: var(--cyan-bg); }
+.act-call-head { display: flex; align-items: center; gap: 8px; }
+.act-call-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dot-idle); flex-shrink: 0; }
+.act-call.running .act-call-dot { background: var(--cyan); animation: pulse 1.2s ease-in-out infinite; }
+.act-call.done .act-call-dot { background: var(--ok); }
+.act-call.error .act-call-dot { background: var(--danger); }
+.act-call-name { font-size: 12.5px; color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.act-call.running .act-call-name { color: var(--cyan-text); }
+.act-call-timing {
+  margin-left: auto; flex-shrink: 0;
+  font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--text-faint);
+}
+.act-call-phrase { font-size: 11.5px; color: var(--gray); margin-top: 5px; line-height: 1.45; }
+.act-call-progress { font-size: 11px; color: var(--cyan-text); margin-top: 4px; font-style: italic; }
+.act-call-result { font-size: 11.5px; color: var(--text-2); margin-top: 5px; line-height: 1.45; }
+.act-call-result strong { color: var(--ink); font-weight: 700; }
+.act-call.error .act-call-result strong { color: var(--danger-text); }
+
+.act-artifact {
+  flex-shrink: 0; border: 1px solid var(--hairline); border-radius: 12px;
+  background: var(--surface); padding: 10px 12px;
+}
+/* Magenta is the reserved incident/active accent; a file being written right now is
+   the one artifact state that is genuinely live. */
+.act-artifact.drafting { border-color: var(--magenta-border); background: var(--magenta-bg); }
+.act-artifact-head { display: flex; align-items: center; gap: 8px; }
+.act-artifact-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--magenta); flex-shrink: 0;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.act-artifact-name {
+  font-size: 12.5px; color: var(--ink); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.act-artifact.drafting .act-artifact-name { color: var(--magenta-text); }
+.act-artifact-tag {
+  margin-left: auto; flex-shrink: 0;
+  font-size: 9.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-faint);
+}
+.act-artifact.drafting .act-artifact-tag { color: var(--magenta-text); }
+.act-artifact-meta { font-size: 10.5px; color: var(--text-faint); margin-top: 4px; }

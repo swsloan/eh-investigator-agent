@@ -151,3 +151,72 @@ test('a queued message can be discarded before the turn ends', async ({ page }) 
   await page.waitForTimeout(300);
   expect(posted, 'a discarded message is not sent later').toHaveLength(0);
 });
+
+test('the tool stream reads newest first, and folds the older calls away', async ({ page }) => {
+  const calls = Array.from({ length: 9 }, (_, i) => ({
+    id: `c${i}`, name: 'bash', phrase: `Step ${i}`, done: i < 8, output: '{}',
+  }));
+  await stageTurn(page, { calls });
+
+  const cards = page.locator('#activity-tools .act-call');
+  await expect(cards).toHaveCount(6);
+  // The monitor's interesting line is the last one, so it is at the top — the
+  // opposite of the transcript, which you read forwards.
+  await expect(cards.first()).toContainText('Step 8');
+  await expect(cards.first()).toHaveClass(/running/);
+  await expect(cards.nth(1)).toContainText('Step 7');
+  await expect(page.locator('#activity-tools .act-more')).toHaveText('3 earlier calls');
+  await expect(page.locator('#activity-tools-head')).toHaveText(/9 calls/);
+});
+
+test('a finished call states what it found, with the number emphasised', async ({ page }) => {
+  await stageTurn(page, { calls: [] });
+  await page.evaluate(async () => {
+    const store = await import('/js/tool-store.js');
+    const { resultSummary } = await import('/js/tool-phrases.js');
+    const output = JSON.stringify({ devices: new Array(200).fill({}) });
+    store.startCall({ toolCallId: 'x', toolName: 'bash', args: {} }, { phrase: 'Searching devices' });
+    store.endCall({ toolCallId: 'x' }, { output, summary: resultSummary({ output }) });
+  });
+  const card = page.locator('#activity-tools .act-call').first();
+  await expect(card).toContainText('Searching devices');
+  await expect(card.locator('.act-call-result')).toContainText('200 devices returned');
+  await expect(card.locator('.act-call-result strong')).toHaveText('200');
+});
+
+test('progress on a running call is visible, not just its existence', async ({ page }) => {
+  await stageTurn(page, { calls: [{ id: 'p', name: 'bash', phrase: 'Pulling records' }] });
+  await page.evaluate(async () => {
+    const store = await import('/js/tool-store.js');
+    store.updateCall({ toolCallId: 'p', status: 'page 3 of 12' });
+  });
+  await expect(page.locator('#activity-tools .act-call.running .act-call-progress')).toHaveText('page 3 of 12');
+});
+
+test('a file being written shows as drafting before it exists in the workspace', async ({ page }) => {
+  await stageTurn(page, { calls: [] });
+  await page.evaluate(async () => {
+    const [{ state }, store, activity] = await Promise.all([
+      import('/js/state.js'), import('/js/tool-store.js'), import('/js/activity.js'),
+    ]);
+    // One finished artifact...
+    state.workspaceFiles = new Map([
+      ['evidence/metrics/top-talkers.json', {
+        path: 'evidence/metrics/top-talkers.json', tag: 'METRICS', reveal: true, size: 12, mtime: 1,
+      }],
+    ]);
+    // ...and one still being written, which the polled listing cannot know about yet.
+    store.startCall({ toolCallId: 'w', toolName: 'write', args: { path: 'report-nas.html' } }, { phrase: 'Writing report-nas.html' });
+    activity.onFilesChanged();
+    activity.renderAll();
+  });
+
+  const artifacts = page.locator('#activity-artifacts .act-artifact');
+  await expect(artifacts).toHaveCount(2);
+  const drafting = page.locator('.act-artifact.drafting');
+  await expect(drafting).toHaveCount(1);
+  await expect(drafting).toContainText('report-nas.html');
+  await expect(drafting.locator('.act-artifact-tag')).toHaveText('Drafting');
+  await expect(page.locator('#activity-artifacts')).toContainText('top-talkers.json');
+  await expect(page.locator('#activity-artifacts-head')).toHaveText(/Artifacts · 2/);
+});
