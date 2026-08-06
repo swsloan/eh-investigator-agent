@@ -4869,3 +4869,19 @@ body.activity-on .files-panel { display: none; }
 }
 .act-artifact.drafting .act-artifact-tag { color: var(--magenta-text); }
 .act-artifact-meta { font-size: var(--fs-100); color: var(--text-faint); margin-top: 4px; }
+
+/* A settings panel that covers more than one subject: the sections it merged keep
+   their own headings rather than running together. */
+.settings-subhead {
+  font-size: var(--fs-300); font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-faint); margin: 22px 0 4px; padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+.settings-panel > .settings-subhead:first-of-type { margin-top: 18px; }
+
+/* Operator tooling, not analyst settings: separated from the tabs above it. */
+.settings-nav-dev { margin-top: auto; }
+.settings-nav .settings-nav-dev::before {
+  content: ''; display: block; height: 1px; background: var(--hairline);
+  margin: 0 0 8px;
+}
