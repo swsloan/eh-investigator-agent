@@ -4885,3 +4885,34 @@ body.activity-on .files-panel { display: none; }
   content: ''; display: block; height: 1px; background: var(--hairline);
   margin: 0 0 8px;
 }
+
+
+/* ===== Right panel: one surface preference for all three tabs =====
+   Files was a docked column, Memory docked or expanded depending on history, and
+   Map was always full screen — so the same strip of three buttons changed the size
+   of the app under the cursor. The surface is now shared and remembered; these are
+   the map's half of it, mirroring .memory-overlay.docked. */
+
+.topology-overlay.docked {
+  left: auto; width: 560px;
+  border-left: 1px solid var(--hairline);
+  box-shadow: -8px 0 28px rgba(0, 0, 0, .14);
+}
+body.map-docked .app {
+  grid-template-columns: 268px 1fr 0;
+  width: calc(100vw - 560px);
+  transition: width .18s ease;
+}
+/* Docked, the inspector stacks under the canvas instead of stealing a third of the
+   width — the same trade the memory panel makes. */
+.topology-overlay.docked .topology-body { flex-direction: column; }
+.topology-overlay.docked .topo-inspector {
+  flex: 0 0 auto; max-height: 40%;
+  border-left: none; border-top: 1px solid var(--hairline);
+}
+.topology-overlay.docked .topology-head,
+.topology-overlay.docked .topo-context { flex-wrap: wrap; row-gap: 8px; }
+/* The mini-map and the kill-chain strip both want the bottom edge, and at this
+   width only one of them fits. The mini-map stays: it is the only thing telling you
+   where you are, whereas the kill chain is also in the inspector two lines down. */
+.topology-overlay.docked .topo-killchain { display: none; }

@@ -57,3 +57,60 @@ test('switching tabs shows exactly one panel', async ({ page }) => {
     await expect(page.locator(`.settings-nav-btn[data-panel="${name}"]`)).toHaveAttribute('aria-selected', 'true');
   }
 });
+
+// ---- right panel ------------------------------------------------------------
+// Files was a docked column, Memory docked or expanded from history, and Map was
+// always full screen, so the same three buttons changed the size of the app.
+
+test.describe('right panel', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.locator('#settings-modal .modal-close, #settings-modal .icon-btn').first().click().catch(() => {});
+    await page.keyboard.press('Escape');
+  });
+
+  test('the map opens on the screen, because a map is a workspace', async ({ page }) => {
+    await page.locator('.files-panel .rp-tab[data-rp="map"]').click();
+    await expect(page.locator('#topology-overlay')).toBeVisible();
+    // No stored preference yet, so the panel's own default applies.
+    await expect(page.locator('#topology-overlay')).not.toHaveClass(/docked/);
+    await expect(page.locator('#topo-dock')).toHaveText('Dock to the right');
+  });
+
+  test('docking is remembered, and the other panels follow it', async ({ page }) => {
+    await page.locator('.files-panel .rp-tab[data-rp="map"]').click();
+    await page.locator('#topo-dock').click();
+    await expect(page.locator('#topology-overlay')).toHaveClass(/docked/);
+    await expect(page.locator('body')).toHaveClass(/map-docked/);
+    await expect(page.locator('#topo-dock')).toHaveText('Expand to full screen');
+
+    // The choice is shared: memory is docked too, rather than deciding for itself.
+    const shared = await page.evaluate(async () => {
+      const rp = await import('/js/right-panel.js');
+      return { surface: rp.rpSurface(), expandedWithMapDefault: rp.isExpanded('expanded') };
+    });
+    expect(shared.surface).toBe('docked');
+    expect(shared.expandedWithMapDefault, 'a stored choice overrides a panel default').toBe(false);
+
+    // And it survives a reload.
+    await page.reload();
+    await page.locator('.files-panel .rp-tab[data-rp="map"]').click();
+    await expect(page.locator('#topology-overlay')).toHaveClass(/docked/);
+  });
+
+  test('one tab strip, wired once, and only one panel open at a time', async ({ page }) => {
+    // Three copies of the strip exist in the markup (files, memory and map headers);
+    // they are all driven from right-panel.js rather than from each panel.
+    await page.locator('.files-panel .rp-tab[data-rp="map"]').click();
+    await expect(page.locator('#topology-overlay')).toBeVisible();
+    await expect(page.locator('#memory-overlay')).toBeHidden();
+
+    await page.locator('#topology-overlay .rp-tab[data-rp="memory"]').click();
+    await expect(page.locator('#memory-overlay')).toBeVisible();
+    await expect(page.locator('#topology-overlay')).toBeHidden();
+
+    await page.locator('#memory-overlay .rp-tab[data-rp="files"]').click();
+    await expect(page.locator('#memory-overlay')).toBeHidden();
+    await expect(page.locator('#topology-overlay')).toBeHidden();
+    await expect(page.locator('.files-panel')).toBeVisible();
+  });
+});

@@ -14,6 +14,7 @@
 // for free. The server contract is renderer-agnostic; the future scale-explorer
 // + timeline introduce sigma.js + graphology against the same endpoints.
 
+import { registerRpPanel } from './right-panel.js';
 import { state } from './state.js';
 import { openPromoteDialog } from './eval.js';
 
@@ -1163,7 +1164,7 @@ function open() {
 function close({ activate = 'files' } = {}) {
   $('memory-overlay').classList.add('hidden');
   document.body.classList.remove('mem-docked');
-  setRpTab(activate);
+  if (activate) setRpTab(activate);
   applyBackgroundInert(); // reads isMemoryOpen(), now false — restores every panel
 }
 
@@ -1179,10 +1180,8 @@ export function initMemory() {
   if (!btn) return;
   btn.addEventListener('click', open);
   $('memory-close').addEventListener('click', close);
-  // Files/Memory right-panel switch (present in both the files + memory headers).
-  document.querySelectorAll('.rp-tab').forEach((b) => b.addEventListener('click', () => {
-    if (b.dataset.rp === 'memory') open(); else close({ activate: b.dataset.rp });
-  }));
+  // The strip is wired once, in right-panel.js; this panel just says what it is.
+  registerRpPanel('memory', { open, close: () => close({ activate: null }) });
   $('mem-expand')?.addEventListener('click', toggleSurface);
   $('mem-mode-inv')?.addEventListener('click', () => setMode('investigation'));
   $('mem-mode-browse')?.addEventListener('click', () => setMode('browse'));

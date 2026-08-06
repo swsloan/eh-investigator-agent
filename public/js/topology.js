@@ -16,6 +16,9 @@
 // CSP with no inline script and no bundler.
 
 import { $ } from './dom.js';
+import {
+  isExpanded, onRpSurfaceChange, registerRpPanel, rpSurfaceLabel, setRpTab, toggleRpSurface,
+} from './right-panel.js';
 import { avatarSvg, identityType, roleGlyphInline, roleIconDataUri } from './topo-glyphs.js';
 import { changeKeys, renderChanges } from './topo-changes.js';
 import { matrixModel, pairId, renderMatrix, renderPairs } from './topo-matrix.js';
@@ -183,6 +186,10 @@ let state = {
 // zones degenerate — a single segment, or roles unknown everywhere — after which
 // this flag and the TIER_BANDS machinery go.
 const CAMERA_LOD = new URLSearchParams(window.location.search).get('lod') === 'camera';
+
+// A map is a workspace, not glanceable state: it opens on the screen unless the user
+// has said otherwise, at which point the shared right-panel preference wins.
+const MAP_DEFAULT_SURFACE = 'expanded';
 
 /** A segment key (`vlan:204`, `net:10.0.0.0/24`, `loc:Internal`) as a short label. */
 function prettySegment(s) {
@@ -1985,6 +1992,7 @@ async function loadSnapshots() {
 function open() {
   $('topology-overlay').classList.remove('hidden');
   setRpTab('map');
+  applySurface();
   // The map opens on the zone view: every segment as a labelled container, none of
   // them opened. Under ?lod=camera it opens on the old locality tier instead.
   state = {
@@ -2011,13 +2019,30 @@ function open() {
 
 function close({ activate = 'files' } = {}) {
   $('topology-overlay').classList.add('hidden');
+  document.body.classList.remove('map-docked');
   hideHoverCard(); // fixed-positioned: it would outlive the overlay otherwise
   if (sigma) { sigma.kill(); sigma = null; }
-  setRpTab(activate);
+  if (activate) setRpTab(activate);
 }
 
-function setRpTab(which) {
-  document.querySelectorAll('.rp-tab').forEach((b) => b.classList.toggle('active', b.dataset.rp === which));
+/**
+ * Dock or expand, following the shared right-panel preference.
+ *
+ * Docking narrows the canvas without a window resize, so sigma has to be told: its
+ * own resize handling is bound to the window, and it would otherwise keep painting
+ * at the old width.
+ */
+function applySurface() {
+  const overlay = $('topology-overlay');
+  if (!overlay || overlay.classList.contains('hidden')) return;
+  const docked = !isExpanded(MAP_DEFAULT_SURFACE);
+  overlay.classList.toggle('docked', docked);
+  document.body.classList.toggle('map-docked', docked);
+  const dock = $('topo-dock');
+  const label = rpSurfaceLabel(MAP_DEFAULT_SURFACE);
+  if (dock) { dock.textContent = label; dock.title = label; }
+  // Let the layout settle before measuring.
+  requestAnimationFrame(() => sigma?.refresh());
 }
 
 export function isTopologyOpen() { return !$('topology-overlay')?.classList.contains('hidden'); }
@@ -2025,11 +2050,10 @@ export function closeTopology() { close(); }
 
 export function initTopology() {
   if (!$('topology-overlay')) return;
-  // Each right-panel tab owns its own listener; passing the chosen tab through keeps
-  // the handlers order-independent (memory.js does the same).
-  document.querySelectorAll('.rp-tab').forEach((b) => b.addEventListener('click', () => {
-    if (b.dataset.rp === 'map') open(); else close({ activate: b.dataset.rp });
-  }));
+  // The strip is wired in one place now; this panel just says what it is.
+  registerRpPanel('map', { open, close: () => close({ activate: null }) });
+  $('topo-dock')?.addEventListener('click', () => toggleRpSurface(MAP_DEFAULT_SURFACE));
+  onRpSurfaceChange(applySurface);
   $('topo-close')?.addEventListener('click', () => close());
   $('topo-snaps')?.addEventListener('click', (e) => {
     const btn = e.target.closest('.topo-snap');
