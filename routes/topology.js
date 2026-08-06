@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
-import { listSnapshots, latestSnapshotId, readEnrichments, readIdentities, readNode, readSnapshotForDiff, readTier, topologyGraphName } from '../lib/topology-store.js';
+import { listSnapshots, latestSnapshotId, readEnrichments, readIdentities, readMixedTier, readNode, readSnapshotForDiff, readTier, topologyGraphName } from '../lib/topology-store.js';
 import { buildOverlay } from '../lib/attack-overlay.js';
 import { describeDrift, diffSnapshots } from '../lib/topology-drift.js';
 
@@ -97,6 +97,20 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
       }
       const snapshotId = await pickSnapshot(req, group);
       if (!snapshotId) return res.json({ group, snapshot_id: '', nodes: [], edges: [], zoom: 0, empty: true });
+
+      // `expanded` asks for the zone view: segments, with the named ones opened into
+      // their devices. It is its own read because the payload is mixed-resolution and
+      // has no single `zoom`; every other parameter combination keeps the old path.
+      if (typeof req.query.expanded === 'string') {
+        const mixed = await readMixedTier(client, group, {
+          snapshotId,
+          expanded: req.query.expanded.split(',').map((k) => k.trim()).filter(Boolean),
+          external: req.query.external === '1' || req.query.external === 'true',
+          limit: req.query.limit,
+        });
+        return res.json({ group, ...mixed });
+      }
+
       const tier = await readTier(client, group, {
         snapshotId,
         zoom: req.query.zoom,
