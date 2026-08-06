@@ -1165,6 +1165,132 @@ function hideIncidentList() {
   $('topo-overlay-search')?.setAttribute('aria-expanded', 'false');
 }
 
+// ---- Find on map ------------------------------------------------------------
+// Without this you can only reach a device by guessing which segment holds it and
+// drilling. The index is the whole device tier for the current snapshot, fetched
+// once on first use — the same read the incident overlay already does server-side.
+
+let deviceIndex = null;  // [] of device-tier nodes, or null when not yet fetched
+let deviceIndexKey = ''; // group|snapshot|external — a change invalidates the cache
+
+function invalidateDeviceIndex() { deviceIndex = null; deviceIndexKey = ''; }
+
+async function ensureDeviceIndex() {
+  const key = `${state.group}|${state.snapshotId}|${state.showExternal ? 1 : 0}`;
+  if (deviceIndex && deviceIndexKey === key) return deviceIndex;
+  const params = new URLSearchParams({ zoom: '3', limit: '5000' });
+  if (state.group) params.set('group', state.group);
+  if (state.snapshotId) params.set('snapshot', state.snapshotId);
+  if (state.showExternal) params.set('external', '1');
+  try {
+    const res = await fetch(`/api/topology/map?${params}`);
+    const data = await res.json();
+    deviceIndex = res.ok && Array.isArray(data.nodes) ? data.nodes : [];
+  } catch { deviceIndex = []; }
+  deviceIndexKey = key;
+  return deviceIndex;
+}
+
+/** Devices matched on name or IP, then users on name. Prefix hits rank first. */
+function searchResults(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const rank = (s) => (s.toLowerCase().startsWith(q) ? 0 : 1);
+  const devices = [];
+  for (const n of deviceIndex || []) {
+    const name = String(n.name ?? n.key ?? '');
+    const ip = String(n.ip ?? '');
+    if (!name.toLowerCase().includes(q) && !ip.toLowerCase().includes(q)) continue;
+    devices.push({
+      kind: 'device',
+      id: n.key,
+      label: name || ip || n.key,
+      meta: [ip, n.role ? prettyRole(n.role) : '', prettySegment(n.segment)].filter(Boolean).join(' · '),
+      node: n,
+      rank: Math.min(rank(name), rank(ip)),
+    });
+  }
+  const users = (identitiesCache || [])
+    .filter((i) => String(i.name || '').toLowerCase().includes(q))
+    .map((i) => ({
+      kind: 'user',
+      id: i.name,
+      label: i.name,
+      meta: `User · ${i.devices?.length || 0} device${i.devices?.length === 1 ? '' : 's'}`,
+      rank: rank(String(i.name || '')),
+    }));
+  const by = (a, b) => a.rank - b.rank || a.label.localeCompare(b.label);
+  return [...devices.sort(by).slice(0, 40), ...users.sort(by).slice(0, 10)];
+}
+
+function hideSearchList() {
+  $('topo-search-list')?.classList.add('hidden');
+  $('topo-search')?.setAttribute('aria-expanded', 'false');
+}
+
+function renderSearchList(query) {
+  const list = $('topo-search-list');
+  if (!list) return;
+  const results = searchResults(query);
+  if (!query.trim()) { hideSearchList(); return; }
+  list.innerHTML = results.length
+    ? results.map((r) => (
+      `<li role="option" class="topo-combo-item" data-kind="${r.kind}" data-id="${esc(r.id)}">`
+      + `<span class="topo-find-name">${esc(r.label)}</span>`
+      + (r.meta ? `<span class="topo-find-meta">${esc(r.meta)}</span>` : '')
+      + `</li>`
+    )).join('')
+    : `<li class="topo-combo-item topo-find-empty">No device, IP or user matches that.</li>`;
+  list.classList.remove('hidden');
+  $('topo-search')?.setAttribute('aria-expanded', 'true');
+  list.querySelectorAll('.topo-combo-item[data-id]').forEach((li) => {
+    // mousedown + preventDefault so the choice is read before blur steals focus,
+    // matching the incident picker.
+    li.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const hit = results.find((r) => r.id === li.dataset.id && r.kind === li.dataset.kind);
+      if (hit) selectSearchResult(hit);
+    });
+  });
+}
+
+/** Centre the camera on a node that is already painted. */
+function flyTo(key) {
+  if (!sigma || !graph?.hasNode(key)) return;
+  const d = sigma.getNodeDisplayData(key);
+  if (!d) return;
+  const cam = sigma.getCamera();
+  // Jumping to a device is an explicit navigation, so suspend camera-driven LOD the
+  // way drilling does — otherwise the zoom-in below can cross a tier band and refetch
+  // a different tier, throwing away the very device that was asked for.
+  state.autoTier = false;
+  cam.animate({ x: d.x, y: d.y, ratio: Math.min(cam.ratio, 0.6) }, { duration: camDuration(320) });
+}
+
+async function selectSearchResult(hit) {
+  hideSearchList();
+  const input = $('topo-search');
+  if (input) input.value = hit.kind === 'user' ? hit.label : (hit.node?.name || hit.label);
+  if (hit.kind === 'user') { await showUser(hit.id); return; }
+
+  if (graph?.hasNode(hit.id)) { flyTo(hit.id); showDevice(hit.id); return; }
+
+  // Off-screen: bring its segment into view first, then land on the device. Falling
+  // back to a keys= view keeps search working for a device with no segment.
+  const segment = hit.node?.segment || '';
+  if (segment) {
+    state.crumbs = [{ zoom: 3, parent: segment, scope: 'segment', label: prettySegment(segment) }];
+    state.zoom = 3; state.parent = segment; state.scope = 'segment'; state.keys = null;
+  } else {
+    state.crumbs = [{ zoom: 3, parent: '', scope: '', label: hit.label, keys: [hit.id] }];
+    state.zoom = 3; state.parent = ''; state.scope = ''; state.keys = [hit.id];
+  }
+  state.autoTier = false;
+  updateNeighborBtn();
+  await load();
+  if (graph?.hasNode(hit.id)) { flyTo(hit.id); showDevice(hit.id); }
+}
+
 /** Select an incident to draw, or '' to return to the plain map. */
 async function selectOverlay(sessionId) {
   if (!sessionId) {
@@ -1273,7 +1399,7 @@ async function showUser(name) {
   if (!identity) return;
   const keys = identity.devices.map((d) => d.key).filter(Boolean);
   overlay = null; drift = null;
-  const pick = $('topo-overlay-pick'); if (pick) pick.value = '';
+  const os = $('topo-overlay-search'); if (os) os.value = '';
   if (keys.length) {
     state.crumbs = [{ zoom: 3, parent: '', scope: '', label: `User: ${name}`, keys }];
     state.zoom = 3; state.parent = ''; state.scope = ''; state.keys = keys; state.autoTier = false;
@@ -1353,6 +1479,7 @@ export function initTopology() {
   $('topo-snapshot')?.addEventListener('change', (e) => {
     state.snapshotId = e.target.value;
     state.crumbs = []; state.parent = ''; state.scope = ''; state.zoom = 0; state.keys = null; state.autoTier = true;
+    invalidateDeviceIndex();
     loadIdentities();
     load();
   });
@@ -1376,11 +1503,36 @@ export function initTopology() {
     b?.classList.toggle('active', state.showNeighbors);
     load({ keepCamera: true });
   });
+  const search = $('topo-search');
+  search?.addEventListener('focus', async () => { await ensureDeviceIndex(); renderSearchList(search.value); });
+  search?.addEventListener('input', async () => { await ensureDeviceIndex(); renderSearchList(search.value); });
+  search?.addEventListener('blur', () => setTimeout(hideSearchList, 150));
+  search?.addEventListener('keydown', (e) => {
+    // Escape closes the result list first. Without stopping propagation here the
+    // document-level handler in app.js would close the whole map instead.
+    if (e.key === 'Escape' && !$('topo-search-list')?.classList.contains('hidden')) {
+      e.stopPropagation();
+      hideSearchList();
+    }
+  });
+  // `/` focuses search, the way it does in the mockup and most map UIs — but never
+  // while the caret is already in a field, or it would swallow the character.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== '/' || !isTopologyOpen()) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    e.preventDefault();
+    $('topo-search')?.focus();
+  });
+
   $('topo-zoom-in')?.addEventListener('click', () => zoomCamera(1 / ZOOM_STEP));
   $('topo-zoom-out')?.addEventListener('click', () => zoomCamera(ZOOM_STEP));
   $('topo-fit')?.addEventListener('click', fitToView);
   $('topo-legend-toggle')?.addEventListener('click', () => { legendVisible = !legendVisible; renderLegend(); });
-  $('topo-refresh')?.addEventListener('click', () => { loadSnapshots().then(() => load()); });
+  $('topo-refresh')?.addEventListener('click', () => {
+    invalidateDeviceIndex();
+    loadSnapshots().then(() => load());
+  });
   window.addEventListener('resize', () => { if (isTopologyOpen() && sigma) sigma.refresh(); });
 
   // Canvas can't read CSS variables, so a theme switch would otherwise leave the map

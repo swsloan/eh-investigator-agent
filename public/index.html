@@ -585,6 +585,14 @@
           <button class="rp-tab" data-rp="memory" type="button" role="tab">Memory</button>
           <button class="rp-tab active" data-rp="map" type="button" role="tab">Map</button>
         </div>
+        <div class="topo-combo topo-find">
+          <input id="topo-search" class="topo-select topo-combo-input topo-find-input" type="search"
+                 placeholder="Find device, IP, user…" autocomplete="off" role="combobox"
+                 aria-expanded="false" aria-controls="topo-search-list"
+                 aria-label="Find a device, IP or user on the map">
+          <span class="topo-find-kbd" aria-hidden="true">/</span>
+          <ul id="topo-search-list" class="topo-combo-list hidden" role="listbox"></ul>
+        </div>
         <label class="topo-select-wrap">Snapshot
           <select id="topo-snapshot" class="topo-select"></select>
         </label>
