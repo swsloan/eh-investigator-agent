@@ -593,9 +593,6 @@
           <span class="topo-find-kbd" aria-hidden="true">/</span>
           <ul id="topo-search-list" class="topo-combo-list hidden" role="listbox"></ul>
         </div>
-        <label class="topo-select-wrap">Snapshot
-          <select id="topo-snapshot" class="topo-select"></select>
-        </label>
         <div class="topo-select-wrap topo-combo">Overlay
           <input id="topo-overlay-search" class="topo-select topo-combo-input" type="search"
                  placeholder="No overlay" autocomplete="off" role="combobox"
@@ -610,13 +607,20 @@
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
       </div>
+      <!-- Row 2: where you are, what is here, and which snapshot you are looking at. -->
+      <div class="topo-context">
+        <nav id="topo-crumbs" class="topo-crumbs" aria-label="Map drill-down"></nav>
+        <div id="topo-chips" class="topo-chips"></div>
+        <button id="topo-neighbors" class="btn-secondary slim hidden" type="button" aria-pressed="false" title="Also show devices outside this segment that these devices depend on">Show outside dependencies</button>
+        <div id="topo-status" class="topo-status panel-sub"></div>
+        <div class="topo-snaps-wrap">
+          <span class="topo-snaps-title">Snapshot</span>
+          <div id="topo-snaps" class="topo-snaps" role="radiogroup" aria-label="Snapshot, oldest to newest"></div>
+          <span id="topo-snap-label" class="topo-snap-label"></span>
+        </div>
+      </div>
       <div class="topology-body">
         <div class="topo-main">
-          <div class="topo-bar">
-            <nav id="topo-crumbs" class="topo-crumbs" aria-label="Map drill-down"></nav>
-            <button id="topo-neighbors" class="btn-secondary slim hidden" type="button" aria-pressed="false" title="Also show devices outside this segment that these devices depend on">Show outside dependencies</button>
-            <div id="topo-status" class="topo-status panel-sub"></div>
-          </div>
           <!-- The stage is the positioning context for chrome floating over the map.
                That chrome CANNOT live inside #topo-canvas: sigma.kill() empties its
                container, so anything in there is destroyed on the next repaint. -->

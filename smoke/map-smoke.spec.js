@@ -10,7 +10,13 @@ import { expect, test } from '@playwright/test';
 // public/js/topology.js, which the zone-topology work is about to rewrite, and
 // the fixtures below are the shapes routes/topology.js actually serves.
 
-const SNAPSHOT = 'snap-1';
+// Served newest-first, the way readSnapshots returns them.
+const SNAPSHOTS = [
+  { id: 'snap-3', collected_at: '2026-08-03T22:52:00Z', window: '7d', device_count: 4, edge_count: 3, truncated: false },
+  { id: 'snap-2', collected_at: '2026-08-02T22:50:00Z', window: '7d', device_count: 3, edge_count: 2, truncated: false },
+  { id: 'snap-1', collected_at: '2026-08-01T22:48:00Z', window: '7d', device_count: 2, edge_count: 1, truncated: false },
+];
+const SNAPSHOT = SNAPSHOTS[0].id;
 
 const DEVICES = [
   { key: 'dev:dc1', name: 'dc1.acme.lab', x: -30, y: -12, ip: '10.42.0.10', role: 'domain_controller', vlan: 10, critical: true, locality: 'Internal', segment: 'vlan:10', role_key: 'vlan:10/domain_controller' },
@@ -32,7 +38,7 @@ const edgesFor = (nodes) => (nodes.length < 2 ? [] : [{ src: nodes[0].key, dst: 
 /** Stub every topology route the map touches, shaped like routes/topology.js. */
 async function stubTopology(page) {
   await page.route('**/api/topology/snapshots**', (route) => route.fulfill({
-    json: { group: 'test', snapshots: [{ id: SNAPSHOT, collected_at: '2026-08-03T22:52:00Z', window: '7d', device_count: DEVICES.length, edge_count: 3, truncated: false }] },
+    json: { group: 'test', snapshots: SNAPSHOTS },
   }));
 
   await page.route('**/api/topology/incidents**', (route) => route.fulfill({ json: { incidents: [] } }));
@@ -71,11 +77,16 @@ async function stubTopology(page) {
     else if (zoom === 1) nodes = SEGMENTS;
     else if (zoom === 2) nodes = SEGMENTS;
     else nodes = LOCALITIES;
+    const asked = params.get('snapshot') || SNAPSHOT;
+    mapRequests.push({ zoom, parent, snapshot: asked });
     return route.fulfill({
-      json: { group: 'test', nodes, edges: edgesFor(nodes), zoom, parent, snapshot_id: SNAPSHOT },
+      json: { group: 'test', nodes, edges: edgesFor(nodes), zoom, parent, snapshot_id: asked },
     });
   });
 }
+
+// Every /map query the client made, so a test can assert what it asked the server for.
+let mapRequests = [];
 
 async function openMap(page) {
   await page.goto('/');
@@ -86,7 +97,7 @@ async function openMap(page) {
 }
 
 test.describe('network map', () => {
-  test.beforeEach(async ({ page }) => { await stubTopology(page); });
+  test.beforeEach(async ({ page }) => { mapRequests = []; await stubTopology(page); });
 
   test('opens, paints, and keeps its floating chrome across a repaint', async ({ page }) => {
     const pageErrors = [];
@@ -149,6 +160,61 @@ test.describe('network map', () => {
     // ...and landed on the device itself.
     await expect(page.locator('.topo-ins-title')).toContainText('nas-backup-02.acme.lab');
     await expect(page.locator('.topo-inspector')).toContainText('10.42.0.117');
+  });
+
+  test('snapshot timeline renders one square per snapshot and switches on click', async ({ page }) => {
+    await openMap(page);
+
+    const squares = page.locator('#topo-snaps .topo-snap');
+    await expect(squares).toHaveCount(SNAPSHOTS.length);
+
+    // Newest is served first but drawn last, and starts selected.
+    await expect(squares.nth(SNAPSHOTS.length - 1)).toHaveAttribute('aria-checked', 'true');
+    await expect(page.locator('#topo-snap-label')).toContainText('4 devices');
+
+    // Picking an older square refetches the map for that snapshot.
+    await squares.nth(0).click();
+    await expect(squares.nth(0)).toHaveAttribute('aria-checked', 'true');
+    await expect(squares.nth(SNAPSHOTS.length - 1)).toHaveAttribute('aria-checked', 'false');
+    await expect(page.locator('#topo-snap-label')).toContainText('2 devices');
+    await expect.poll(() => mapRequests.some((r) => r.snapshot === 'snap-1')).toBe(true);
+  });
+
+  test('snapshot timeline is keyboard operable, as the select it replaced was', async ({ page }) => {
+    await openMap(page);
+    const squares = page.locator('#topo-snaps .topo-snap');
+
+    // Roving tabindex: only the checked square is in the tab order.
+    await expect(squares.nth(SNAPSHOTS.length - 1)).toHaveAttribute('tabindex', '0');
+    await expect(squares.nth(0)).toHaveAttribute('tabindex', '-1');
+
+    await squares.nth(SNAPSHOTS.length - 1).focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect(squares.nth(SNAPSHOTS.length - 2)).toHaveAttribute('aria-checked', 'true');
+    await expect(squares.nth(SNAPSHOTS.length - 2)).toBeFocused();
+    await expect(page.locator('#topo-snap-label')).toContainText('3 devices');
+
+    await page.keyboard.press('ArrowRight');
+    await expect(squares.nth(SNAPSHOTS.length - 1)).toHaveAttribute('aria-checked', 'true');
+  });
+
+  test('composition chips count devices, and only where that count is honest', async ({ page }) => {
+    await openMap(page);
+
+    // Aggregate tier: a node's role is its DOMINANT role, so there is nothing
+    // truthful to count and the chips stay empty.
+    await expect(page.locator('#topo-status')).toContainText('Localities');
+    await expect(page.locator('#topo-chips')).toBeEmpty();
+
+    // Device tier: real per-device roles, so real counts.
+    await page.locator('#topo-search').fill('nas-backup');
+    await page.locator('#topo-search-list .topo-combo-item').first().click();
+    await expect(page.locator('#topo-status')).toContainText('Devices');
+
+    const chips = page.locator('#topo-chips .topo-chip');
+    await expect(chips).toHaveCount(1); // vlan:20 holds a file server and a db server
+    await expect(chips.first()).toContainText('Servers');
+    await expect(chips.first()).toContainText('2');
   });
 
   test('slash focuses search, and escape closes the list without closing the map', async ({ page }) => {

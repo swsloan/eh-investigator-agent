@@ -3926,11 +3926,49 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 
 .topology-body { flex: 1 1 auto; display: flex; min-height: 0; }
 .topo-main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.topo-bar {
+/* Context row: where you are (crumbs), what is here (chips + status), and which
+   point in time you are looking at (snapshot timeline). Replaces .topo-bar, which
+   sat below the head and made the chrome read as three stacked strips. */
+.topo-context {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   padding: 8px 16px; border-bottom: 1px solid var(--hairline);
+  background: var(--surface-sub);
 }
-.topo-status { font-size: 12px; margin-left: auto; }
+
+/* Composition chips. Static by design: they report, they do not filter — a chip
+   that looks clickable and is not is worse than one that plainly reads as a count. */
+.topo-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.topo-chip {
+  border: 1px solid var(--hairline); border-radius: 999px; padding: 2px 10px;
+  font-size: 11px; font-weight: 700; color: var(--gray); white-space: nowrap;
+}
+.topo-chip b { color: var(--text-2); font-weight: 800; }
+.topo-chip.crit {
+  border-color: var(--danger-border); background: var(--danger-bg); color: var(--danger-text);
+}
+.topo-chip.crit b { color: var(--danger-text); }
+
+/* Snapshot timeline: one square per retained snapshot, oldest to newest. */
+.topo-snaps-wrap {
+  margin-left: auto; display: flex; align-items: center; gap: 10px;
+  font-size: 11.5px; color: var(--gray);
+}
+.topo-snaps-title { white-space: nowrap; }
+.topo-snaps { display: flex; align-items: center; gap: 6px; }
+.topo-snap {
+  width: 8px; height: 8px; padding: 0; border: none; border-radius: 2px;
+  background: var(--snap-1); cursor: pointer;
+}
+.topo-snap[data-tone="2"] { background: var(--snap-2); }
+.topo-snap[data-tone="3"] { background: var(--snap-3); }
+.topo-snap:hover { outline: 1px solid var(--border-strong); outline-offset: 1px; }
+.topo-snap.active {
+  width: 10px; height: 10px;
+  background: var(--cyan); box-shadow: 0 0 6px rgba(0, 170, 239, 0.6);
+}
+.topo-snap:focus-visible { outline: 2px solid var(--focus-border); outline-offset: 2px; }
+.topo-snap-label { color: var(--text-2); font-weight: 700; white-space: nowrap; }
+.topo-status { font-size: 12px; }
 .topo-status b { color: var(--ink); font-weight: 700; }
 
 /* Drill-down breadcrumb: All › Internal › vlan:204 › … */

@@ -131,6 +131,7 @@ let overlay = null;    // the incident currently drawn on top, or null for the p
 let overlayStats = { steps: 0, paths: 0, nodes: 0 }; // last overlay panel counts (for back-to-incident)
 let drift = null;      // the active snapshot comparison, or null
 let identitiesCache = []; // [{name, principal, devices:[{key,name,ip,role,locality}]}]
+let snapshots = []; // [{id, collected_at, device_count, ...}], newest first as served
 let incidentsCache = [];  // [{id, title, disposition, confidence, events, createdAt}]
 let state = {
   group: '',
@@ -521,6 +522,43 @@ function fitToView() {
   sigma.getCamera().animate(fitState(lastData.nodes.length), { duration: camDuration(260) });
 }
 
+// Role → the coarse bucket the context bar counts by. Deliberately blunt: the point
+// is "what kind of place is this", not a taxonomy.
+const ROLE_GROUP = {
+  domain_controller: 'Servers', db_server: 'Servers', file_server: 'Servers', http_server: 'Servers',
+  dns_server: 'Infra', dhcp_server: 'Infra', gateway: 'Infra', nat_gateway: 'Infra',
+  firewall: 'Infra', load_balancer: 'Infra', vpn_gateway: 'Infra', web_proxy: 'Infra',
+  pc: 'Endpoints', mobile_device: 'Endpoints', printer: 'Endpoints',
+  ip_camera: 'Endpoints', medical_device: 'Endpoints',
+};
+const GROUP_ORDER = ['Servers', 'Endpoints', 'Infra', 'Other'];
+
+/**
+ * Composition of what is painted, as counts.
+ *
+ * Device tier only. On aggregate tiers a node's `role` is its DOMINANT role, so
+ * counting device_count against it would report every device in a file-server-heavy
+ * segment as a server — confidently wrong. The status line already carries the
+ * node/link totals for those tiers.
+ */
+function renderChips(data) {
+  const el = $('topo-chips');
+  if (!el) return;
+  if (data.zoom !== 3) { el.innerHTML = ''; return; }
+  const counts = new Map();
+  for (const n of data.nodes) {
+    if (n.neighbor) continue; // pulled in from outside the scope; not part of "here"
+    const group = ROLE_GROUP[n.role] || 'Other';
+    counts.set(group, (counts.get(group) || 0) + 1);
+  }
+  const critical = data.nodes.filter((n) => n.critical && !n.neighbor).length;
+  const chips = GROUP_ORDER
+    .filter((g) => counts.get(g))
+    .map((g) => `<span class="topo-chip">${g} <b>${counts.get(g)}</b></span>`);
+  if (critical) chips.push(`<span class="topo-chip crit">Critical <b>${critical}</b></span>`);
+  el.innerHTML = chips.join('');
+}
+
 // Above this many nodes, labelling everything stops helping: sigma paints them all
 // and they overlap into a smear. Measured against this renderer — 11 and 20 nodes
 // read cleanly with the roomy policy, 30 starts colliding, 48 is unreadable. Under
@@ -754,6 +792,7 @@ function paint(data) {
   else if (drift) suffix = ` · <b>${esc(drift.description)}</b>`;
   else if (data.neighbors) suffix = ' · <b>+ outside dependencies</b>';
   setStatus(base + suffix);
+  renderChips(data);
   renderLegend();
 }
 
@@ -1421,19 +1460,70 @@ async function showUser(name) {
   $('topo-inspector')?.querySelectorAll('.topo-dev-link').forEach((b) => b.addEventListener('click', () => showDevice(b.dataset.key)));
 }
 
+/** `Aug 3, 22:52 · 114 devices`, falling back to the raw stamp if it won't parse. */
+function snapshotLabel(s) {
+  const raw = s.collected_at || '';
+  const d = raw ? new Date(raw) : null;
+  const when = d && !Number.isNaN(d.getTime())
+    ? d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : String(raw || s.id).replace('T', ' ').replace('Z', '');
+  return `${when} · ${Number(s.device_count) || 0} devices`;
+}
+
+/**
+ * Snapshots as a timeline rather than a <select>: retention keeps a dozen at most
+ * (EH_TOPOLOGY_KEEP), so they all fit as squares and the history is legible at a
+ * glance. Oldest on the left so "now" is where the eye finishes.
+ *
+ * It replaces a native control, so it owes native behaviour: a radiogroup with
+ * roving tabindex, arrow-key movement, and the full stamp on every square for
+ * anyone who cannot see the ramp.
+ */
+function renderSnapshotTimeline() {
+  const wrap = $('topo-snaps');
+  const label = $('topo-snap-label');
+  if (!wrap || !label) return;
+  if (!snapshots.length) {
+    wrap.innerHTML = '';
+    label.textContent = 'No snapshots yet';
+    return;
+  }
+  const ordered = [...snapshots].reverse(); // served newest-first
+  wrap.innerHTML = ordered.map((s, i) => {
+    const active = s.id === state.snapshotId;
+    const age = ordered.length - 1 - i; // 0 = newest
+    const tone = age === 0 ? 3 : age === 1 ? 2 : 1;
+    return `<button type="button" role="radio" class="topo-snap${active ? ' active' : ''}"`
+      + ` data-tone="${tone}" data-id="${esc(s.id)}" aria-checked="${active}"`
+      + ` tabindex="${active ? '0' : '-1'}" title="${esc(snapshotLabel(s))}"`
+      + ` aria-label="${esc(snapshotLabel(s))}"></button>`;
+  }).join('');
+  const current = ordered.find((s) => s.id === state.snapshotId) || ordered[ordered.length - 1];
+  label.textContent = snapshotLabel(current);
+}
+
+/** Switch snapshots: a different point in time is a different map, so reset the view. */
+function selectSnapshot(id, { focus = false } = {}) {
+  if (!id || id === state.snapshotId) return;
+  state.snapshotId = id;
+  state.crumbs = []; state.parent = ''; state.scope = ''; state.zoom = 0;
+  state.keys = null; state.autoTier = true;
+  invalidateDeviceIndex();
+  renderSnapshotTimeline();
+  if (focus) $('topo-snaps')?.querySelector('.topo-snap.active')?.focus();
+  loadIdentities();
+  load();
+}
+
 async function loadSnapshots() {
   try {
     const res = await fetch('/api/topology/snapshots');
     if (!res.ok) return;
-    const { group, snapshots } = await res.json();
-    state.group = group || '';
-    const sel = $('topo-snapshot');
-    if (!sel) return;
-    sel.innerHTML = (snapshots || []).map((s) => (
-      `<option value="${esc(s.id)}">${esc((s.collected_at || s.id).replace('T', ' ').replace('Z', ''))} · ${Number(s.device_count) || 0} devices</option>`
-    )).join('');
-    sel.disabled = !snapshots?.length;
-    if (snapshots?.length) state.snapshotId = snapshots[0].id;
+    const data = await res.json();
+    state.group = data.group || '';
+    snapshots = Array.isArray(data.snapshots) ? data.snapshots : [];
+    if (snapshots.length) state.snapshotId = snapshots[0].id;
+    renderSnapshotTimeline();
   } catch { /* the empty state already explains it */ }
 }
 
@@ -1476,12 +1566,17 @@ export function initTopology() {
     if (b.dataset.rp === 'map') open(); else close({ activate: b.dataset.rp });
   }));
   $('topo-close')?.addEventListener('click', () => close());
-  $('topo-snapshot')?.addEventListener('change', (e) => {
-    state.snapshotId = e.target.value;
-    state.crumbs = []; state.parent = ''; state.scope = ''; state.zoom = 0; state.keys = null; state.autoTier = true;
-    invalidateDeviceIndex();
-    loadIdentities();
-    load();
+  $('topo-snaps')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.topo-snap');
+    if (btn) selectSnapshot(btn.dataset.id);
+  });
+  $('topo-snaps')?.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const btns = [...($('topo-snaps')?.querySelectorAll('.topo-snap') || [])];
+    const i = btns.findIndex((b) => b.getAttribute('aria-checked') === 'true');
+    const next = btns[e.key === 'ArrowLeft' ? Math.max(0, i - 1) : Math.min(btns.length - 1, i + 1)];
+    if (next && next !== btns[i]) selectSnapshot(next.dataset.id, { focus: true });
   });
   const overlaySearch = $('topo-overlay-search');
   overlaySearch?.addEventListener('focus', () => renderIncidentList(overlaySearch.value));
