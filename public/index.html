@@ -590,6 +590,7 @@
         <div class="topo-views" role="tablist" aria-label="Map view">
           <button class="topo-view active" data-view="topology" type="button" role="tab" aria-selected="true">Topology</button>
           <button class="topo-view" data-view="matrix" type="button" role="tab" aria-selected="false">Traffic matrix</button>
+          <button class="topo-view" data-view="changes" type="button" role="tab" aria-selected="false">Changes</button>
         </div>
         <div class="topo-combo topo-find">
           <input id="topo-search" class="topo-select topo-combo-input topo-find-input" type="search"
@@ -628,7 +629,6 @@
         </label>
         <button id="topo-users" class="btn-secondary slim hidden" type="button" title="Browse the users seen in this snapshot and the devices they authenticated on">Users</button>
         <button id="topo-external" class="btn-secondary slim" type="button" aria-pressed="false" title="Show devices outside the internal network (External locality)">Show external</button>
-        <button id="topo-drift" class="btn-secondary slim" type="button" aria-pressed="false">What changed</button>
         <button id="topo-refresh" class="btn-secondary slim" type="button">Refresh</button>
         <button id="topo-close" class="icon-btn" title="Close">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
@@ -681,6 +681,7 @@
           <button id="topo-legend-toggle" class="topo-legend-toggle" type="button" aria-pressed="true" title="Show or hide the colour legend">Legend</button>
           <div id="topo-legend" class="topo-legend" aria-label="Map legend"></div>
           <div id="topo-matrix" class="topo-matrix hidden"></div>
+          <div id="topo-changes" class="topo-changes hidden"></div>
           <div id="topo-empty" class="topo-empty">
             <div class="topo-empty-inner">Loading the network map…</div>
           </div>

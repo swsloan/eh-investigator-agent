@@ -156,6 +156,30 @@ async function stubTopology(page) {
     });
   });
 
+
+  // Drift between the two most recent snapshots, shaped like lib/topology-drift.js.
+  await page.route('**/api/topology/drift**', (route) => route.fulfill({
+    json: {
+      group: 'test', from: 'snap-2', to: 'snap-3',
+      description: '5 changes · +1 device · 2 high · 1 medium',
+      truncated: false,
+      counts: { device_added: 1, identity_moved: 1, dependency_added: 1, role_changed: 1, segment_changed: 1 },
+      summary: { total: 5, high: 2, medium: 1, info: 2, devices_before: 3, devices_after: 4, edges_before: 2, edges_after: 3 },
+      tierMap: TIER_MAP,
+      changes: [
+        { kind: 'identity_moved', severity: 'high', key: 'svc_backup', devices: ['dev:ws', 'dev:nas'],
+          label: 'svc_backup authenticated on a host it has never used',
+          detail: 'First seen on ws-114 · previously only on nas-backup-02' },
+        { kind: 'dependency_added', severity: 'high', key: 'dev:nas|dev:dc1', endpoints: ['dev:nas', 'dev:dc1'],
+          label: 'New dependency: nas-backup-02 → dc1', detail: 'Did not exist in the previous snapshot' },
+        { kind: 'role_changed', severity: 'medium', key: 'dev:sql', from: 'db_server', to: 'file_server',
+          label: 'sql-erp-01 role changed: db server → file server', detail: 'Reclassified by discovery' },
+        { kind: 'device_added', severity: 'info', key: 'dev:ws', label: '1 new device in Workstations', detail: 'ws-114' },
+        { kind: 'segment_changed', severity: 'info', key: 'dev:dc1', label: 'dc1 moved segment', detail: 'Normal churn' },
+      ],
+    },
+  }));
+
   // The map payload varies by tier, so answer from the query the client sent.
   await page.route('**/api/topology/map**', (route) => {
     const params = new URL(route.request().url()).searchParams;
@@ -717,6 +741,53 @@ test.describe('network map', () => {
     const rail = page.locator('.topo-inspector');
     await expect(rail).toContainText('within the group');
     await expect(rail).toContainText(/East-west movement looks like this/);
+  });
+
+  test('changes lead with severity, and fold the churn away', async ({ page }) => {
+    await openMap(page);
+    await page.locator('.topo-view[data-view="changes"]').click();
+
+    await expect(page.locator('.topo-sev-chip.high')).toHaveText('2 high');
+    await expect(page.locator('.topo-sev-chip.medium')).toHaveText('1 medium');
+
+    // High and medium are open; info is collapsed behind its own count, because
+    // normal churn should not sit between the analyst and the two real findings.
+    await expect(page.locator('.topo-change-list[data-sev="high"] .topo-change')).toHaveCount(2);
+    await expect(page.locator('.topo-change-list[data-sev="medium"] .topo-change')).toHaveCount(1);
+    await expect(page.locator('.topo-change-list[data-sev="info"]')).toBeHidden();
+    await expect(page.locator('#topo-changes-info')).toHaveText(/Show 2 info changes/);
+
+    await page.locator('#topo-changes-info').click();
+    await expect(page.locator('.topo-change-list[data-sev="info"]')).toBeVisible();
+    await expect(page.locator('#topo-changes-info')).toHaveText(/Hide 2 info changes/);
+
+    // High severity is findable by shape, not only by reading.
+    await expect(page.locator('.topo-change.high')).toHaveCount(2);
+    await expect(page.locator('.topo-changes-foot')).toContainText('3 → 4 devices');
+  });
+
+  test('a change links to its place on the map', async ({ page }) => {
+    await openMap(page);
+    await page.locator('.topo-view[data-view="changes"]').click();
+
+    // The identity change is about two devices, not the identity's own name.
+    await page.locator('.topo-change.high').first().locator('.topo-change-show').click();
+
+    await expect(page.locator('.topo-view[data-view="topology"]')).toHaveClass(/active/);
+    await expect(page.locator('#topo-viewport')).toBeVisible();
+    await expect(page.locator('#topo-crumbs')).toContainText('svc_backup authenticated');
+    // Scoped by explicit keys, which is the one scope that always resolves.
+    await expect.poll(() => mapRequests.at(-1)?.expanded).toBe(null);
+  });
+
+  test('the map remembers the comparison after you leave the changes view', async ({ page }) => {
+    await openMap(page);
+    await page.locator('.topo-view[data-view="changes"]').click();
+    await expect(page.locator('.topo-sev-chip.high')).toBeVisible();
+
+    await page.locator('.topo-view[data-view="topology"]').click();
+    // Looking at what changed and then looking at the map should not lose the answer.
+    await expect(page.locator('#topo-status')).toContainText('5 changes');
   });
 
   test('escape closes the incident picker before it closes the map', async ({ page }) => {

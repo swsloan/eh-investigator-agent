@@ -17,6 +17,7 @@
 
 import { $ } from './dom.js';
 import { avatarSvg, identityType, roleGlyphInline, roleIconDataUri } from './topo-glyphs.js';
+import { changeKeys, renderChanges } from './topo-changes.js';
 import { matrixModel, pairId, renderMatrix, renderPairs } from './topo-matrix.js';
 import {
   badgeAt, clearAttack, clearZones, drawAttack, drawZones, emphasisePath,
@@ -1181,44 +1182,8 @@ function applyDrift(data) {
     graph.setNodeAttribute(key, 'color', HALO[severity] || HALO.info);
     graph.setNodeAttribute(key, 'size', (graph.getNodeAttribute(key, 'size') || 5) * 1.4);
   }
-  renderDriftPanel(worst.size);
+  driftPainted = worst.size > 0 || drift.changes.length === 0;
 }
-
-/** The "what changed" list, grouped severity-first. */
-function renderDriftPanel(markedNodes) {
-  if (!drift) return;
-  if (!drift.changes.length) {
-    inspector(`<div class="topo-ins-title">What changed</div>`
-      + `<div class="topo-ins-foot panel-sub">${esc(drift.description || 'No change since the previous snapshot.')}</div>`);
-    return;
-  }
-  const rows = drift.changes.map((c) => (
-    `<li class="topo-ev">
-       <span class="topo-ev-dot" style="--stage:${c.severity === 'high' ? '#ef4444' : c.severity === 'medium' ? '#f59e0b' : '#0ea5e9'}"></span>
-       <div>
-         <div class="topo-ev-head">${esc(c.label)}</div>
-         <div class="topo-ev-meta">${esc(c.detail)}</div>
-       </div>
-     </li>`
-  )).join('');
-  const from = drift.snapshots?.find((s) => s.id === drift.from);
-  const to = drift.snapshots?.find((s) => s.id === drift.to);
-  const stamp = (s) => esc(String(s?.collected_at || s?.id || '').replace('T', ' ').replace('Z', ''));
-  inspector([
-    `<div class="topo-ins-title">What changed</div>`,
-    `<div class="topo-ins-sub">${stamp(from)} → ${stamp(to)}</div>`,
-    `<div class="topo-ins-tags">`,
-    drift.summary.high ? `<span class="topo-tag crit">${drift.summary.high} high</span>` : '',
-    drift.summary.medium ? `<span class="topo-tag">${drift.summary.medium} medium</span>` : '',
-    drift.summary.info ? `<span class="topo-tag">${drift.summary.info} info</span>` : '',
-    `</div>`,
-    `<div class="topo-ins-h">Changes</div><ul class="topo-ins-list topo-events">${rows}</ul>`,
-    `<div class="topo-ins-foot panel-sub">${markedNodes} node${markedNodes === 1 ? '' : 's'} highlighted at this zoom.`
-      + (drift.truncated ? ' List truncated.' : '')
-      + `</div>`,
-  ].join(''));
-}
-
 
 // ---- View switch ------------------------------------------------------------
 // Topology, matrix, changes. They share the snapshot, the group and the external
@@ -1238,12 +1203,19 @@ function setView(next) {
   }
   $('topo-viewport')?.classList.toggle('hidden', next !== 'topology' || !lastData);
   $('topo-matrix')?.classList.toggle('hidden', next !== 'matrix');
+  $('topo-changes')?.classList.toggle('hidden', next !== 'changes');
   $('topo-empty')?.classList.toggle('hidden', next !== 'topology' || Boolean(lastData));
   // Chrome that belongs to the map only.
   for (const id of ['topo-neighbors', 'topo-chips']) $(id)?.classList.toggle('hidden', next !== 'topology');
   $('topo-matrix-controls')?.classList.toggle('hidden', next !== 'matrix');
   if (next === 'matrix') loadMatrix();
-  if (next === 'topology') { setStatus(statusForData()); sigma?.refresh(); }
+  if (next === 'changes') loadChanges();
+  if (next === 'topology') {
+    // Looking at what changed and then looking at the map should not lose the
+    // answer — but the status may only claim a comparison the graph is drawing.
+    if (drift && !driftPainted) load({ keepCamera: true });
+    else { setStatus(statusForData() + (drift ? ` · <b>${esc(drift.description || '')}</b>` : '')); sigma?.refresh(); }
+  }
 }
 
 async function loadMatrix() {
@@ -1314,34 +1286,71 @@ async function selectCell(src, dst) {
   }
 }
 
-/** Toggle the snapshot comparison on/off. */
-async function toggleDrift() {
-  const btn = $('topo-drift');
-  if (drift) {
-    drift = null;
-    btn?.setAttribute('aria-pressed', 'false');
-    btn?.classList.remove('active');
-    inspector('<div class="topo-inspector-empty panel-sub">Zoom in to devices, then click one to inspect it.</div>');
-    if (lastData) { const cam = sigma && { ...sigma.getCamera().getState() }; paint(lastData); if (cam) sigma.getCamera().setState(cam); }
-    return;
-  }
-  inspector('<div class="topo-inspector-empty panel-sub">Comparing snapshots…</div>');
+let changesShowInfo = false;
+let driftPainted = false; // whether the drawn graph already carries the drift halos
+
+/**
+ * Load and render the drift between the two most recent snapshots.
+ *
+ * `drift` stays set afterwards, so switching back to the topology still haloes the
+ * changed nodes and the status line still names the comparison. Looking at what
+ * changed and then looking at the map should not lose the answer.
+ */
+async function loadChanges() {
+  const host = $('topo-changes');
+  if (!host) return;
+  renderChanges(host, null);
+  setStatus('Comparing snapshots…');
   try {
     const params = new URLSearchParams();
     if (state.group) params.set('group', state.group);
     const res = await fetch(`/api/topology/drift?${params}`);
     const data = await res.json();
-    if (!res.ok) { inspector(`<div class="topo-inspector-empty panel-sub">${esc(data.error || 'Could not compare snapshots.')}</div>`); return; }
+    if (!res.ok) {
+      host.innerHTML = `<div class="topo-changes-empty panel-sub">${esc(data.error || 'Could not compare snapshots.')}</div>`;
+      return;
+    }
     drift = data;
-    btn?.setAttribute('aria-pressed', 'true');
-    btn?.classList.add('active');
-    // Selecting drift clears any incident overlay: they are two different questions.
-    if (overlay) { overlay = null; const s = $('topo-overlay-search'); if (s) s.value = ''; }
-    if (lastData) { const cam = sigma && { ...sigma.getCamera().getState() }; paint(lastData); if (cam) sigma.getCamera().setState(cam); }
-    else renderDriftPanel(0);
+    driftPainted = false;
+    paintChanges();
+    setStatus(`<b>Changes</b> · ${esc(drift.description || '')}`);
+    inspector('<div class="topo-inspector-empty panel-sub">Every change links to its place on the map.</div>');
   } catch {
-    inspector('<div class="topo-inspector-empty panel-sub">Could not compare snapshots.</div>');
+    host.innerHTML = '<div class="topo-changes-empty panel-sub">Could not compare snapshots.</div>';
   }
+}
+
+function paintChanges() {
+  const host = $('topo-changes');
+  if (!host || !drift) return;
+  renderChanges(host, drift, { showInfo: changesShowInfo });
+  $('topo-changes-info')?.addEventListener('click', () => {
+    changesShowInfo = !changesShowInfo;
+    paintChanges();
+  });
+  for (const btn of host.querySelectorAll('.topo-change-show')) {
+    btn.addEventListener('click', () => {
+      const change = drift.changes[Number(btn.dataset.index)];
+      showChangeOnMap(change);
+    });
+  }
+}
+
+/**
+ * Scope the topology to one change.
+ *
+ * A change names devices; the map may be drawing those devices, their segments, or
+ * neither. An explicit key set is the one scope that always resolves, and it is what
+ * the incident overlay already uses for the same reason.
+ */
+function showChangeOnMap(change) {
+  const keys = changeKeys(change).filter((k) => drift?.tierMap?.[k] || k);
+  if (!keys.length) return;
+  state.keys = keys; state.zoom = 3; state.parent = ''; state.scope = '';
+  state.zones = false; state.autoTier = false;
+  state.crumbs = [{ zoom: 3, parent: '', scope: '', label: change.label || 'Change', keys }];
+  setView('topology');
+  load();
 }
 
 /**
@@ -1796,7 +1805,7 @@ async function selectOverlay(sessionId) {
     overlay = { ...data, tacticOrder: TACTIC_ORDER };
     // An incident and a snapshot comparison answer different questions; showing both
     // at once would mean two competing colour languages on the same nodes.
-    if (drift) { drift = null; $('topo-drift')?.setAttribute('aria-pressed', 'false'); $('topo-drift')?.classList.remove('active'); }
+    if (drift) drift = null; // an incident overlay and a drift comparison are different reads
     // Start HIGH-LEVEL and zoomable — like the map it's drawn on. The whole estate is
     // shown at the segment tier with the incident's clusters highlighted and everything
     // else dimmed; camera-driven LOD stays on, so zooming in redraws the path at each
@@ -1991,8 +2000,8 @@ function open() {
   const os = $('topo-overlay-search'); if (os) os.value = '';
   renderIncidentChrome();
   setView('topology');
-  $('topo-drift')?.setAttribute('aria-pressed', 'false');
-  $('topo-drift')?.classList.remove('active');
+  drift = null;
+  changesShowInfo = false;
   for (const id of ['topo-external', 'topo-neighbors']) {
     $(id)?.setAttribute('aria-pressed', 'false');
     $(id)?.classList.remove('active');
@@ -2062,7 +2071,6 @@ export function initTopology() {
     openIncidentPop(false);
   });
   $('topo-users')?.addEventListener('click', openUsers);
-  $('topo-drift')?.addEventListener('click', toggleDrift);
   $('topo-external')?.addEventListener('click', () => {
     state.showExternal = !state.showExternal;
     const b = $('topo-external');

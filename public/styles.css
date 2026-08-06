@@ -4616,3 +4616,63 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 .topo-pair-name { color: var(--text-2); min-width: 0; overflow-wrap: anywhere; }
 .topo-pair-arrow { color: var(--text-faint); }
 .topo-pair-bytes { color: var(--gray); font-family: ui-monospace, Menlo, monospace; flex-shrink: 0; }
+
+
+/* ===== Changes: what moved between two snapshots, severity first ===== */
+
+.topo-changes { flex: 1 1 auto; min-height: 0; overflow-y: auto; background: var(--canvas); }
+.topo-changes.hidden { display: none; }
+.topo-changes-inner { max-width: 860px; margin: 0 auto; padding: 24px 28px 32px; }
+.topo-changes-empty { padding: 28px; text-align: center; }
+.topo-changes-head {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;
+}
+.topo-sev-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.topo-sev-chip {
+  border-radius: 999px; padding: 3px 12px; font-size: 12px; font-weight: 800;
+  border: 1px solid var(--hairline); color: var(--gray); text-transform: capitalize;
+}
+.topo-sev-chip.high { border-color: var(--danger-border); background: var(--danger-bg); color: var(--danger-text); }
+.topo-sev-chip.medium { color: var(--amber-text); }
+.topo-changes-range { margin-left: auto; font-size: 12px; }
+
+.topo-sev-heading {
+  font-size: 10.5px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--gray); margin: 18px 0 8px;
+}
+.topo-sev-heading.high { color: var(--danger-text); }
+.topo-sev-heading.medium { color: var(--amber-text); }
+
+.topo-change-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.topo-change-list.hidden { display: none; }
+.topo-change {
+  display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center;
+  border: 1px solid var(--hairline); border-radius: 12px; background: var(--raised);
+  padding: 12px 16px;
+}
+/* High severity carries its border, so the two that matter are findable by shape. */
+.topo-change.high { border-color: var(--danger-border); }
+/* Info is normal churn: present, de-emphasised, and collapsed by default. */
+.topo-change.info { opacity: .85; }
+.topo-change-icon {
+  width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
+  background: var(--icon-bg); color: var(--gray);
+}
+.topo-change.high .topo-change-icon { background: var(--danger-bg); color: var(--danger-text); }
+.topo-change.medium .topo-change-icon { color: var(--amber-text); }
+.topo-change-title { font-size: 13.5px; font-weight: 700; color: var(--ink); line-height: 1.35; }
+.topo-change-detail { font-size: 11.5px; color: var(--gray); margin-top: 2px; line-height: 1.4; }
+.topo-change-show {
+  border: none; background: none; color: var(--cyan-text);
+  font: inherit; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer;
+}
+.topo-change-show:hover { text-decoration: underline; }
+.topo-change-show:focus-visible { outline: 2px solid var(--focus-border); outline-offset: 2px; border-radius: 6px; }
+
+.topo-changes-toggle {
+  margin-top: 18px; border: 1px solid var(--hairline); border-radius: 8px;
+  background: var(--surface); color: var(--text-2);
+  font: inherit; font-size: 12px; font-weight: 700; padding: 6px 12px; cursor: pointer;
+}
+.topo-changes-toggle:hover { background: var(--surface-hover); }
+.topo-changes-foot { margin-top: 20px; font-size: 12px; }
