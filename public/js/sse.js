@@ -3,6 +3,7 @@ import { applyInvestigationPlanEvent, refreshInvestigationPlan } from './plan-ri
 import {
   addSysNote,
   addToolCard,
+  updateToolCard,
   addUserMessage,
   agentErrorText,
   discardEmptyReasoningBlock,
@@ -177,6 +178,12 @@ export function handleEvent(ev) {
 
     case 'tool_execution_start':
       addToolCard(ev);
+      break;
+
+    // Emitted by the backends since the Pi session landed; nothing has ever
+    // listened, so a long call was indistinguishable from a stuck one.
+    case 'tool_execution_update':
+      updateToolCard(ev);
       break;
 
     case 'tool_execution_end':

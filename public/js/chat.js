@@ -11,6 +11,7 @@ import {
 import { newUsage, state } from './state.js';
 import { replaceFindingPlaceholders, splitFindings } from './findings.js';
 import { phraseFor, resultSummary } from './tool-phrases.js';
+import { endCall, resetCalls, startCall, updateCall } from './tool-store.js';
 import { fmtBytes, fmtTime, fmtTokens } from './utils.js';
 import { applyIdleStatus, setStatus } from './status.js';
 
@@ -396,15 +397,18 @@ export function addToolCard(ev) {
       <span class="tool-summary"></span>
       <svg class="tool-chevron" viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3l5 5-5 5"/></svg>
     </div>
+    <div class="tool-progress hidden"></div>
     <div class="tool-result hidden"></div>
     <div class="tool-detail">
       <div class="label">Input</div><pre class="tool-args"></pre>
       <div class="label out-label hidden">Output</div><pre class="tool-out hidden"></pre>
     </div>`;
   card.querySelector('.tool-name').textContent = ev.toolName;
+  // The store is the record of what ran; the card is one rendering of it.
+  const phrase = phraseFor(ev.toolName, ev.args);
+  startCall(ev, { phrase, integrationSource: integrationSourceForToolCall(ev) });
   // A derived phrase is prose and a raw command is a literal, so the typography
   // switches with it rather than setting every summary in monospace.
-  const phrase = phraseFor(ev.toolName, ev.args);
   const summary = card.querySelector('.tool-summary');
   summary.textContent = phrase || rawSummary(ev.toolName, ev.args);
   summary.classList.toggle('phrase', Boolean(phrase));
@@ -464,6 +468,7 @@ export function finishToolCard(ev) {
   // What it found, in the stream itself. Built from text nodes rather than markup:
   // this is tool output, so nothing here should ever be parsed as HTML.
   const summary = resultSummary({ output: text, isError: ev.isError });
+  endCall(ev, { output: text, summary });
   const line = card.querySelector('.tool-result');
   if (summary && line) {
     line.replaceChildren(...summary.map((seg) => {
@@ -476,7 +481,24 @@ export function finishToolCard(ev) {
   autoscroll();
 }
 
+/**
+ * Progress on a call that is still running.
+ *
+ * `tool_execution_update` has been on the wire since the Pi backend landed and has
+ * never had a client handler, so a five-minute query looked identical to a hung one.
+ */
+export function updateToolCard(ev) {
+  const record = updateCall(ev);
+  if (!record) return;
+  const card = state.toolCards.get(ev.toolCallId);
+  const line = card?.querySelector('.tool-progress');
+  if (!card || !line) return;
+  line.textContent = record.progress;
+  line.classList.toggle('hidden', !record.progress);
+}
+
 export function resetStreamRendering() {
+  resetCalls();
   state.currentAgentMsg = null;
   state.pendingReplayAssistantBoundary = false;
   state.blocks = new Map();

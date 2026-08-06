@@ -4676,3 +4676,11 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 }
 .topo-changes-toggle:hover { background: var(--surface-hover); }
 .topo-changes-foot { margin-top: 20px; font-size: 12px; }
+
+/* Progress on a running tool call. The backend has always said this; nothing
+   listened, so a five-minute query looked exactly like a hung one. */
+.tool-progress {
+  padding: 0 13px 8px 34px;
+  font-size: 11.5px; color: var(--gray); font-style: italic;
+}
+.tool-progress.hidden { display: none; }
