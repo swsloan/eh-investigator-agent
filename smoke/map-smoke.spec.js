@@ -35,13 +35,56 @@ const LOCALITIES = [{ key: 'Internal', name: 'Internal', x: 0, y: 0, device_coun
 
 const edgesFor = (nodes) => (nodes.length < 2 ? [] : [{ src: nodes[0].key, dst: nodes[1].key, bytes: 4_200_000, links: 12 }]);
 
+
+// One incident, shaped like lib/attack-overlay.js buildOverlay(). Stage indexes are
+// positions in the client's TACTIC_ORDER: credential access, lateral movement,
+// exfiltration.
+const INCIDENT = {
+  id: 'sess-1',
+  title: 'Lateral movement from nas-backup-02',
+  disposition: 'malicious',
+  confidence: 'high',
+  techniques: ['T1021.002', 'T1048'],
+  stages: [
+    { tactic: 'Credential Access', count: 1 },
+    { tactic: 'Lateral Movement', count: 1 },
+    { tactic: 'Exfiltration', count: 1 },
+  ],
+  entities: ['dev:ws', 'dev:nas', 'dev:dc1', 'ext:185.220.1.1'],
+  externals: [{ key: 'ext:185.220.1.1', name: '185.220.1.1' }],
+  bound: 3,
+  unbound: 0,
+  events: [
+    { order: 0, seq: 0, time: '01:14', event: 'svc_backup credentials received from vdi-pool-07', tactic: 'Credential Access', stage: 7, src: 'dev:ws', dst: 'dev:nas', entities: ['dev:ws', 'dev:nas'], inferred: false },
+    { order: 1, seq: 1, time: '01:31', event: 'SMB writes to dc1 SYSVOL share', tactic: 'Lateral Movement', stage: 9, src: 'dev:nas', dst: 'dev:dc1', entities: ['dev:nas', 'dev:dc1'], inferred: false },
+    { order: 2, seq: 2, time: '02:05', event: '14 GB TLS to 185.220.1.1 over 40 min', tactic: 'Exfiltration', stage: 12, src: 'dev:nas', dst: 'ext:185.220.1.1', entities: ['dev:nas', 'ext:185.220.1.1'], inferred: false },
+  ],
+};
+
+/** tierMap: every device's coordinates at each tier, so the client can lift it. */
+const TIER_MAP = Object.fromEntries([
+  ...DEVICES.map((d) => [d.key, { key: d.key, name: d.name, locality: d.locality, segment: d.segment, role_key: d.role_key }]),
+  ['ext:185.220.1.1', { key: 'ext:185.220.1.1', locality: 'ext:185.220.1.1', segment: 'ext:185.220.1.1', role_key: 'ext:185.220.1.1', external: true }],
+]);
+
 /** Stub every topology route the map touches, shaped like routes/topology.js. */
 async function stubTopology(page) {
   await page.route('**/api/topology/snapshots**', (route) => route.fulfill({
     json: { group: 'test', snapshots: SNAPSHOTS },
   }));
 
-  await page.route('**/api/topology/incidents**', (route) => route.fulfill({ json: { incidents: [] } }));
+  // The list, and the overlay for the one incident in it.
+  await page.route('**/api/topology/incidents/*', (route) => route.fulfill({
+    json: { group: 'test', snapshot_id: SNAPSHOT, tierMap: TIER_MAP, ...INCIDENT },
+  }));
+  await page.route('**/api/topology/incidents', (route) => route.fulfill({
+    json: {
+      incidents: [{
+        id: INCIDENT.id, title: INCIDENT.title, disposition: INCIDENT.disposition,
+        confidence: INCIDENT.confidence, events: INCIDENT.events.length, createdAt: '2026-08-03T23:00:00Z',
+      }],
+    },
+  }));
 
   await page.route('**/api/topology/identities**', (route) => route.fulfill({
     json: {
@@ -356,6 +399,72 @@ test.describe('network map', () => {
 
     const after = await viewLeft();
     expect(after, 'the camera footprint should have moved right').not.toBe(before);
+  });
+
+  test('the incident button states whether one is drawn, and clears again', async ({ page }) => {
+    await openMap(page);
+
+    const btn = page.locator('#topo-incident-btn');
+    // Idle: ordinary chrome, saying what it does rather than what it is not. The old
+    // entry point was a search box whose placeholder read "No overlay".
+    await expect(btn).toHaveText(/Overlay an incident/);
+    await expect(btn).not.toHaveClass(/active/);
+    await expect(page.locator('#topo-incident-clear')).toBeHidden();
+    await expect(page.locator('#topo-killchain')).toBeHidden();
+
+    await btn.click();
+    await expect(page.locator('#topo-incident-pop')).toBeVisible();
+    await expect(page.locator('#topo-overlay-list .topo-combo-item')).toContainText([
+      /No overlay/, /Lateral movement from nas-backup-02/,
+    ]);
+
+    await page.locator('#topo-overlay-list .topo-combo-item', { hasText: 'Lateral movement' }).click();
+    await expect(page.locator('#topo-incident-pop')).toBeHidden();
+    await expect(btn).toHaveClass(/active/);
+    await expect(btn).toContainText('Lateral movement from nas-backup-02');
+    await expect(page.locator('#topo-incident-clear')).toBeVisible();
+
+    // Clearing returns the map to its plain state.
+    await page.locator('#topo-incident-clear').click();
+    await expect(btn).not.toHaveClass(/active/);
+    await expect(btn).toHaveText(/Overlay an incident/);
+    await expect(page.locator('#topo-killchain')).toBeHidden();
+  });
+
+  test('the kill chain is on the map, numbered and in order', async ({ page }) => {
+    await openMap(page);
+    await page.locator('#topo-incident-btn').click();
+    await page.locator('#topo-overlay-list .topo-combo-item', { hasText: 'Lateral movement' }).click();
+
+    const strip = page.locator('#topo-killchain');
+    await expect(strip).toBeVisible();
+    const stages = strip.locator('.topo-killchain-stage');
+    await expect(stages).toHaveCount(3);
+    await expect(stages.nth(0)).toContainText('Credential Access');
+    await expect(stages.nth(1)).toContainText('Lateral Movement');
+    await expect(stages.nth(2)).toContainText('Exfiltration');
+    // Numbered, so the order reads as a sequence rather than a set.
+    await expect(stages.nth(0).locator('.topo-killchain-num')).toHaveText('1');
+    await expect(stages.nth(2).locator('.topo-killchain-num')).toHaveText('3');
+
+    // Each stage carries its own colour from the MITRE ordering, not one alert red.
+    const colours = await strip.locator('.topo-killchain-num').evaluateAll(
+      (els) => els.map((el) => getComputedStyle(el).backgroundColor),
+    );
+    expect(new Set(colours).size, `stage colours: ${colours.join(', ')}`).toBe(3);
+
+    // The inspector still carries the full sequence.
+    await expect(page.locator('.topo-inspector')).toContainText('SMB writes to dc1 SYSVOL share');
+  });
+
+  test('escape closes the incident picker before it closes the map', async ({ page }) => {
+    await openMap(page);
+    await page.locator('#topo-incident-btn').click();
+    await expect(page.locator('#topo-incident-pop')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#topo-incident-pop')).toBeHidden();
+    await expect(page.locator('#topology-overlay')).toBeVisible();
   });
 
   test('zone strokes are explicit per theme, not an alpha of the fill', async ({ page }) => {

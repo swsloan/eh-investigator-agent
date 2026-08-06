@@ -593,11 +593,25 @@
           <span class="topo-find-kbd" aria-hidden="true">/</span>
           <ul id="topo-search-list" class="topo-combo-list hidden" role="listbox"></ul>
         </div>
-        <div class="topo-select-wrap topo-combo">Overlay
-          <input id="topo-overlay-search" class="topo-select topo-combo-input" type="search"
-                 placeholder="No overlay" autocomplete="off" role="combobox"
-                 aria-expanded="false" aria-controls="topo-overlay-list" aria-label="Overlay an incident">
-          <ul id="topo-overlay-list" class="topo-combo-list hidden" role="listbox"></ul>
+        <!-- The incident overlay is the map's most valuable mode, so it gets a
+             button that states whether one is drawn, not a search box whose
+             placeholder happened to read "No overlay". -->
+        <div class="topo-incident">
+          <button id="topo-incident-btn" class="topo-incident-btn" type="button"
+                  aria-haspopup="true" aria-expanded="false" aria-controls="topo-incident-pop">
+            <span class="topo-incident-dot" aria-hidden="true"></span>
+            <span id="topo-incident-label">Overlay an incident</span>
+          </button>
+          <button id="topo-incident-clear" class="topo-incident-clear hidden" type="button"
+                  title="Clear the overlay" aria-label="Clear the overlay">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+          <div id="topo-incident-pop" class="topo-incident-pop hidden">
+            <input id="topo-overlay-search" class="topo-select topo-combo-input" type="search"
+                   placeholder="Filter incidents…" autocomplete="off" role="combobox"
+                   aria-expanded="false" aria-controls="topo-overlay-list" aria-label="Filter incidents">
+            <ul id="topo-overlay-list" class="topo-combo-list" role="listbox"></ul>
+          </div>
         </div>
         <button id="topo-users" class="btn-secondary slim hidden" type="button" title="Browse the users seen in this snapshot and the devices they authenticated on">Users</button>
         <button id="topo-external" class="btn-secondary slim" type="button" aria-pressed="false" title="Show devices outside the internal network (External locality)">Show external</button>
@@ -635,6 +649,11 @@
               <button id="topo-fit" class="topo-zoom-btn solo" type="button" title="Fit to view" aria-label="Fit to view">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/></svg>
               </button>
+            </div>
+            <!-- The incident's kill chain, always visible while an overlay is drawn. -->
+            <div id="topo-killchain" class="topo-killchain hidden">
+              <span class="topo-killchain-label">Kill chain</span>
+              <div id="topo-killchain-stages" class="topo-killchain-stages"></div>
             </div>
             <!-- Orientation, not navigation: where the camera is within the estate. -->
             <div id="topo-minimap" class="topo-minimap hidden">

@@ -1195,6 +1195,7 @@ function applyOverlay(data) {
   }
   sigma.setSetting('renderEdgeLabels', byPair.size > 0);
   overlayStats = { steps: steps.length, paths: byPair.size, nodes: involved.size };
+  renderIncidentChrome();
   renderOverlayPanel(overlayStats.steps, overlayStats.paths, overlayStats.nodes);
 }
 
@@ -1323,7 +1324,6 @@ function renderIncidentList(filter = '') {
       `<li role="option" class="topo-combo-item" data-id="${esc(i.id)}">${esc(incidentLabel(i))}</li>`
     )));
   list.innerHTML = items.join('');
-  list.classList.remove('hidden');
   $('topo-overlay-search')?.setAttribute('aria-expanded', 'true');
   list.querySelectorAll('.topo-combo-item').forEach((li) => li.addEventListener('mousedown', (e) => {
     // mousedown (not click) + preventDefault, so selecting doesn't lose input focus to
@@ -1331,15 +1331,18 @@ function renderIncidentList(filter = '') {
     e.preventDefault();
     const id = li.dataset.id;
     hideIncidentList();
+    $('topo-incident-pop')?.classList.add('hidden');
+    $('topo-incident-btn')?.setAttribute('aria-expanded', 'false');
     const input = $('topo-overlay-search');
-    if (input) input.value = id ? incidentLabel(incidentsCache.find((x) => x.id === id)) : '';
+    if (input) input.value = '';
     selectOverlay(id);
   }));
 }
 
 function hideIncidentList() {
-  $('topo-overlay-list')?.classList.add('hidden');
+  $('topo-incident-pop')?.classList.add('hidden');
   $('topo-overlay-search')?.setAttribute('aria-expanded', 'false');
+  $('topo-incident-btn')?.setAttribute('aria-expanded', 'false');
 }
 
 // ---- Find on map ------------------------------------------------------------
@@ -1470,6 +1473,39 @@ async function selectSearchResult(hit) {
   if (graph?.hasNode(hit.id)) { flyTo(hit.id); showDevice(hit.id); }
 }
 
+
+/**
+ * Reflect the overlay in the chrome: the button says whether one is drawn, and the
+ * kill-chain strip carries the incident's shape without needing the inspector open.
+ */
+function renderIncidentChrome() {
+  const label = $('topo-incident-label');
+  const btn = $('topo-incident-btn');
+  const clear = $('topo-incident-clear');
+  const strip = $('topo-killchain');
+  const stages = $('topo-killchain-stages');
+  if (!label || !btn) return;
+
+  const active = Boolean(overlay);
+  btn.classList.toggle('active', active);
+  clear?.classList.toggle('hidden', !active);
+  label.textContent = active ? overlay.title : 'Overlay an incident';
+  btn.title = active ? `Incident overlay: ${overlay.title}` : 'Draw an incident over the map';
+
+  if (!strip || !stages) return;
+  strip.classList.toggle('hidden', !active || !overlay.stages?.length);
+  if (!active || !overlay.stages?.length) { stages.replaceChildren(); return; }
+  // Numbered chips joined by arrows: the order is the story.
+  stages.innerHTML = overlay.stages.map((stage, i) => {
+    const idx = overlay.tacticOrder.indexOf(stage.tactic);
+    const color = STAGE_COLOR[idx] || '#ef4444';
+    return (i ? '<span class="topo-killchain-arrow" aria-hidden="true">&rarr;</span>' : '')
+      + `<span class="topo-killchain-stage" style="--stage:${color}">`
+      + `<span class="topo-killchain-num">${i + 1}</span>${esc(stage.tactic)}`
+      + `<b>${Number(stage.count) || 0}</b></span>`;
+  }).join('');
+}
+
 /** Select an incident to draw, or '' to return to the plain map. */
 async function selectOverlay(sessionId) {
   if (!sessionId) {
@@ -1481,8 +1517,9 @@ async function selectOverlay(sessionId) {
     // Returning to the plain map leaves any incident framing behind.
     state.keys = null; state.crumbs = []; state.zoom = CAMERA_LOD ? 0 : 1; state.parent = ''; state.scope = ''; state.autoTier = true;
     state.zones = !CAMERA_LOD; state.expanded = [];
+    renderIncidentChrome();
     load();
-    inspector('<div class="topo-inspector-empty panel-sub">Zoom in to devices, then click one to inspect it.</div>');
+    inspector('<div class="topo-inspector-empty panel-sub">Click a zone to open it, or a device to inspect it.</div>');
     return;
   }
   inspector('<div class="topo-inspector-empty panel-sub">Loading incident…</div>');
@@ -1687,6 +1724,7 @@ function open() {
   drift = null;
   legendVisible = true;
   const os = $('topo-overlay-search'); if (os) os.value = '';
+  renderIncidentChrome();
   $('topo-drift')?.setAttribute('aria-pressed', 'false');
   $('topo-drift')?.classList.remove('active');
   for (const id of ['topo-external', 'topo-neighbors']) {
@@ -1731,9 +1769,32 @@ export function initTopology() {
     if (next && next !== btns[i]) selectSnapshot(next.dataset.id, { focus: true });
   });
   const overlaySearch = $('topo-overlay-search');
-  overlaySearch?.addEventListener('focus', () => renderIncidentList(overlaySearch.value));
+  const incidentPop = $('topo-incident-pop');
+  const openIncidentPop = (open) => {
+    incidentPop?.classList.toggle('hidden', !open);
+    $('topo-incident-btn')?.setAttribute('aria-expanded', String(open));
+    if (open) { renderIncidentList(overlaySearch?.value || ''); overlaySearch?.focus(); }
+  };
+  $('topo-incident-btn')?.addEventListener('click', () => {
+    openIncidentPop(incidentPop?.classList.contains('hidden'));
+  });
+  $('topo-incident-clear')?.addEventListener('click', () => {
+    if (overlaySearch) overlaySearch.value = '';
+    selectOverlay('');
+  });
   overlaySearch?.addEventListener('input', () => renderIncidentList(overlaySearch.value));
-  overlaySearch?.addEventListener('blur', () => setTimeout(hideIncidentList, 150));
+  overlaySearch?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation(); // or app.js closes the whole map
+    openIncidentPop(false);
+    $('topo-incident-btn')?.focus();
+  });
+  // Clicking anywhere else dismisses it, the way a menu should.
+  document.addEventListener('click', (e) => {
+    if (incidentPop?.classList.contains('hidden')) return;
+    if (e.target.closest('.topo-incident')) return;
+    openIncidentPop(false);
+  });
   $('topo-users')?.addEventListener('click', openUsers);
   $('topo-drift')?.addEventListener('click', toggleDrift);
   $('topo-external')?.addEventListener('click', () => {
