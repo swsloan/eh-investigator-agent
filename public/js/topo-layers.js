@@ -95,7 +95,9 @@ export function drawZones(svg, sigma, graph, zones) {
     if (!box) continue;
     next.push({ ...box, key: zone.key, expanded: Boolean(zone.expanded) });
 
-    const g = el('g', { class: `topo-zone${zone.expanded ? ' expanded' : ''}` });
+    // The key on the element: hit-testing goes through `rects` above, but having it
+    // in the DOM makes a zone addressable when inspecting or testing the layer.
+    const g = el('g', { class: `topo-zone${zone.expanded ? ' expanded' : ''}`, 'data-key': zone.key });
     if (zone.accent) g.setAttribute('style', `--zone-accent:${zone.accent}`);
     g.appendChild(el('rect', {
       class: 'topo-zone-rect', x: box.x, y: box.y, width: box.w, height: box.h, rx: 18,

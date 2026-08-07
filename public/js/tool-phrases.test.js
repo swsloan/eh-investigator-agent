@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  humanWindow, jsonArg, parseJsonOutput, phraseFor, resultSummary,
+  humanWindow, jsonArg, parseJsonOutput, phraseFor, reasonFor, resultSummary, toolLabel,
 } from './tool-phrases.js';
 
 const bash = (command) => phraseFor('bash', { command });
@@ -170,4 +170,61 @@ test('claims nothing about output it does not recognise', () => {
   assert.equal(resultSummary({ output: '' }), null);
   assert.equal(resultSummary({}), null);
   assert.equal(resultSummary({ output: JSON.stringify({ something: 'else' }) }), null);
+});
+
+// ---- toolLabel: name the act, not the transport --------------------------
+// Every ExtraHop query, threat-intel lookup and web search reaches the agent as a
+// shell command, so "Bash" was the only name the stream ever showed.
+
+test('an ExtraHop query is named by system and operation, not "Bash"', () => {
+  assert.deepEqual(
+    toolLabel('Bash', { command: "./excli-interface search_records -json '{\"types\":[\"~cifs\"]}'" }),
+    { source: 'ExtraHop', action: 'search_records' },
+  );
+  assert.deepEqual(
+    toolLabel('Bash', { command: './excli-interface execute_metric_query -json \'{}\'' }),
+    { source: 'ExtraHop', action: 'execute_metric_query' },
+  );
+});
+
+test('the other interfaces name their own system', () => {
+  assert.deepEqual(toolLabel('Bash', { command: './research-interface rdap -json \'{}\'' }),
+    { source: 'Web research', action: 'rdap' });
+  assert.deepEqual(toolLabel('Bash', { command: './reversinglabs-interface reputation -json \'{}\'' }),
+    { source: 'ReversingLabs', action: 'reputation' });
+  assert.deepEqual(toolLabel('Bash', { command: './investigation-plan update -json \'{}\'' }),
+    { source: 'Investigation plan', action: 'update' });
+  assert.deepEqual(toolLabel('Bash', { command: './propose-action create -json \'{}\'' }),
+    { source: 'Change proposal', action: 'create' });
+});
+
+test('a real shell command names the program it runs', () => {
+  assert.deepEqual(toolLabel('Bash', { command: 'mkdir -p evidence/records' }),
+    { source: 'Workspace', action: 'mkdir' });
+  // An env prefix is not the program.
+  assert.deepEqual(toolLabel('Bash', { command: 'TZ=UTC jq .records evidence/x.json' }),
+    { source: 'Workspace', action: 'jq' });
+});
+
+test('non-shell tools are named from what they are', () => {
+  assert.deepEqual(toolLabel('Skill', { skill: 'network-topology' }), { source: 'Skill', action: 'network-topology' });
+  assert.deepEqual(toolLabel('mcp__graphiti__add_memory', {}), { source: 'Memory', action: 'save' });
+  assert.deepEqual(toolLabel('mcp__graphiti__search_nodes', {}), { source: 'Memory', action: 'recall' });
+  assert.deepEqual(toolLabel('Read', { file_path: 'a.json' }), { source: 'Workspace', action: 'read' });
+  assert.deepEqual(toolLabel('ToolSearch', { query: 'x' }), { source: 'Tool search', action: '' });
+  // An unknown tool still gets a name rather than an empty header.
+  assert.deepEqual(toolLabel('SomethingNew', {}), { source: 'SomethingNew', action: '' });
+});
+
+// ---- reasonFor: the agent's own words ------------------------------------
+
+test('the agent-written command description becomes the reason', () => {
+  // Claude Code writes this for nearly every Bash call; it was reaching the client
+  // and being discarded.
+  assert.equal(reasonFor('Bash', { command: 'x', description: 'Confirm the SMB peers and ports.' }),
+    'Confirm the SMB peers and ports');
+  assert.equal(reasonFor('Bash', { command: 'x' }), '');
+  assert.equal(reasonFor('Bash', { command: 'x', description: '   ' }), '');
+  assert.equal(reasonFor('Bash', null), '');
+  assert.equal(reasonFor('Bash', { description: 'z'.repeat(300) }).length, 120, 'capped for one line');
 });

@@ -193,6 +193,76 @@ export function phraseFor(toolName, args) {
   return '';
 }
 
+// ---- Who was called, and why ------------------------------------------------
+// An analyst watching this does not care that the mechanism is a shell: "Bash"
+// names the transport, not the act. Every ExtraHop query, threat-intel lookup and
+// web search reaches the agent through `<interface> <verb>`, so the verb is the
+// real tool name and the interface is the real system — and both are already in
+// the command string.
+
+const SOURCE_LABEL = {
+  'excli-interface': 'ExtraHop',
+  'research-interface': 'Web research',
+  'reversinglabs-interface': 'ReversingLabs',
+  'investigation-plan': 'Investigation plan',
+  'propose-action': 'Change proposal',
+};
+
+/** `search_records` → `Search records`, for a verb with no curated phrase. */
+const humanVerb = (verb) => String(verb || '').replace(/[_-]+/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+
+/**
+ * What to call this tool call, as `{ source, action }`.
+ *
+ * `source` is the system being asked (ExtraHop, ReversingLabs, Memory…) and
+ * `action` the operation on it. Rendered as "ExtraHop · search_records", which is
+ * what an analyst would say out loud, instead of "Bash".
+ */
+export function toolLabel(toolName, args) {
+  const name = String(toolName || 'tool');
+  const command = commandOf(args);
+
+  if (command) {
+    for (const [iface, source] of Object.entries(SOURCE_LABEL)) {
+      if (!new RegExp(`(?:^|[^a-z0-9_-])(?:\\./)?${iface}\\b`, 'i').test(command)) continue;
+      const verb = verbFor(command, iface);
+      // The plan and proposal interfaces are one concern each; their verb is noise.
+      if (iface === 'investigation-plan' || iface === 'propose-action') return { source, action: verb || '' };
+      return { source, action: verb || '' };
+    }
+    // A real shell command: name the program it runs rather than the shell itself.
+    const program = command.trim().split(/[\s|;&]+/).find((w) => w && !/^[A-Z_]+=/.test(w)) || '';
+    return { source: 'Workspace', action: program.replace(/^\.\//, '').slice(0, 24) };
+  }
+
+  const lower = name.toLowerCase();
+  if (lower === 'skill') return { source: 'Skill', action: String(args?.skill || '').slice(0, 40) };
+  if (lower === 'toolsearch') return { source: 'Tool search', action: '' };
+  if (lower === 'task') return { source: 'Subagent', action: String(args?.subagent_type || '').slice(0, 24) };
+  if (/add_memory|memory_add/i.test(name)) return { source: 'Memory', action: 'save' };
+  if (/search_nodes|search_facts|memory_search/i.test(name)) return { source: 'Memory', action: 'recall' };
+  // An MCP tool: `mcp__server__tool` carries both halves already.
+  const mcp = name.match(/^mcp__([^_]+(?:_[^_]+)*?)__(.+)$/);
+  if (mcp) return { source: mcp[1].replace(/_/g, ' '), action: mcp[2] };
+  if (['read', 'write', 'edit', 'glob', 'grep'].includes(lower)) return { source: 'Workspace', action: lower };
+  return { source: name, action: '' };
+}
+
+/**
+ * The agent's own statement of why it made this call.
+ *
+ * Claude Code's Bash tool carries a `description` the model writes for every
+ * command — measured at 79 of 85 calls on a real investigation — and it was
+ * reaching the client and being thrown away. It is the single most useful line on
+ * the card: the phrase says what ran, this says what the agent was trying to
+ * learn. Trimmed of trailing punctuation so it sits as a caption.
+ */
+export function reasonFor(toolName, args) {
+  const raw = args && typeof args === 'object' ? args.description : '';
+  const text = typeof raw === 'string' ? raw.trim().replace(/[.\s]+$/, '') : '';
+  return text.slice(0, 120);
+}
+
 // ---- What came back ---------------------------------------------------------
 // The result of a call is the part an analyst is actually waiting for, and it used
 // to be visible only by expanding the card into a wall of JSON. These summaries

@@ -31,13 +31,18 @@ const idOf = (ev) => ev?.toolCallId || `anon-${++anonymous}`;
  * this module stays free of presentation and the two renderers cannot disagree
  * about what a call is called.
  */
-export function startCall(ev, { phrase = '', integrationSource = '' } = {}) {
+export function startCall(ev, { phrase = '', integrationSource = '', label = null, reason = '' } = {}) {
   const id = idOf(ev);
   const record = {
     id,
     name: ev?.toolName || '',
     args: ev?.args ?? null,
     phrase,
+    // How the call is named to a human ({source, action}), and the agent's own
+    // reason for making it. Supplied by the caller for the same reason `phrase` is:
+    // the store holds what ran, not how it reads.
+    label,
+    reason,
     integrationSource,
     status: 'running',
     progress: '',

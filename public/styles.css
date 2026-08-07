@@ -1121,12 +1121,26 @@ html, body {
 .send-btn:disabled { background: var(--disabled); cursor: default; filter: none; }
 .send-btn.stop { background: var(--stop-bg); }
 
+/* The hint text stays optically centred; the live-view button sits at the end
+   without shifting it, so adding a control did not move the copy people read. */
 .composer-hint {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
   text-align: center;
   font-size: var(--fs-200);
   color: var(--text-faint);
   padding-top: 8px;
 }
+.composer-hint-btn {
+  flex-shrink: 0;
+  border: 1px solid var(--hairline); background: transparent; color: var(--text-2);
+  border-radius: 999px; padding: 2px 10px;
+  font: inherit; font-size: var(--fs-200); font-weight: 700; cursor: pointer;
+}
+.composer-hint-btn:hover { color: var(--ink); border-color: var(--cyan-edge); }
+.composer-hint-btn:focus-visible { outline: 2px solid var(--focus-border); outline-offset: 1px; }
+/* While the live view is up, the transcript is hidden and its own header carries
+   the way back — this control would be a second, redundant switch. */
+body.activity-on .composer-hint-btn { display: none; }
 
 /* ============ Files panel ============ */
 
@@ -4147,6 +4161,11 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
   z-index: 4; pointer-events: none;
 }
 .topo-canvas.badge-hover { cursor: pointer; }
+/* A node can be pulled out of the pile; the cursor is the only thing that says so.
+   badge-hover wins, because a step badge is the more specific target under it. */
+.topo-canvas.node-grab { cursor: grab; }
+.topo-canvas.node-grab:active { cursor: grabbing; }
+.topo-canvas.badge-hover.node-grab { cursor: pointer; }
 
 .topo-attack-path {
   fill: none; stroke-width: 3; stroke-linecap: round;
@@ -4584,6 +4603,18 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
   color: var(--ink);
 }
 
+/* A cell the overlaid incident's traffic crosses. The volume ramp stays cyan
+   underneath — the outline says "the attack went this way", the fill still says
+   how much of everything went this way. Magenta everywhere the incident is
+   magenta: the overlay chip, the attack paths, and here. */
+.topo-cell.incident {
+  outline: 2px solid var(--magenta); outline-offset: -2px;
+  background: color-mix(in srgb, var(--magenta) calc(var(--cell-alpha, 0) * 55% + 12%), var(--cell-0));
+}
+.topo-cell.incident.empty { cursor: pointer; }
+.topo-cell.incident.selected,
+.topo-cell.incident:hover:not([disabled]) { outline-width: 3px; }
+
 .topo-matrix-legend {
   display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
   margin-top: 18px; font-size: var(--fs-200); color: var(--text-faint);
@@ -4602,7 +4633,29 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
     color-mix(in srgb, var(--ink) 22%, transparent) 3px,
     color-mix(in srgb, var(--ink) 22%, transparent) 6px);
 }
+.topo-matrix-swatch.incident {
+  width: 10px; height: 10px; border-radius: 3px;
+  background: color-mix(in srgb, var(--magenta) 30%, var(--cell-0));
+  box-shadow: inset 0 0 0 1.5px var(--magenta);
+}
 .topo-matrix-hint { margin-left: auto; }
+/* The overlaid incident, where it crosses the selected cell. */
+.topo-matrix-incident {
+  border: 1px solid color-mix(in srgb, var(--magenta) 45%, transparent);
+  background: color-mix(in srgb, var(--magenta) 9%, transparent);
+  border-radius: 10px; padding: 9px 11px; margin: 10px 0;
+  font-size: var(--fs-300); line-height: 1.45; color: var(--text-2);
+}
+.topo-matrix-incident-step { margin-top: 5px; font-weight: 600; color: var(--magenta-text); }
+.topo-pairs li.incident .topo-pair-name { color: var(--magenta-text); font-weight: 700; }
+/* Naming zones: the telemetry label stays beside the name, so the mapping from
+   "VLAN 20" to "Storage & Backup" is always auditable rather than a substitution. */
+.topo-names li { padding: 7px 0; border-bottom: 1px solid var(--hairline); }
+.topo-names li:last-child { border-bottom: none; }
+.topo-name-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; }
+.topo-name-key { font-size: var(--fs-200); font-weight: 700; color: var(--text-2); }
+.topo-name-count { font-size: var(--fs-100); }
+.topo-name-input { grid-column: 1 / -1; width: 100%; }
 .topo-matrix-note {
   border: 1px solid var(--cyan-border); background: var(--cyan-bg);
   border-radius: 10px; padding: 9px 11px; margin: 10px 0;
@@ -4727,7 +4780,9 @@ body.activity-on .files-panel { display: none; }
 /* overflow-x hidden as well as -y: the orb's rings are absolutely positioned
    outside its box, and a scrollbar gutter alone is enough to make the column scroll
    sideways. The generous bottom padding keeps the last card clear of the composer. */
+/* position: relative anchors the wire layer to the column, not the viewport. */
 .activity-centre {
+  position: relative;
   align-items: center; overflow-y: auto; overflow-x: hidden;
   padding: 26px 24px 40px;
 }
@@ -4742,7 +4797,31 @@ body.activity-on .files-panel { display: none; }
 }
 .activity-eyebrow.cyan { padding: 0 0 5px; color: var(--cyan-text); }
 
-.activity-orb { position: relative; flex-shrink: 0; margin-top: 40px; }
+/* The orb's connection to the two rails.
+   Absolutely positioned across the top band, behind everything, and never a
+   pointer target — it is decoration that reports state, not a control. The centre
+   column is a fixed 360px wide, so viewBox="0 0 360 290" maps one user unit to one
+   pixel and the curves need no preserveAspectRatio games.
+   Only the dashed paths carry meaning: they travel while matching work is in
+   flight, and rest as static dashes otherwise — which is also what the
+   reduced-motion floor leaves them as, so nothing has to be said there. */
+.activity-wires {
+  position: absolute; top: 0; left: 0; width: 360px; height: 290px;
+  pointer-events: none; z-index: 0; overflow: visible;
+}
+.activity-wires path { fill: none; vector-effect: non-scaling-stroke; }
+.act-wire-idle { stroke: var(--hairline); stroke-width: 1; }
+/* 7 5 pairs with the flow-dash keyframe's -12 offset. Change one, change both. */
+.act-wire { stroke-width: 1.5; stroke-dasharray: 7 5; opacity: .45; }
+.act-wire-tools { stroke: var(--cyan); }
+.act-wire-artifacts { stroke: var(--magenta); }
+.act-wire.live { opacity: 1; animation: flow-dash 1s linear infinite; }
+/* Travel outward from the orb on the right, inward to it on the left, so both
+   read as flowing in the direction the work actually moves. */
+.act-wire-artifacts.live { animation-direction: reverse; }
+
+/* Above the wires, so the orb's gradient is never crossed by a line. */
+.activity-orb { position: relative; z-index: 1; flex-shrink: 0; margin-top: 40px; }
 .activity-ring {
   position: absolute; border-radius: 50%; border: 1.5px solid var(--cyan);
   animation: pulse 1.8s ease-in-out infinite;
@@ -4755,11 +4834,14 @@ body.activity-on .files-panel { display: none; }
   background: var(--gradient); box-shadow: 0 8px 40px color-mix(in srgb, var(--cyan) 25%, transparent);
 }
 .activity-orb-core img { filter: brightness(0) invert(1); }
-.activity-caption { margin-top: 26px; text-align: center; flex-shrink: 0; }
+.activity-caption { position: relative; z-index: 1; margin-top: 26px; text-align: center; flex-shrink: 0; }
 .activity-name { font-size: var(--fs-500); font-weight: 800; color: var(--ink); }
 .activity-doing { font-size: var(--fs-300); color: var(--cyan-text); margin-top: 3px; }
 
+/* position/z-index: the wire layer is positioned, so without this it would paint
+   over the cards' backgrounds rather than behind them. */
 .activity-card {
+  position: relative; z-index: 1;
   flex-shrink: 0; width: 100%; margin-top: 20px;
   border: 1px solid var(--hairline); border-radius: 14px;
   background: var(--float); padding: 13px 15px;
@@ -4833,13 +4915,29 @@ body.activity-on .files-panel { display: none; }
 .act-call.running .act-call-dot { background: var(--cyan); animation: pulse 1.2s ease-in-out infinite; }
 .act-call.done .act-call-dot { background: var(--ok); }
 .act-call.error .act-call-dot { background: var(--danger); }
-.act-call-name { font-size: var(--fs-300); color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.act-call.running .act-call-name { color: var(--cyan-text); }
+/* The system being asked reads as a label; the operation on it as the detail. Kept
+   as two elements so an analyst scans the left column for "who" — ExtraHop,
+   ReversingLabs, Memory — without the operation names blurring into it. */
+.act-call-source {
+  font-size: var(--fs-300); font-weight: 800; color: var(--ink);
+  flex-shrink: 0; white-space: nowrap;
+}
+.act-call.running .act-call-source { color: var(--cyan-text); }
+.act-call-action {
+  font-family: ui-monospace, Menlo, monospace; font-size: var(--fs-200);
+  color: var(--text-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.act-call-action::before { content: '·'; margin-right: 6px; color: var(--text-faint); }
+/* The agent's own reason for the call — the line that explains a long wait. */
+.act-call-reason {
+  font-size: var(--fs-300); color: var(--ink); margin-top: 6px; line-height: 1.45;
+}
+.act-call.running .act-call-reason { color: var(--cyan-text); }
 .act-call-timing {
   margin-left: auto; flex-shrink: 0;
   font-family: ui-monospace, Menlo, monospace; font-size: var(--fs-100); color: var(--text-faint);
 }
-.act-call-phrase { font-size: var(--fs-200); color: var(--gray); margin-top: 5px; line-height: 1.45; }
+.act-call-phrase { font-size: var(--fs-200); color: var(--gray); margin-top: 3px; line-height: 1.4; }
 .act-call-progress { font-size: var(--fs-200); color: var(--cyan-text); margin-top: 4px; font-style: italic; }
 .act-call-result { font-size: var(--fs-200); color: var(--text-2); margin-top: 5px; line-height: 1.45; }
 .act-call-result strong { color: var(--ink); font-weight: 700; }
@@ -4869,6 +4967,23 @@ body.activity-on .files-panel { display: none; }
 }
 .act-artifact.drafting .act-artifact-tag { color: var(--magenta-text); }
 .act-artifact-meta { font-size: var(--fs-100); color: var(--text-faint); margin-top: 4px; }
+/* The same kind glyph the files panel draws, so an artifact reads as itself in
+   both places instead of being a bare filename here. */
+.act-artifact-icon { display: inline-flex; flex-shrink: 0; color: var(--text-faint); }
+.act-artifact-icon svg { display: block; }
+/* The deliverable an investigation exists to produce, once it exists. */
+.act-artifact.primary { border-color: var(--cyan-border); }
+.act-artifact.primary .act-artifact-name { color: var(--cyan-text); }
+.act-artifact.primary .act-artifact-icon { color: var(--cyan); }
+
+/* The plan before the agent has written one: present, explained, and visibly not
+   yet a list of steps. The meter stays at zero rather than being hidden, so the
+   card does not change shape when the real plan arrives. */
+.activity-plan.pending .activity-meter { opacity: .4; }
+.activity-plan.pending .pending-note {
+  display: block; padding: 2px 0; font-size: var(--fs-200); color: var(--text-faint);
+  line-height: 1.5; font-style: italic;
+}
 
 /* A settings panel that covers more than one subject: the sections it merged keep
    their own headings rather than running together. */

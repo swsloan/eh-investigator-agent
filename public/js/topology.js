@@ -21,7 +21,7 @@ import {
 } from './right-panel.js';
 import { avatarSvg, identityType, roleGlyphInline, roleIconDataUri } from './topo-glyphs.js';
 import { changeKeys, renderChanges } from './topo-changes.js';
-import { matrixModel, pairId, renderMatrix, renderPairs } from './topo-matrix.js';
+import { incidentCells, matrixModel, pairId, renderMatrix, renderPairs } from './topo-matrix.js';
 import {
   badgeAt, clearAttack, clearZones, drawAttack, drawZones, emphasisePath,
   ensureAttackLayer, ensureZoneLayer, miniMapPointAt, renderMiniMap, zoneAt,
@@ -191,8 +191,28 @@ const CAMERA_LOD = new URLSearchParams(window.location.search).get('lod') === 'c
 // has said otherwise, at which point the shared right-panel preference wins.
 const MAP_DEFAULT_SURFACE = 'expanded';
 
-/** A segment key (`vlan:204`, `net:10.0.0.0/24`, `loc:Internal`) as a short label. */
+// Operator-assigned segment names, keyed by segment key. Served with every map
+// read, because a name has to reach the places that label a segment from its key
+// alone — zone containers, breadcrumbs, a device's metadata line — not just the
+// nodes in the payload.
+let segmentNames = {};
+
+/**
+ * A segment key (`vlan:204`, `net:10.0.0.0/24`, `loc:Internal`) as a short label.
+ *
+ * An operator name wins when there is one: telemetry can only say what a segment
+ * *is* on the wire, and what it *means* ("Storage & Backup") is knowledge only the
+ * operator has. Every caller goes through here, so naming a segment renames it
+ * everywhere at once.
+ */
 function prettySegment(s) {
+  const key = String(s || '');
+  if (segmentNames[key]) return segmentNames[key];
+  return key.replace(/^(vlan|net|loc):/, (_, k) => (k === 'vlan' ? 'VLAN ' : ''));
+}
+
+/** The telemetry label, ignoring any operator name — for "renaming X" affordances. */
+function telemetrySegment(s) {
   return String(s || '').replace(/^(vlan|net|loc):/, (_, k) => (k === 'vlan' ? 'VLAN ' : ''));
 }
 
@@ -881,6 +901,8 @@ function toggleZone(key) {
 
 function paint(data) {
   lastData = data;
+  // Set before anything labels a segment: prettySegment reads this.
+  if (data.segment_names) segmentNames = data.segment_names;
   hideHoverCard(); // the graph is about to be rebuilt; any open card is stale
   const theme = themeColors();
   const G = window.graphology?.Graph || window.graphology;
@@ -957,6 +979,9 @@ function paint(data) {
   sigma.getCamera().setState(fitState(data.nodes.length));
 
   sigma.on('clickNode', ({ node }) => {
+    // A drag ends in a click on the node it started from. Moving a node to see it is
+    // not a request to navigate away from it.
+    if (draggedJustNow()) return;
     const raw = graph.getNodeAttribute(node, 'raw');
     if (raw?.external) { showExternalNode(raw); return; } // C2/exfil: no cluster to drill, no device record
     if (tierOf(raw, data.zoom) === 3) { showDevice(raw.key); return; }
@@ -1011,6 +1036,8 @@ function paint(data) {
   });
   // Panning or zooming under an open card would leave it pointing at empty space.
   sigma.getCamera().on('updated', () => { if (hoverCardNode) positionHoverCard(hoverCardNode); });
+
+  wireNodeDrag(container);
 
   if (trace) {
     sigma.setSetting('edgeReducer', (edge, attrs) => {
@@ -1070,6 +1097,78 @@ function paint(data) {
   setStatus(base + suffix);
   renderChips(data);
   renderLegend();
+}
+
+/* -------------------------------------------------------------- node drag */
+
+// Which node the pointer is holding, and whether it has actually travelled. The
+// distance matters: a click is a press and release in the same place, so without a
+// threshold every inspect would also be a one-pixel drag, and a deliberate drag
+// would still open the inspector on release.
+let dragNode = null;
+let dragMoved = false;
+let dragFrom = { x: 0, y: 0 }; // viewport coords of the press, to measure travel
+const DRAG_SLOP = 4; // viewport px before a press counts as a drag
+
+/** True if the last press turned into a drag — clickNode checks this and defers. */
+function draggedJustNow() {
+  return dragMoved;
+}
+
+/**
+ * Let a node be pulled out of the pile.
+ *
+ * A force layout puts a hub where its edges balance, which on a busy segment is the
+ * middle of everything it talks to. Dragging is how you get a node clear of its
+ * neighbours to read it and see which edges are actually its own — the thing
+ * hover-to-trace helps with but cannot do for two overlapping nodes.
+ *
+ * Positions are view-local on purpose: they are not written back to the snapshot.
+ * Stored coordinates are what make drift comparisons stable across snapshots
+ * (`alignTo` fits a transform on common nodes), and letting a mouse edit them would
+ * make "this device moved" mean two different things. Refresh restores the layout.
+ */
+function wireNodeDrag(container) {
+  const camera = sigma.getCamera();
+  const mouse = sigma.getMouseCaptor();
+
+  sigma.on('downNode', ({ node, event }) => {
+    dragNode = node;
+    dragMoved = false;
+    dragFrom = { x: event?.x ?? 0, y: event?.y ?? 0 };
+    // Highlighting makes the grabbed node obvious once it is moving through a crowd.
+    graph.setNodeAttribute(node, 'highlighted', true);
+  });
+
+  mouse.on('mousemovebody', (e) => {
+    if (!dragNode) return;
+    if (!dragMoved
+      && (Math.abs(e.x - dragFrom.x) > DRAG_SLOP || Math.abs(e.y - dragFrom.y) > DRAG_SLOP)) {
+      dragMoved = true;
+    }
+    const pos = sigma.viewportToGraph(e);
+    graph.setNodeAttribute(dragNode, 'x', pos.x);
+    graph.setNodeAttribute(dragNode, 'y', pos.y);
+    // Stop sigma panning the camera underneath the node being dragged.
+    e.preventSigmaDefault();
+    e.original.preventDefault();
+    e.original.stopPropagation();
+  });
+
+  const release = () => {
+    if (dragNode) graph.removeNodeAttribute(dragNode, 'highlighted');
+    dragNode = null;
+    // Cleared on the next frame, so the clickNode that follows this mouseup can
+    // still see that a drag happened and decline to open the inspector.
+    if (dragMoved) setTimeout(() => { dragMoved = false; }, 0);
+  };
+  mouse.on('mouseup', release);
+  mouse.on('mouseleave', release);
+
+  // The cursor is the only affordance that says a node can be moved at all.
+  sigma.on('enterNode', () => container?.classList.add('node-grab'));
+  sigma.on('leaveNode', () => container?.classList.remove('node-grab'));
+  camera.on('updated', () => { if (dragNode) hideHoverCard(); });
 }
 
 /** One legend row: a colour swatch (optionally ringed/muted) + its meaning. */
@@ -1238,9 +1337,13 @@ async function loadMatrix() {
     const res = await fetch(`/api/topology/matrix?${params}`);
     const data = await res.json();
     if (!res.ok) { host.innerHTML = `<div class="topo-matrix-empty panel-sub">${esc(data.error || 'Could not load the matrix.')}</div>`; return; }
-    matrixState = { model: matrixModel(data), selected: '' };
-    renderMatrix(host, matrixState.model);
-    setStatus(`<b>Traffic matrix</b> · ${matrixState.model.axes.length} groups · ${matrixState.model.byPair.size} pairs`);
+    // The overlaid incident marks the cells its traffic crosses — the matrix is
+    // where "which segments did the attack touch" is readable at estate scale.
+    const incident = overlay ? incidentCells(overlay, matrixGroupBy) : null;
+    matrixState = { model: matrixModel(data), selected: '', incident };
+    renderMatrix(host, matrixState.model, { incident });
+    setStatus(`<b>Traffic matrix</b> · ${matrixState.model.axes.length} groups · ${matrixState.model.byPair.size} pairs`
+      + (overlay ? ` · <b>${esc(overlay.title)}</b> overlay${incident?.size ? ` · ${incident.size} incident cell${incident.size === 1 ? '' : 's'}` : ' · no incident traffic between these groups'}` : ''));
     wireMatrixCells();
     inspector('<div class="topo-inspector-empty panel-sub">Click a cell to see the conversations behind it.</div>');
   } catch {
@@ -1258,15 +1361,21 @@ async function selectCell(src, dst) {
   if (!matrixState) return;
   const id = pairId(src, dst);
   matrixState.selected = id;
-  renderMatrix($('topo-matrix'), matrixState.model, { selected: id });
+  renderMatrix($('topo-matrix'), matrixState.model, { selected: id, incident: matrixState.incident });
   wireMatrixCells();
 
   const axis = (key) => matrixState.model.axes.find((a) => a.key === key);
   const nameOf = (key) => prettySegment(axis(key)?.name || key);
   const hit = matrixState.model.byPair.get(id) || { bytes: 0, links: 0 };
+  // Where the overlaid incident crosses this cell: its steps for the callout, and
+  // the device pairs it names so their conversations are flagged in the list.
+  const cellEvents = matrixState.incident?.get(id) || [];
+  const actor = (key) => overlay?.tierMap?.[key]?.name || key;
   const detail = {
     srcLabel: nameOf(src), dstLabel: nameOf(dst),
     bytes: hit.bytes, links: hit.links, diagonal: src === dst,
+    steps: cellEvents.map((e) => ({ seq: e.seq, tactic: e.tactic, srcName: actor(e.src), dstName: actor(e.dst) })),
+    incidentPairs: cellEvents.length ? new Set(cellEvents.map((e) => pairId(e.src, e.dst))) : null,
   };
   renderPairs($('topo-inspector'), { ...detail, loading: true });
   try {
@@ -1555,10 +1664,62 @@ export async function load({ keepCamera = false } = {}) {
     updateNeighborBtn();
   } catch (err) {
     console.error('[topology] load failed', err);
+    // Sigma measures its container at construction and throws if it has no width —
+    // which happens when the panel is painted before layout has settled. Reporting
+    // that as a server problem sent the wrong person looking, and worse, showEmpty
+    // hides the viewport, so the container stayed unmeasurable and every retry threw
+    // the same way: one bad frame wedged the map until a full reload. Wait for the
+    // container to have a size, then draw.
+    if (/has no (width|height)/i.test(String(err?.message || ''))) {
+      showEmpty('Sizing the map…');
+      retryWhenSized();
+      return;
+    }
     showEmpty('Could not reach the topology service.');
   } finally {
     state.loading = false;
   }
+}
+
+// Guard against stacking observers if several loads fail in a row.
+let awaitingSize = false;
+
+/**
+ * Redraw once the canvas actually has a size.
+ *
+ * ResizeObserver fires as soon as layout gives the element a box, which is the
+ * event that was missing; the rAF fallback covers the case where the element is
+ * already sized by the time we get here and no resize is coming.
+ */
+function retryWhenSized() {
+  if (awaitingSize) return;
+  const host = $('topo-viewport');
+  const canvas = $('topo-canvas');
+  if (!host || !canvas) return;
+  awaitingSize = true;
+
+  const attempt = () => {
+    // Un-hide first: a hidden viewport can never report a width, which is the trap
+    // the old path fell into.
+    host.classList.remove('hidden');
+    if (!canvas.clientWidth || !canvas.clientHeight) return false;
+    awaitingSize = false;
+    observer?.disconnect();
+    clearTimeout(timer);
+    load({ keepCamera: true });
+    return true;
+  };
+
+  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => attempt()) : null;
+  observer?.observe(canvas);
+  requestAnimationFrame(() => attempt());
+  // If a size never arrives, say so rather than leaving "Sizing the map…" forever.
+  const timer = setTimeout(() => {
+    if (!awaitingSize) return;
+    awaitingSize = false;
+    observer?.disconnect();
+    showEmpty('The map could not be sized in this panel. Try expanding it, or Refresh.');
+  }, 5000);
 }
 
 function showEmpty(message) {
@@ -1801,6 +1962,7 @@ async function selectOverlay(sessionId) {
     renderIncidentChrome();
     load();
     inspector('<div class="topo-inspector-empty panel-sub">Click a zone to open it, or a device to inspect it.</div>');
+    if (view === 'matrix') loadMatrix(); // drop the incident cells too
     return;
   }
   inspector('<div class="topo-inspector-empty panel-sub">Loading incident…</div>');
@@ -1826,8 +1988,105 @@ async function selectOverlay(sessionId) {
     $('topo-external')?.setAttribute('aria-pressed', 'true');
     $('topo-external')?.classList.add('active');
     await load();
+    // The matrix reads the same overlay: the cells the incident's traffic crosses
+    // light up, so "which segments did the attack touch" survives estate scale.
+    if (view === 'matrix') loadMatrix();
   } catch {
     inspector('<div class="topo-inspector-empty panel-sub">Could not load that incident.</div>');
+  }
+}
+
+/* ----------------------------------------------------------- naming zones */
+
+/**
+ * Name the segments.
+ *
+ * ExtraHop can only tell us what a segment is on the wire — `VLAN 20`,
+ * `10.42.0.0/24` — because Network Localities live in the Trigger API, which this
+ * app cannot call (DESIGN-network-topology.md). What a segment *means* is operator
+ * knowledge, so this asks for it: every segment in the snapshot, listed once, with
+ * its telemetry label kept visible beside the name so the mapping stays auditable.
+ *
+ * Names are durable and snapshot-independent, so they survive re-mapping — that is
+ * the whole point of naming a thing rather than annotating one observation of it.
+ */
+async function openZoneNames() {
+  inspector('<div class="topo-inspector-empty panel-sub">Loading segments…</div>');
+  try {
+    const params = new URLSearchParams({ zoom: '1' });
+    if (state.group) params.set('group', state.group);
+    if (state.snapshotId) params.set('snapshot', state.snapshotId);
+    if (state.showExternal) params.set('external', '1');
+    const res = await fetch(`/api/topology/map?${params}`);
+    const data = await res.json();
+    if (!res.ok) { inspector(`<div class="topo-inspector-empty panel-sub">${esc(data.error || 'Could not list segments.')}</div>`); return; }
+    if (data.segment_names) segmentNames = data.segment_names;
+    const segments = [...(data.nodes || [])].sort((a, b) => (Number(b.device_count) || 0) - (Number(a.device_count) || 0));
+    if (!segments.length) { inspector('<div class="topo-inspector-empty panel-sub">No segments in this snapshot.</div>'); return; }
+    renderZoneNames(segments);
+  } catch {
+    inspector('<div class="topo-inspector-empty panel-sub">Could not list segments.</div>');
+  }
+}
+
+function renderZoneNames(segments) {
+  const rows = segments.map((s) => {
+    const telemetry = telemetrySegment(s.key);
+    const current = segmentNames[s.key] || '';
+    const count = Number(s.device_count) || 0;
+    return `<li>
+      <label class="topo-name-row">
+        <span class="topo-name-key mono">${esc(telemetry)}</span>
+        <span class="topo-name-count panel-sub">${count} device${count === 1 ? '' : 's'}</span>
+        <input class="topo-select topo-name-input" type="text" maxlength="60" autocomplete="off"
+               data-key="${esc(s.key)}" value="${esc(current)}" placeholder="Name this zone…">
+      </label>
+    </li>`;
+  }).join('');
+  inspector([
+    `<div class="topo-ins-h">Name zones</div>`,
+    `<div class="topo-ins-sub panel-sub">Telemetry names a segment by its VLAN or subnet. Give it the name your team uses — it applies everywhere on the map and survives re-mapping.</div>`,
+    `<ul class="topo-ins-list topo-names">${rows}</ul>`,
+    `<div id="topo-name-status" class="topo-ins-foot panel-sub">Press Enter, or click away, to save. Clear a name to go back to the telemetry label.</div>`,
+  ].join(''));
+
+  for (const input of $('topo-inspector')?.querySelectorAll('.topo-name-input') || []) {
+    const commit = () => saveZoneName(input);
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      // Escape abandons the edit rather than saving a half-typed name.
+      if (e.key === 'Escape') { input.value = segmentNames[input.dataset.key] || ''; input.blur(); }
+    });
+  }
+}
+
+/** Persist one name, then relabel the drawn map without refetching the tier. */
+async function saveZoneName(input) {
+  const key = input.dataset.key;
+  const name = input.value.trim();
+  if (!key || name === (segmentNames[key] || '')) return; // nothing changed
+  const status = $('topo-name-status');
+  try {
+    const res = await fetch('/api/topology/segment-name', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ key, name, group: state.group }),
+    });
+    const data = await res.json();
+    if (!res.ok) { if (status) status.textContent = data.error || 'Could not save that name.'; return; }
+    segmentNames = data.names || segmentNames;
+    if (status) {
+      status.textContent = name
+        ? `Named ${telemetrySegment(key)} → ${name}.`
+        : `${telemetrySegment(key)} is back to its telemetry label.`;
+    }
+    // The map is already drawn from a payload whose labels are now stale, so redraw
+    // it — keeping the camera, because renaming a zone is not a navigation.
+    if (view === 'topology') load({ keepCamera: true });
+    else if (view === 'matrix') loadMatrix();
+  } catch {
+    if (status) status.textContent = 'Could not save that name.';
   }
 }
 
@@ -2095,6 +2354,7 @@ export function initTopology() {
     openIncidentPop(false);
   });
   $('topo-users')?.addEventListener('click', openUsers);
+  $('topo-name-zones')?.addEventListener('click', openZoneNames);
   $('topo-external')?.addEventListener('click', () => {
     state.showExternal = !state.showExternal;
     const b = $('topo-external');

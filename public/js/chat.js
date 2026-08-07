@@ -12,7 +12,7 @@ import { onRunningChanged, setCurrentFinding } from './activity.js';
 import { flushQueuedMessage } from './composer.js';
 import { newUsage, state } from './state.js';
 import { replaceFindingPlaceholders, splitFindings } from './findings.js';
-import { phraseFor, resultSummary } from './tool-phrases.js';
+import { phraseFor, reasonFor, resultSummary, toolLabel } from './tool-phrases.js';
 import { endCall, resetCalls, startCall, updateCall } from './tool-store.js';
 import { fmtBytes, fmtTime, fmtTokens } from './utils.js';
 import { applyIdleStatus, setStatus } from './status.js';
@@ -412,10 +412,19 @@ export function addToolCard(ev) {
       <div class="label">Input</div><pre class="tool-args"></pre>
       <div class="label out-label hidden">Output</div><pre class="tool-out hidden"></pre>
     </div>`;
-  card.querySelector('.tool-name').textContent = ev.toolName;
+  // "ExtraHop · search_records", not "Bash": the shell is the transport, not the act.
+  const nameLabel = toolLabel(ev.toolName, ev.args);
+  card.querySelector('.tool-name').textContent = nameLabel.action
+    ? `${nameLabel.source} · ${nameLabel.action}`
+    : nameLabel.source;
   // The store is the record of what ran; the card is one rendering of it.
   const phrase = phraseFor(ev.toolName, ev.args);
-  startCall(ev, { phrase, integrationSource: integrationSourceForToolCall(ev) });
+  startCall(ev, {
+    phrase,
+    label: toolLabel(ev.toolName, ev.args),
+    reason: reasonFor(ev.toolName, ev.args),
+    integrationSource: integrationSourceForToolCall(ev),
+  });
   // A derived phrase is prose and a raw command is a literal, so the typography
   // switches with it rather than setting every summary in monospace.
   const summary = card.querySelector('.tool-summary');

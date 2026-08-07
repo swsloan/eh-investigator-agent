@@ -85,9 +85,40 @@ test('the centre column mirrors the plan and says what is running', async ({ pag
   expect(width).toBe('50%');
 });
 
-test('the plan card stays away when there is no plan', async ({ page }) => {
+test('before the plan exists the card says so, rather than leaving a hole', async ({ page }) => {
+  // Measured on a real investigation: `investigation-plan init` lands ~40s in, after
+  // the agent has read its skills and the tool help. Hiding the card for that whole
+  // stretch left the centre column empty and read as a stalled UI.
   await stageTurn(page, { withPlan: false, calls: [] });
   await expect(page.locator('#activity')).toBeVisible();
+  const plan = page.locator('#activity-plan');
+  await expect(plan).toBeVisible();
+  await expect(plan).toHaveClass(/pending/);
+  await expect(plan).toContainText('Reading its skills');
+  await expect(page.locator('#activity-plan-count')).toHaveText('');
+
+  // Once the real plan arrives the card becomes the plan, with no shape change.
+  await page.evaluate(async () => {
+    const [{ state }, activity] = await Promise.all([import('/js/state.js'), import('/js/activity.js')]);
+    state.investigationPlan = {
+      initialized: true,
+      plan: { tasks: [{ id: 't1', title: 'Sweep 7-day device activity', status: 'in_progress' }] },
+      progress: { total: 1, resolved: 0, percent: 0, currentTask: { id: 't1' } },
+    };
+    activity.renderAll();
+  });
+  await expect(plan).not.toHaveClass(/pending/);
+  await expect(plan).toContainText('Sweep 7-day device activity');
+  await expect(page.locator('#activity-plan-count')).toHaveText('0/1');
+});
+
+test('an idle session with no plan shows no plan card at all', async ({ page }) => {
+  await stageTurn(page, { withPlan: false, calls: [] });
+  await page.evaluate(async () => {
+    const [{ state }, activity] = await Promise.all([import('/js/state.js'), import('/js/activity.js')]);
+    state.running = false;
+    activity.renderAll();
+  });
   await expect(page.locator('#activity-plan')).toBeHidden();
 });
 
@@ -169,6 +200,52 @@ test('the tool stream reads newest first, and folds the older calls away', async
   await expect(page.locator('#activity-tools-head')).toHaveText(/9 calls/);
 });
 
+test('a tool card names the system and operation, and leads with the agent\'s reason', async ({ page }) => {
+  await stageTurn(page, { calls: [] });
+  await page.evaluate(async () => {
+    const store = await import('/js/tool-store.js');
+    const { toolLabel, reasonFor, phraseFor } = await import('/js/tool-phrases.js');
+    const ev = {
+      toolCallId: 'q',
+      toolName: 'Bash',
+      args: {
+        command: "./excli-interface search_records -json '{\"types\":[\"~cifs\"],\"from\":-604800000}'",
+        description: 'Confirm the SMB peers and ports on nas-backup-02',
+      },
+    };
+    store.startCall(ev, {
+      phrase: phraseFor(ev.toolName, ev.args),
+      label: toolLabel(ev.toolName, ev.args),
+      reason: reasonFor(ev.toolName, ev.args),
+    });
+  });
+
+  const card = page.locator('#activity-tools .act-call').first();
+  // The system, not the shell.
+  await expect(card.locator('.act-call-source')).toHaveText('ExtraHop');
+  await expect(card.locator('.act-call-action')).toHaveText('search_records');
+  await expect(card).not.toContainText('Bash');
+  // The agent's own reason leads; the derived phrase supports it.
+  await expect(card.locator('.act-call-reason')).toHaveText('Confirm the SMB peers and ports on nas-backup-02');
+  await expect(card.locator('.act-call-phrase')).toContainText('SMB records over the last 7 days');
+  // And the centre column says why, not just what.
+  await expect(page.locator('#activity-doing')).toHaveText('Confirm the SMB peers and ports on nas-backup-02');
+});
+
+test('a call with no description still reads as an action', async ({ page }) => {
+  await stageTurn(page, { calls: [] });
+  await page.evaluate(async () => {
+    const store = await import('/js/tool-store.js');
+    const { toolLabel, phraseFor } = await import('/js/tool-phrases.js');
+    const ev = { toolCallId: 'm', toolName: 'Bash', args: { command: 'mkdir -p evidence/records' } };
+    store.startCall(ev, { phrase: phraseFor(ev.toolName, ev.args), label: toolLabel(ev.toolName, ev.args), reason: '' });
+  });
+  const card = page.locator('#activity-tools .act-call').first();
+  await expect(card.locator('.act-call-source')).toHaveText('Workspace');
+  await expect(card.locator('.act-call-action')).toHaveText('mkdir');
+  await expect(card.locator('.act-call-reason')).toHaveCount(0);
+});
+
 test('a finished call states what it found, with the number emphasised', async ({ page }) => {
   await stageTurn(page, { calls: [] });
   await page.evaluate(async () => {
@@ -219,4 +296,77 @@ test('a file being written shows as drafting before it exists in the workspace',
   await expect(drafting.locator('.act-artifact-tag')).toHaveText('Drafting');
   await expect(page.locator('#activity-artifacts')).toContainText('top-talkers.json');
   await expect(page.locator('#activity-artifacts-head')).toHaveText(/Artifacts · 2/);
+});
+
+// The wires are decoration that reports state: they travel only while there is
+// matching work in flight, so `.live` is the whole contract worth testing.
+test('the wire to the tool rail travels only while a call is running', async ({ page }) => {
+  await stageTurn(page, { calls: [{ id: 'r', name: 'bash', phrase: 'Pulling records' }] });
+  const wire = page.locator('#activity-wire-tools');
+  await expect(wire).toHaveClass(/live/);
+
+  await page.evaluate(async () => {
+    const store = await import('/js/tool-store.js');
+    store.endCall({ toolCallId: 'r', isError: false }, { output: 'done' });
+  });
+  await expect(wire).not.toHaveClass(/live/);
+  // Still drawn when idle — the dashes are the resting state, not the animation.
+  await expect(wire).toBeVisible();
+});
+
+test('the wire to the artifacts rail travels only while a file is being written', async ({ page }) => {
+  await stageTurn(page, { calls: [{ id: 'c', name: 'bash', phrase: 'Counting flows' }] });
+  const wire = page.locator('#activity-wire-artifacts');
+  await expect(wire).not.toHaveClass(/live/);
+
+  await page.evaluate(async () => {
+    const store = await import('/js/tool-store.js');
+    store.startCall({ toolCallId: 'w', toolName: 'write', args: { path: 'report.html' } }, { phrase: 'Writing report.html' });
+  });
+  await expect(wire).toHaveClass(/live/);
+});
+
+test('the wires never intercept a click meant for the card beneath', async ({ page }) => {
+  await stageTurn(page, { calls: [] });
+  const overlapping = await page.evaluate(() => {
+    const svg = document.getElementById('activity-wires');
+    const box = svg.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const y = box.top + box.height / 2;
+    return document.elementFromPoint(x, y)?.closest('#activity-wires') !== null;
+  });
+  expect(overlapping).toBe(false);
+});
+
+// Opening it by hand. The view opens itself when a turn starts, which means an idle
+// session had no way in at all — and no way back after closing it mid-turn.
+test('the live view can be opened by hand, and is then the user\'s to close', async ({ page }) => {
+  await expect(page.locator('#activity')).toBeHidden();
+  const btn = page.locator('#live-view-btn');
+  await expect(btn).toBeVisible();
+
+  await btn.click();
+  await expect(page.locator('#activity')).toBeVisible();
+  await expect(page.locator('#chat-scroll')).toBeHidden();
+  // Its own header carries the way back, so the entry point stands down.
+  await expect(btn).toBeHidden();
+
+  await page.locator('#activity-transcript').click();
+  await expect(page.locator('#activity')).toBeHidden();
+  await expect(btn).toBeVisible();
+});
+
+test('a hand-opened live view is not taken away when the turn ends', async ({ page }) => {
+  await page.locator('#live-view-btn').click();
+  await stageTurn(page, { calls: [{ id: 'a', name: 'bash', phrase: 'Searching detections', done: true }] });
+  await expect(page.locator('#activity')).toBeVisible();
+
+  // End the turn. An auto-opened view closes here; one the user opened stays.
+  await page.evaluate(async () => {
+    const [{ state }, activity] = await Promise.all([import('/js/state.js'), import('/js/activity.js')]);
+    state.running = false;
+    activity.onRunningChanged(false);
+  });
+  await expect(page.locator('#activity')).toBeVisible();
+  await expect(page.locator('#activity-state')).toHaveText('Idle');
 });

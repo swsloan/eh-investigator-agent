@@ -21,7 +21,7 @@ import {
 import { dom } from './dom.js';
 import { onSessionEvent } from './memory.js';
 import { applyActionEvent } from './actions.js';
-import { state } from './state.js';
+import { newUsage, state } from './state.js';
 import { applyIdleStatus, setStatus } from './status.js';
 
 const ATTACH_NOTE = /\n\n\[The user shared \d+ file\(s\)[\s\S]*\]$/;
@@ -62,6 +62,12 @@ export function handleEvent(ev) {
       // never doubles the transcript onto existing content.
       dom.chatEl.querySelectorAll('.msg').forEach((el) => el.remove());
       resetStreamRendering();
+      // Usage is accumulated per message_end, so replaying the transcript adds
+      // every message's tokens and cost a second time. Clearing the DOM was not
+      // enough: an auto-reconnect mid-session reported exactly double — a
+      // $30.88 investigation read as $61.76 — which is worse than no figure at
+      // all, because it is precise and wrong. The replay re-sums from zero.
+      state.usage = newUsage();
       state.replaying = true;
       dom.chatEl.classList.add('replaying');
       if (ev.backend && state.backend && ev.backend !== state.backend.id) {

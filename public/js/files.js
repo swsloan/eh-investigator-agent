@@ -80,6 +80,14 @@ function markReportSeen(file) {
   try { localStorage.setItem(reportSeenKey(file), '1'); } catch { /* ignore private-mode quota errors */ }
 }
 
+/**
+ * The kind glyph for a file, reused by the live view's artifacts rail so an
+ * artifact looks the same in both places rather than being a bare filename there.
+ */
+export function fileIconSvg(file) {
+  return fileIconMarkup(file);
+}
+
 function fileIconMarkup(file, { muted = false } = {}) {
   if (muted) {
     return `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_FILE}</svg>`;

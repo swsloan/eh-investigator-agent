@@ -113,6 +113,15 @@
             <div id="activity-tools" class="activity-scroll"></div>
           </div>
           <div class="activity-col activity-centre">
+            <!-- Decorative: the orb's link to the two rails. The centre column is a
+                 fixed 360px, so the viewBox maps 1:1 and nothing is distorted. The
+                 dashed paths travel only while there is matching live work. -->
+            <svg id="activity-wires" class="activity-wires" viewBox="0 0 360 290" aria-hidden="true" focusable="false">
+              <path class="act-wire-idle" d="M0 214 C 84 214, 104 132, 180 132" />
+              <path class="act-wire-idle" d="M360 214 C 276 214, 256 132, 180 132" />
+              <path id="activity-wire-tools" class="act-wire act-wire-tools" d="M0 168 C 70 168, 96 122, 128 116" />
+              <path id="activity-wire-artifacts" class="act-wire act-wire-artifacts" d="M360 96 C 290 96, 264 110, 232 116" />
+            </svg>
             <div class="activity-orb" aria-hidden="true">
               <span class="activity-ring outer"></span>
               <span class="activity-ring inner"></span>
@@ -165,7 +174,14 @@
           <span id="composer-queued-text" class="composer-queued-text"></span>
           <button id="composer-queued-cancel" class="composer-queued-cancel" type="button" title="Discard the queued message">&times;</button>
         </div>
-        <div class="composer-hint">Enter to send · Shift+Enter for a new line · drop files anywhere</div>
+        <div class="composer-hint">
+          <span>Enter to send · Shift+Enter for a new line · drop files anywhere</span>
+          <!-- The transcript's counterpart to the live view's "Transcript" button. The
+               live view opens itself when a turn starts; this is how you get to it when
+               nothing is running, or after closing it mid-turn. -->
+          <button id="live-view-btn" class="composer-hint-btn" type="button"
+                  title="Watch what the agent is doing — tool calls, plan progress and artifacts as they happen">Live view</button>
+        </div>
       </div>
       <input type="file" id="file-input" multiple hidden>
     </main>
@@ -685,6 +701,7 @@
         </label>
         <button id="topo-dock" class="btn-secondary slim" type="button" title="Dock to the right">Dock to the right</button>
         <button id="topo-users" class="btn-secondary slim hidden" type="button" title="Browse the users seen in this snapshot and the devices they authenticated on">Users</button>
+        <button id="topo-name-zones" class="btn-secondary slim" type="button" title="Give the segments names that mean something — telemetry can only name them by VLAN or subnet">Name zones</button>
         <button id="topo-external" class="btn-secondary slim" type="button" aria-pressed="false" title="Show devices outside the internal network (External locality)">Show external</button>
         <button id="topo-refresh" class="btn-secondary slim" type="button">Refresh</button>
         <button id="topo-close" class="icon-btn" title="Close">

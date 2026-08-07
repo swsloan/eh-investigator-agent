@@ -132,7 +132,7 @@ async function stubTopology(page) {
   await page.route('**/api/topology/matrix**', (route) => route.fulfill({
     json: {
       group: 'test', snapshot_id: SNAPSHOT, groupBy: 'segment',
-      axes: SEGMENTS.map((sg) => ({ key: sg.key, name: sg.name, device_count: sg.device_count, role: sg.role })),
+      axes: applyNames(SEGMENTS.map((sg) => ({ key: sg.key, name: sg.name, device_count: sg.device_count, role: sg.role }))),
       cells: [
         { src: 'vlan:20', dst: 'vlan:20', bytes: 13_800_000_000, links: 4 },  // diagonal, the biggest
         { src: 'vlan:30', dst: 'vlan:20', bytes: 1_600_000_000, links: 27 },
@@ -199,8 +199,8 @@ async function stubTopology(page) {
       ];
       return route.fulfill({
         json: {
-          group: 'test', nodes, edges: edgesFor(nodes), zoom: 1, parent: '',
-          expanded: open, mixed: true, snapshot_id: asked,
+          group: 'test', nodes: applyNames(nodes), edges: edgesFor(nodes), zoom: 1, parent: '',
+          expanded: open, mixed: true, snapshot_id: asked, segment_names: { ...segmentNames },
         },
       });
     }
@@ -210,13 +210,33 @@ async function stubTopology(page) {
     else if (zoom === 1 || zoom === 2) nodes = SEGMENTS;
     else nodes = LOCALITIES;
     return route.fulfill({
-      json: { group: 'test', nodes, edges: edgesFor(nodes), zoom, parent, snapshot_id: asked },
+      json: {
+        group: 'test', nodes: applyNames(nodes), edges: edgesFor(nodes), zoom, parent,
+        snapshot_id: asked, segment_names: { ...segmentNames },
+      },
     });
   });
+
+  // The one mutating topology route besides ingest.
+  await page.route('**/api/topology/segment-name', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}');
+    const name = String(body.name || '').trim().slice(0, 60);
+    if (name) segmentNames[body.key] = name; else delete segmentNames[body.key];
+    return route.fulfill({ json: { group: 'test', key: body.key, name, names: { ...segmentNames } } });
+  });
+}
+
+/** Same override the route applies: operator name wins, telemetry name kept. */
+function applyNames(rows) {
+  return rows.map((r) => (segmentNames[r.key]
+    ? { ...r, name: segmentNames[r.key], telemetry_name: r.name, named: true }
+    : r));
 }
 
 // Every /map query the client made, so a test can assert what it asked the server for.
 let mapRequests = [];
+// Operator segment names, as the durable TopoSegmentName store would hold them.
+let segmentNames = {};
 
 async function openMap(page) {
   await page.goto('/');
@@ -227,7 +247,7 @@ async function openMap(page) {
 }
 
 test.describe('network map', () => {
-  test.beforeEach(async ({ page }) => { mapRequests = []; await stubTopology(page); });
+  test.beforeEach(async ({ page }) => { mapRequests = []; segmentNames = {}; await stubTopology(page); });
 
   test('opens, paints, and keeps its floating chrome across a repaint', async ({ page }) => {
     const pageErrors = [];
@@ -741,6 +761,141 @@ test.describe('network map', () => {
     const rail = page.locator('.topo-inspector');
     await expect(rail).toContainText('within the group');
     await expect(rail).toContainText(/East-west movement looks like this/);
+  });
+
+  test('the matrix lights the cells the overlaid incident crossed', async ({ page }) => {
+    await openMap(page);
+    await overlayIncident(page);
+    await page.locator('.topo-view[data-view="matrix"]').click();
+
+    // ws→nas crosses vlan:30→vlan:20 and nas→dc1 crosses vlan:20→vlan:10; the
+    // exfil step targets an external actor that is not an axis, so no third cell.
+    const hot = page.locator('.topo-cell.incident');
+    await expect(hot).toHaveCount(2);
+    await expect(page.locator('.topo-cell.incident[data-src="vlan:30"][data-dst="vlan:20"]')).toBeVisible();
+    await expect(page.locator('.topo-cell.incident[data-src="vlan:20"][data-dst="vlan:10"]')).toBeVisible();
+    await expect(page.locator('.topo-matrix-legend')).toContainText('incident traffic');
+
+    // The selected cell says which steps crossed it, and flags their conversations.
+    await page.locator('.topo-cell[data-src="vlan:20"][data-dst="vlan:10"]').click();
+    const rail = page.locator('.topo-inspector');
+    await expect(rail).toContainText('This cell carries the overlaid incident');
+    await expect(rail).toContainText('Step 2 · Lateral Movement · nas-backup-02.acme.lab → dc1.acme.lab');
+    await expect(page.locator('.topo-pairs li.incident')).toHaveCount(1);
+    await expect(page.locator('.topo-pairs li.incident')).toContainText('nas-backup-02.acme.lab');
+  });
+
+  test('picking or clearing an incident while on the matrix redraws it in place', async ({ page }) => {
+    await openMap(page);
+    await page.locator('.topo-view[data-view="matrix"]').click();
+    await expect(page.locator('.topo-cell.incident')).toHaveCount(0);
+
+    await overlayIncident(page);
+    await expect(page.locator('.topo-cell.incident')).toHaveCount(2);
+
+    await page.locator('#topo-incident-clear').click();
+    await expect(page.locator('.topo-cell.incident')).toHaveCount(0);
+    await expect(page.locator('.topo-matrix-legend')).not.toContainText('incident traffic');
+  });
+
+  test('naming a segment relabels it everywhere, and survives a repaint', async ({ page }) => {
+    await openMap(page);
+    // Telemetry can only name a segment by its VLAN or subnet.
+    await expect(page.locator('.topo-zone-title').first()).toContainText('VLAN');
+
+    await page.locator('#topo-name-zones').click();
+    const rail = page.locator('.topo-inspector');
+    await expect(rail).toContainText('Name zones');
+    // Every segment listed once, biggest first, telemetry label kept beside the input.
+    await expect(page.locator('.topo-names li')).toHaveCount(3);
+    await expect(page.locator('.topo-name-key').first()).toHaveText('VLAN 20');
+
+    const input = page.locator('.topo-name-input[data-key="vlan:20"]');
+    await input.fill('Storage & Backup');
+    await input.press('Enter');
+    await expect(page.locator('#topo-name-status')).toContainText('Named VLAN 20 → Storage & Backup');
+
+    // The zone container is labelled from the key, so this is the case that proves
+    // the name reached more than the nodes in the payload.
+    await expect(page.locator('.topo-zone-title', { hasText: 'STORAGE & BACKUP' })).toBeVisible();
+
+    // And the matrix axes, which are the same segments.
+    await page.locator('.topo-view[data-view="matrix"]').click();
+    await expect(page.locator('.topo-matrix-col', { hasText: 'Storage & Backup' })).toBeVisible();
+  });
+
+  test('clearing a name goes back to the telemetry label', async ({ page }) => {
+    await openMap(page);
+    await page.locator('#topo-name-zones').click();
+    const input = page.locator('.topo-name-input[data-key="vlan:20"]');
+    await input.fill('Storage & Backup');
+    await input.press('Enter');
+    await expect(page.locator('.topo-zone-title', { hasText: 'STORAGE & BACKUP' })).toBeVisible();
+
+    await page.locator('#topo-name-zones').click();
+    await page.locator('.topo-name-input[data-key="vlan:20"]').fill('');
+    await page.locator('.topo-name-input[data-key="vlan:20"]').press('Enter');
+    await expect(page.locator('#topo-name-status')).toContainText('back to its telemetry label');
+    await expect(page.locator('.topo-zone-title', { hasText: 'VLAN 20' })).toBeVisible();
+  });
+
+  test('a node can be dragged clear of the pile without opening it', async ({ page }) => {
+    await openMap(page);
+    // A collapsed zone holds exactly its one aggregate node, so the zone container's
+    // centre is where that node is drawn — and the container is in the DOM, which is
+    // how the drag is observed without reaching into the renderer.
+    const rect = page.locator('.topo-zone[data-key="vlan:20"] .topo-zone-rect');
+    const boxOf = async () => JSON.parse(await rect.evaluate(
+      (r) => JSON.stringify({ x: +r.getAttribute('x'), y: +r.getAttribute('y') })));
+
+    const before = await boxOf();
+    const canvas = await page.locator('#topo-canvas').boundingBox();
+    const svgBox = await rect.boundingBox();
+    const cx = svgBox.x + svgBox.width / 2;
+    const cy = svgBox.y + svgBox.height / 2;
+
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx + 100, cy + 70, { steps: 12 });
+    await page.mouse.up();
+
+    const after = await boxOf();
+    expect(Math.abs(after.x - before.x) + Math.abs(after.y - before.y)).toBeGreaterThan(10);
+    // Moving a node to read it is not a request to drill into it.
+    await expect(page.locator('#topo-crumbs')).not.toContainText('VLAN 20');
+    expect(canvas).toBeTruthy();
+  });
+
+  test('a plain click still drills in, because a click is not a drag', async ({ page }) => {
+    await openMap(page);
+    const rect = page.locator('.topo-zone[data-key="vlan:20"] .topo-zone-rect');
+    const svgBox = await rect.boundingBox();
+    // Same press point, no travel: the zone opens, as it always did.
+    await page.mouse.click(svgBox.x + svgBox.width / 2, svgBox.y + svgBox.height / 2);
+    await expect(page.locator('.topo-zone[data-key="vlan:20"]')).toHaveClass(/expanded/);
+  });
+
+  test('a zero-width first paint recovers instead of wedging the map', async ({ page }) => {
+    await openMap(page);
+    // Reproduce the trap: Sigma throws when it measures a container with no box, and
+    // the old error path hid the viewport — so the container stayed unmeasurable and
+    // every retry threw identically, behind a message blaming the server.
+    await page.evaluate(() => {
+      const vp = document.getElementById('topo-viewport');
+      vp.style.width = '0px';
+      vp.style.height = '0px';
+    });
+    await page.locator('#topo-refresh').click();
+    await expect(page.locator('#topo-empty')).not.toContainText('Could not reach the topology service');
+
+    // Give it a box back; it should draw itself without another click.
+    await page.evaluate(() => {
+      const vp = document.getElementById('topo-viewport');
+      vp.style.width = '';
+      vp.style.height = '';
+    });
+    await expect(page.locator('#topo-viewport')).toBeVisible();
+    await expect(page.locator('.topo-zone-rect').first()).toBeVisible({ timeout: 8000 });
   });
 
   test('changes lead with severity, and fold the churn away', async ({ page }) => {

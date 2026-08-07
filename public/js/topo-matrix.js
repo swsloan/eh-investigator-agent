@@ -65,10 +65,45 @@ export function matrixModel({ axes = [], cells = [] } = {}) {
 const label = (axis) => String(axis.name || axis.key || '').replace(/^(vlan|net|loc):/, (_, k) => (k === 'vlan' ? 'VLAN ' : ''));
 
 /**
+ * The cells an overlaid incident's traffic crosses: pairId -> the overlay events
+ * whose endpoints resolve into that (row, column) pair under the current grouping.
+ *
+ * Resolution comes from the overlay's own tierMap (device key -> segment/locality/
+ * role_key), which the /incidents endpoint already binds against the displayed
+ * snapshot. An event naming a device outside the snapshot has no tier and simply
+ * doesn't mark a cell — same rule the topology drawing uses.
+ *
+ * External actors (C2, exfil targets) are not snapshot devices, so under segment
+ * grouping their steps have no axis to land on and fall out — exactly as the
+ * topology draws them outside every zone. Under LOCALITY grouping they belong on
+ * the External axis: "which locality did the attack leave toward" is the question
+ * that grouping exists to answer.
+ */
+export function incidentCells(overlay, groupBy = 'segment') {
+  const field = groupBy === 'locality' ? 'locality' : (groupBy === 'role_key' ? 'role_key' : 'segment');
+  const groupOf = (key) => {
+    const tier = overlay.tierMap?.[key];
+    if (!tier) return '';
+    if (tier.external) return field === 'locality' ? 'External' : '';
+    return tier[field] || '';
+  };
+  const cells = new Map();
+  for (const ev of overlay?.events || []) {
+    const src = groupOf(ev.src);
+    const dst = groupOf(ev.dst);
+    if (!src || !dst) continue;
+    const id = pairId(src, dst);
+    if (!cells.has(id)) cells.set(id, []);
+    cells.get(id).push(ev);
+  }
+  return cells;
+}
+
+/**
  * Render the grid. Cells are buttons, because clicking one is how you get from a
  * total to the conversations behind it.
  */
-export function renderMatrix(host, model, { selected = '' } = {}) {
+export function renderMatrix(host, model, { selected = '', incident = null } = {}) {
   if (!host) return;
   const { axes, keys, byPair, peakOff, peakDiag } = model;
   if (!axes.length) {
@@ -86,18 +121,23 @@ export function renderMatrix(host, model, { selected = '' } = {}) {
       const hit = byPair.get(id);
       const diagonal = rowAxis.key === colAxis.key;
       const bytes = hit?.bytes || 0;
+      const hot = Boolean(incident?.has(id));
       const alpha = rampAlpha(bytes, diagonal ? peakDiag : peakOff);
       const classes = ['topo-cell'];
       if (diagonal) classes.push('diagonal');
       if (!bytes) classes.push('empty');
+      if (hot) classes.push('incident');
       if (selected === id) classes.push('selected');
-      const title = `${label(rowAxis)} → ${label(colAxis)}${diagonal ? ' (within itself)' : ''}: ${fmtBytes(bytes) || 'no traffic'}`;
+      const title = `${label(rowAxis)} → ${label(colAxis)}${diagonal ? ' (within itself)' : ''}: `
+        + `${fmtBytes(bytes) || 'no traffic'}${hot ? ' · incident traffic' : ''}`;
       // The value is only printed where the cell is dark enough to read it on.
       const text = bytes && alpha > 0.34 ? fmtBytes(bytes) : '';
+      // An incident cell stays clickable with no recorded bytes: the overlay's
+      // steps are the story there, even when the snapshot kept no volume for it.
       return `<button type="button" class="${classes.join(' ')}" role="gridcell"`
         + ` data-src="${esc(rowAxis.key)}" data-dst="${esc(colAxis.key)}"`
         + ` style="--cell-alpha:${alpha.toFixed(3)}" title="${esc(title)}"`
-        + `${bytes ? '' : ' disabled'}>${esc(text)}</button>`;
+        + `${bytes || hot ? '' : ' disabled'}>${esc(text)}</button>`;
     }).join('');
     return `<span class="topo-matrix-row" title="${esc(label(rowAxis))}">${esc(label(rowAxis))}</span>${cells}`;
   }).join('');
@@ -114,29 +154,44 @@ export function renderMatrix(host, model, { selected = '' } = {}) {
         <span class="topo-matrix-key">low → high</span>
         <span class="topo-matrix-swatch diagonal" aria-hidden="true"></span>
         <span class="topo-matrix-key">within a group</span>
+        ${incident?.size ? `<span class="topo-matrix-swatch incident" aria-hidden="true"></span>
+        <span class="topo-matrix-key">incident traffic</span>` : ''}
         <span class="topo-matrix-hint">Rows talk to columns · click a cell for the conversations behind it</span>
       </div>
     </div>`;
 }
 
 /** The right-rail detail for one selected cell. */
-export function renderPairs(host, { srcLabel, dstLabel, bytes, links, diagonal, pairs = [], loading = false }) {
+export function renderPairs(host, {
+  srcLabel, dstLabel, bytes, links, diagonal, pairs = [], loading = false,
+  // The overlaid incident, where it crosses this cell: the overlay events whose
+  // endpoints land here ({seq, tactic, srcName, dstName}), and the device-pair
+  // ids those events name, so their conversations are flagged in the list.
+  steps = [], incidentPairs = null,
+}) {
   if (!host) return;
   if (loading) {
     host.innerHTML = '<div class="topo-inspector-empty panel-sub">Loading conversations…</div>';
     return;
   }
+  const flagged = (p) => Boolean(incidentPairs?.has(pairId(p.src_key, p.dst_key)) || incidentPairs?.has(pairId(p.dst_key, p.src_key)));
   const rows = pairs.map((p) => `
-    <li>
+    <li${flagged(p) ? ' class="incident"' : ''}>
       <span class="topo-pair-name">${esc(p.src_name || p.src_key)} <span class="topo-pair-arrow">→</span> ${esc(p.dst_name || p.dst_key)}</span>
       <span class="topo-pair-bytes">${esc(fmtBytes(p.bytes))}</span>
     </li>`).join('');
+  const incident = steps.length
+    ? `<div class="topo-matrix-incident">This cell carries the overlaid incident:${steps.map((s) => `
+        <div class="topo-matrix-incident-step">Step ${Number(s.seq) + 1} · ${esc(s.tactic || 'unclassified')} · ${esc(s.srcName)} → ${esc(s.dstName)}</div>`).join('')}
+      </div>`
+    : '';
   host.innerHTML = [
     `<div class="topo-ins-h">Selected cell</div>`,
     `<div class="topo-ins-title">${esc(srcLabel)} → ${esc(dstLabel)}</div>`,
     `<div class="topo-ins-sub panel-sub">${esc(fmtBytes(bytes) || 'no traffic')}`
       + `${links ? ` · ${links} conversation${links === 1 ? '' : 's'}` : ''}`
       + `${diagonal ? ' · within the group' : ''}</div>`,
+    incident,
     diagonal
       ? `<div class="topo-matrix-note">Traffic that stayed inside this group. East-west movement looks like this, which is why it is on the matrix rather than hidden.</div>`
       : '',

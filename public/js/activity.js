@@ -9,6 +9,7 @@
 // same data the transcript uses. No new events, no new backend state.
 
 import { $ } from './dom.js';
+import { fileIconSvg } from './files.js';
 import { state } from './state.js';
 import { allCalls, callDuration, subscribeCalls } from './tool-store.js';
 
@@ -100,9 +101,28 @@ function renderDoing() {
   if (!el) return;
   const running = allCalls().filter((c) => c.status === 'running');
   const latest = running[running.length - 1];
-  if (latest) el.textContent = latest.phrase || latest.name || 'Working…';
+  // The agent's own reason first: on a long call it is the line that explains the
+  // wait. Then the derived phrase, then anything at all.
+  if (latest) el.textContent = latest.reason || latest.phrase || latest.label?.source || 'Working…';
   else if (state.running) el.textContent = 'Thinking…';
   else el.textContent = allCalls().length ? 'Turn complete.' : 'Waiting for a question.';
+}
+
+/**
+ * The two dashed wires from the orb to the rails.
+ *
+ * They travel only while there is work of that kind actually in flight — a running
+ * tool call on the left, a file being written on the right — so the motion is a
+ * reading of state rather than decoration that is always on. At rest they stay
+ * drawn as static dashes, which is also where the reduced-motion floor leaves
+ * them, so freezing loses nothing.
+ */
+function renderWires() {
+  const tools = $('activity-wire-tools');
+  const artifacts = $('activity-wire-artifacts');
+  if (!tools && !artifacts) return;
+  tools?.classList.toggle('live', allCalls().some((c) => c.status === 'running'));
+  artifacts?.classList.toggle('live', draftingPaths().size > 0);
 }
 
 /** The plan, mirrored from the ribbon's own state — one source, two renderings. */
@@ -112,8 +132,26 @@ function renderPlan() {
   const view = state.investigationPlan;
   const progress = view?.progress;
   const tasks = Array.isArray(view?.plan?.tasks) ? view.plan.tasks : [];
-  if (!view?.initialized || !tasks.length) { card.classList.add('hidden'); return; }
+  if (!view?.initialized || !tasks.length) {
+    // Measured on a real investigation: the agent loads its skills and reads the
+    // tool help before calling `investigation-plan init`, so the plan does not
+    // exist for the first ~40 seconds. Hiding the card left the centre column
+    // empty for that whole stretch and read as a stalled UI. Say what is happening
+    // instead — the tool stream beside it is already showing the groundwork.
+    if (state.running) {
+      card.classList.remove('hidden');
+      card.classList.add('pending');
+      $('activity-plan-count').textContent = '';
+      $('activity-plan-fill').style.width = '0%';
+      $('activity-plan-tasks').innerHTML =
+        '<li class="pending-note">Reading its skills and the available tools, then it will lay out the steps.</li>';
+      return;
+    }
+    card.classList.add('hidden');
+    return;
+  }
   card.classList.remove('hidden');
+  card.classList.remove('pending');
 
   const total = Number(progress?.total) || tasks.length;
   const resolved = Number(progress?.resolved) || 0;
@@ -158,6 +196,7 @@ export function renderAll() {
   if (!active) return;
   renderStatus();
   renderDoing();
+  renderWires();
   renderPlan();
   renderToolStream();
   renderArtifacts();
@@ -179,27 +218,56 @@ function summaryNode(summary) {
   return wrap;
 }
 
+/**
+ * One tool call, as three lines an analyst can actually follow:
+ *
+ *   ExtraHop · search_records            2.1s   <- which system, which operation
+ *   Confirm the SMB peers and ports             <- why, in the agent's own words
+ *   Searching SMB records over the last 7 days  <- what actually ran
+ *   184 records returned                        <- what came back
+ *
+ * The head used to read "Bash", which names the transport rather than the act, and
+ * the agent's own `description` was on the wire and unused. Source and action are
+ * separate elements so the system reads as a label and the operation as the detail.
+ */
 function callCard(record, { faded = false } = {}) {
   const card = document.createElement('div');
   card.className = `act-call ${record.status}${faded ? ' faded' : ''}`;
+  const label = record.label || { source: record.name || 'tool', action: '' };
+  if (record.integrationSource) card.dataset.integrationSource = record.integrationSource;
 
   const head = document.createElement('div');
   head.className = 'act-call-head';
   const dot = document.createElement('span');
   dot.className = 'act-call-dot';
-  const name = document.createElement('strong');
-  name.className = 'act-call-name';
-  name.textContent = record.name || 'tool';
+  const source = document.createElement('strong');
+  source.className = 'act-call-source';
+  source.textContent = label.source;
+  head.append(dot, source);
+  if (label.action) {
+    const action = document.createElement('span');
+    action.className = 'act-call-action';
+    action.textContent = label.action;
+    head.appendChild(action);
+  }
   const timing = document.createElement('span');
   timing.className = 'act-call-timing';
   const ms = callDuration(record);
   timing.textContent = record.status === 'running'
     ? `running · ${fmtElapsed(Date.now() - record.startedAt)}`
     : fmtElapsed(ms);
-  head.append(dot, name, timing);
+  head.appendChild(timing);
   card.appendChild(head);
 
-  if (record.phrase) {
+  // The agent's reason leads, because it is the only line that says what the call
+  // is *for* rather than what it does.
+  if (record.reason) {
+    const reason = document.createElement('div');
+    reason.className = 'act-call-reason';
+    reason.textContent = record.reason;
+    card.appendChild(reason);
+  }
+  if (record.phrase && record.phrase !== record.reason) {
     const phrase = document.createElement('div');
     phrase.className = 'act-call-phrase';
     phrase.textContent = record.phrase;
@@ -270,15 +338,40 @@ function draftingPaths() {
   return paths;
 }
 
-function artifactCard({ name, tag, drafting = false, meta = '' }) {
+/** `44820` → `43.8 KB`. Size is the cheapest signal that a file has substance. */
+function fmtSize(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${n} B`;
+}
+
+/**
+ * One artifact.
+ *
+ * The rail's job is to show the investigation accumulating evidence, so a card
+ * carries what the file list already knows: the kind glyph (same one the files
+ * panel draws, so an artifact looks like itself in both places), the size, and
+ * emptiness where emptiness is the finding — a query that returned nothing is a
+ * result, not a failure, and hiding that would misrepresent the work.
+ */
+function artifactCard({ name, tag, drafting = false, meta = '', file = null, primary = false, empty = false }) {
   const card = document.createElement('div');
-  card.className = `act-artifact${drafting ? ' drafting' : ''}`;
+  card.className = `act-artifact${drafting ? ' drafting' : ''}${primary ? ' primary' : ''}`;
   const head = document.createElement('div');
   head.className = 'act-artifact-head';
   if (drafting) {
     const dot = document.createElement('span');
     dot.className = 'act-artifact-dot';
     head.appendChild(dot);
+  } else if (file) {
+    const icon = document.createElement('span');
+    icon.className = `act-artifact-icon icon-${String(file.icon || 'text')}`;
+    // Trusted markup: an inline SVG from the app's own icon table, keyed by the
+    // server-assigned `icon` token — never file content.
+    icon.innerHTML = fileIconSvg(file);
+    head.appendChild(icon);
   }
   const title = document.createElement('strong');
   title.className = 'act-artifact-name';
@@ -288,10 +381,16 @@ function artifactCard({ name, tag, drafting = false, meta = '' }) {
   kind.textContent = drafting ? 'Drafting' : (tag || '');
   head.append(title, kind);
   card.appendChild(head);
-  if (meta) {
+
+  const bits = [];
+  if (meta) bits.push(meta);
+  const size = fmtSize(file?.size);
+  if (size) bits.push(size);
+  if (empty) bits.push('no matches — an empty result');
+  if (bits.length) {
     const sub = document.createElement('div');
     sub.className = 'act-artifact-meta';
-    sub.textContent = meta;
+    sub.textContent = bits.join(' · ');
     card.appendChild(sub);
   }
   return card;
@@ -324,6 +423,9 @@ function renderArtifacts() {
       tag: file.tag || '',
       drafting: drafting.has(file.path),
       meta: file.path.includes('/') ? file.path.replace(/\/[^/]+$/, '') : '',
+      file,
+      primary: Boolean(file.primaryReport),
+      empty: Boolean(file.empty),
     }));
   }
   host.replaceChildren(frag);
@@ -332,9 +434,13 @@ function renderArtifacts() {
 export function initActivity() {
   if (!$('activity')) return;
   $('activity-transcript')?.addEventListener('click', () => setActivityOpen(false, { byUser: true }));
+  // Opened by hand, it is the user's to close: `byUser` stops the turn-end handler
+  // from taking it away, and it stays legible when idle (the plan and the finished
+  // turn's tool calls are still there to read).
+  $('live-view-btn')?.addEventListener('click', () => setActivityOpen(true, { byUser: true }));
   // Re-render on every store change; cheap, and the alternative is a diff nobody
   // needs for a list this size.
-  subscribeCalls(() => { if (active) { renderDoing(); renderToolStream(); } });
+  subscribeCalls(() => { if (active) { renderDoing(); renderWires(); renderToolStream(); } });
 }
 
 export { callDuration };
