@@ -1,0 +1,65 @@
+#!/usr/bin/env node
+// Strip the <untrusted-telemetry> envelope from excli/exmcp output so it can be
+// piped to jq or json.load. Enveloped output is not valid JSON; run every
+// telemetry file through this before parsing it.
+//
+// Unwrapping is a parsing convenience, NOT a trust change: the payload is still
+// adversary-controlled wire data. See lib/telemetry-taint.js.
+import fs from 'node:fs';
+import path from 'node:path';
+import { unwrapUntrusted } from './lib/telemetry-taint.js';
+
+const USAGE = [
+  'Usage:',
+  '  ./unwrap evidence/records/http.json | jq \'.records | length\'',
+  '  ./unwrap evidence/detections/*.json > scratch/all.json',
+  '  ./excli-interface search_records -json \'{...}\' | ./unwrap > evidence/records/http.json',
+  '',
+  'Strips the <untrusted-telemetry> envelope so output parses as JSON. Reads the',
+  'named files (in order) or stdin when given none. Content with no envelope is',
+  'passed through unchanged, so it is safe to run on anything.',
+].join('\n');
+
+const args = process.argv.slice(2);
+if (args.includes('-h') || args.includes('--help')) {
+  process.stdout.write(`${USAGE}\n`);
+  process.exit(0);
+}
+
+function body(text) {
+  const out = unwrapUntrusted(text);
+  return out.endsWith('\n') || out === '' ? out : `${out}\n`;
+}
+
+function readStdin() {
+  try {
+    return fs.readFileSync(0, 'utf8');
+  } catch (err) {
+    if (err.code === 'EAGAIN') return ''; // no piped input
+    throw err;
+  }
+}
+
+const chunks = [];
+let failed = false;
+
+if (args.length === 0) {
+  chunks.push(body(readStdin()));
+} else {
+  for (const file of args) {
+    try {
+      chunks.push(body(fs.readFileSync(file, 'utf8')));
+    } catch (err) {
+      // Report and keep going, so one missing file does not discard the rest.
+      const reason = err.code === 'ENOENT' ? 'no such file' : err.message;
+      process.stderr.write(`unwrap: ${path.basename(file)}: ${reason}\n`);
+      failed = true;
+    }
+  }
+}
+
+// Set exitCode and let Node drain stdout on its own. Calling process.exit() here
+// would discard whatever is still buffered — on a pipe that silently truncates
+// large evidence files mid-JSON, which is worse than failing outright.
+process.exitCode = failed ? 1 : 0;
+process.stdout.write(chunks.join(''));
