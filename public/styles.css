@@ -4570,6 +4570,10 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 .topo-matrix-scroll { padding: 24px 28px; min-width: min-content; }
 .topo-matrix-empty { padding: 32px; text-align: center; }
 .topo-matrix-grid { display: grid; gap: 3px; align-items: stretch; }
+/* The ARIA row wrappers must not become grid items — the corner, headers and cells
+   have to stay direct children of the grid or the column template collapses.
+   `display: contents` keeps the semantics and removes the box. */
+.topo-matrix-rowgroup { display: contents; }
 .topo-matrix-corner { display: block; }
 .topo-matrix-col {
   font-size: var(--fs-100); font-weight: 800; color: var(--gray); text-align: center;
@@ -4589,7 +4593,10 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
   color: #fff; font: inherit; font-size: var(--fs-100); font-weight: 800; cursor: pointer;
 }
 .topo-cell.empty { background: var(--cell-0); cursor: default; }
-.topo-cell:hover:not([disabled]) { outline: 2px solid var(--cyan-edge); outline-offset: -2px; }
+/* `aria-disabled`, not `disabled`: an empty cell stays focusable so it can announce
+   "no traffic", so the hover and focus affordances key off the ARIA state instead. */
+.topo-cell:hover:not([aria-disabled="true"]) { outline: 2px solid var(--cyan-edge); outline-offset: -2px; }
+.topo-cell[aria-disabled="true"] { cursor: default; }
 .topo-cell.selected { outline: 2px solid var(--cyan); outline-offset: -2px; }
 .topo-cell:focus-visible { outline: 2px solid var(--focus-border); outline-offset: -2px; }
 
@@ -4613,7 +4620,7 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 }
 .topo-cell.incident.empty { cursor: pointer; }
 .topo-cell.incident.selected,
-.topo-cell.incident:hover:not([disabled]) { outline-width: 3px; }
+.topo-cell.incident:hover:not([aria-disabled="true"]) { outline-width: 3px; }
 
 .topo-matrix-legend {
   display: flex; align-items: center; flex-wrap: wrap; gap: 10px;

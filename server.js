@@ -28,7 +28,7 @@ import { securityHeaders } from './lib/security-headers.js';
 import { createShutdownCoordinator, drainingGuard } from './lib/shutdown-coordinator.js';
 import { restoreSessionsFromWorkspaces } from './lib/session-store.js';
 import {
-  activateEnvSecrets, buildAgentEnv, credentialsConfigured, deriveGroupId,
+  activateEnvSecrets, buildAgentEnv, credentialsConfigured, deriveGroupId, resolveGroupId,
   loadConfig, loadDotEnv, resolveConfig, reversingLabsEnabled, saveConfig,
 } from './lib/settings.js';
 import { createSecretStore } from './lib/secrets.js';
@@ -122,7 +122,14 @@ const activeBackend = () => getBackend(prefs().backend);
 function graphitiRuntimeMemory(settings) {
   return {
     embedder: settings.memory?.embedder,
-    groupId: deriveGroupId(settings.extrahop?.host, process.env, settings.memory?.groupId),
+    // Pass a group only when one is actually known — from Settings, the operator
+    // env override, or the ExtraHop host. `ehdefault` is a read-side fallback for
+    // when nothing is configured, not a decision worth persisting into the file
+    // that tells the sidecar where to write memory; writeGraphitiRuntimeEnv
+    // preserves the file's existing value when this is empty.
+    groupId: resolveGroupId(settings, process.env).source === 'default'
+      ? ''
+      : deriveGroupId(settings.extrahop?.host, process.env, settings.memory?.groupId),
   };
 }
 writeGraphitiRuntimeEnv(graphitiRuntimeMemory(prefs()));

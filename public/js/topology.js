@@ -21,7 +21,7 @@ import {
 } from './right-panel.js';
 import { avatarSvg, identityType, roleGlyphInline, roleIconDataUri } from './topo-glyphs.js';
 import { changeKeys, renderChanges } from './topo-changes.js';
-import { incidentCells, matrixModel, pairId, renderMatrix, renderPairs } from './topo-matrix.js';
+import { incidentCells, matrixModel, moveRovingFocus, pairId, renderMatrix, renderPairs } from './topo-matrix.js';
 import {
   badgeAt, clearAttack, clearZones, drawAttack, drawZones, emphasisePath,
   ensureAttackLayer, ensureZoneLayer, miniMapPointAt, renderMiniMap, zoneAt,
@@ -1351,9 +1351,31 @@ async function loadMatrix() {
   }
 }
 
+const ARROW_STEP = {
+  ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1],
+};
+
+/**
+ * Cells are `aria-disabled` rather than `disabled` now, so an empty cell is still
+ * reachable and still announces "no traffic" — it just does not open a pair list.
+ * Navigation is arrow keys over a single tab stop, which is the grid pattern; the
+ * alternative on a 90-group estate is 8,100 tab stops.
+ */
 function wireMatrixCells() {
-  for (const cell of $('topo-matrix')?.querySelectorAll('.topo-cell:not([disabled])') || []) {
-    cell.addEventListener('click', () => selectCell(cell.dataset.src, cell.dataset.dst));
+  const host = $('topo-matrix');
+  for (const cell of host?.querySelectorAll('.topo-cell') || []) {
+    cell.addEventListener('click', () => {
+      if (cell.getAttribute('aria-disabled') === 'true') return;
+      selectCell(cell.dataset.src, cell.dataset.dst);
+    });
+    cell.addEventListener('keydown', (e) => {
+      const step = ARROW_STEP[e.key];
+      if (step) { e.preventDefault(); moveRovingFocus(host, cell, step[0], step[1]); return; }
+      if (e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        moveRovingFocus(host, cell, 0, e.key === 'Home' ? -Infinity : Infinity);
+      }
+    });
   }
 }
 

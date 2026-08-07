@@ -898,6 +898,64 @@ test.describe('network map', () => {
     await expect(page.locator('.topo-zone-rect').first()).toBeVisible({ timeout: 8000 });
   });
 
+  test('the matrix is a real ARIA grid — rows, headers, and named cells', async ({ page }) => {
+    await openMap(page);
+    await page.locator('.topo-view[data-view="matrix"]').click();
+
+    // A header row plus one row per axis, each carrying its cells.
+    await expect(page.locator('.topo-matrix-grid[role="grid"]')).toHaveCount(1);
+    await expect(page.locator('.topo-matrix-grid > [role="row"]')).toHaveCount(4); // header + 3 axes
+    await expect(page.locator('[role="columnheader"]')).toHaveCount(4);            // corner + 3 axes
+    await expect(page.locator('[role="rowheader"]')).toHaveCount(3);
+    // Every cell is inside a row, so it has coordinates.
+    await expect(page.locator('[role="row"] [role="gridcell"]')).toHaveCount(9);
+
+    // The name states the pair and the value, not just the printed number.
+    await expect(page.locator('.topo-cell[data-src="vlan:30"][data-dst="vlan:20"]'))
+      .toHaveAttribute('aria-label', 'VLAN 30 to VLAN 20: 1.6 GB');
+    await expect(page.locator('.topo-cell[data-src="vlan:20"][data-dst="vlan:20"]'))
+      .toHaveAttribute('aria-label', /within itself/);
+  });
+
+  test('an empty cell stays reachable and says it is empty', async ({ page }) => {
+    await openMap(page);
+    await page.locator('.topo-view[data-view="matrix"]').click();
+    // vlan:10 → vlan:10 has no traffic in the fixture.
+    const empty = page.locator('.topo-cell[data-src="vlan:10"][data-dst="vlan:10"]');
+    await expect(empty).toHaveAttribute('aria-disabled', 'true');
+    await expect(empty).not.toHaveAttribute('disabled', /.*/); // a disabled button is skipped entirely
+    await expect(empty).toHaveAttribute('aria-label', /no traffic/);
+    // Reachable by keyboard — the whole point of aria-disabled over disabled.
+    await empty.focus();
+    await expect(empty).toBeFocused();
+    // Dispatched rather than clicked: Playwright's actionability check treats
+    // aria-disabled as not-enabled and refuses, which is itself the correct
+    // behaviour. This asserts the handler declines even if a click does land.
+    await empty.dispatchEvent('click');
+    await expect(page.locator('.topo-inspector')).not.toContainText('Selected cell');
+  });
+
+  test('the grid has one tab stop, and arrows move it', async ({ page }) => {
+    await openMap(page);
+    await page.locator('.topo-view[data-view="matrix"]').click();
+
+    // Exactly one cell is in the tab order — not one per cell.
+    await expect(page.locator('.topo-cell[tabindex="0"]')).toHaveCount(1);
+
+    const first = page.locator('.topo-cell[tabindex="0"]');
+    const startSrc = await first.getAttribute('data-src');
+    await first.focus();
+    await page.keyboard.press('ArrowDown');
+    const moved = page.locator('.topo-cell:focus');
+    await expect(moved).toHaveAttribute('data-src', /.+/);
+    expect(await moved.getAttribute('data-src')).not.toBe(startSrc); // moved a row
+    // The tab stop moved with focus rather than multiplying.
+    await expect(page.locator('.topo-cell[tabindex="0"]')).toHaveCount(1);
+
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('.topo-cell[tabindex="0"]')).toHaveCount(1);
+  });
+
   test('changes lead with severity, and fold the churn away', async ({ page }) => {
     await openMap(page);
     await page.locator('.topo-view[data-view="changes"]').click();

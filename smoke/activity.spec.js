@@ -122,6 +122,59 @@ test('an idle session with no plan shows no plan card at all', async ({ page }) 
   await expect(page.locator('#activity-plan')).toBeHidden();
 });
 
+test('a live view left open starts the next turn cleanly', async ({ page }) => {
+  // Opened by hand, it survives the turn ending — so the next turn has to
+  // re-initialise it. It used to sit reading "Idle" through a running turn,
+  // still showing the previous investigation's finding.
+  await stageTurn(page, { calls: [{ id: 'a', name: 'bash', phrase: 'Querying', done: true, output: '{}' }] });
+  await page.evaluate(async () => {
+    const { setCurrentFinding } = await import('/js/activity.js');
+    setCurrentFinding({ text: 'Previous turn: 412 GB was the nightly backup.', leaning: 'expected-behavior' });
+  });
+  // End the turn with the view opened by the user, so it stays up.
+  await page.evaluate(async () => {
+    const [{ state }, activity] = await Promise.all([import('/js/state.js'), import('/js/activity.js')]);
+    activity.setActivityOpen(false);
+    activity.setActivityOpen(true, { byUser: true });
+    state.running = false;
+    activity.onRunningChanged(false);
+  });
+  await expect(page.locator('#activity')).toBeVisible();
+  await expect(page.locator('#activity-state')).toHaveText('Idle');
+  await expect(page.locator('#activity-finding')).toContainText('nightly backup');
+
+  // A new turn starts: the stale finding goes, and the status leaves Idle.
+  await page.evaluate(async () => {
+    const [{ state }, activity] = await Promise.all([import('/js/state.js'), import('/js/activity.js')]);
+    state.running = true;
+    activity.onRunningChanged(true);
+  });
+  await expect(page.locator('#activity-state')).toHaveText(/Investigating/);
+  await expect(page.locator('#activity-finding')).toBeHidden();
+});
+
+test('an empty workspace clears the artifacts rail rather than keeping the last one', async ({ page }) => {
+  await stageTurn(page, { calls: [] });
+  await page.evaluate(async () => {
+    const [{ state }, activity] = await Promise.all([import('/js/state.js'), import('/js/activity.js')]);
+    state.workspaceFiles = new Map([['evidence/metrics/old.json', {
+      path: 'evidence/metrics/old.json', tag: 'METRICS', reveal: true, size: 10, mtime: 1, icon: 'metrics',
+    }]]);
+    activity.onFilesChanged();
+  });
+  await expect(page.locator('#activity-artifacts')).toContainText('old.json');
+
+  // Switching to a session that has produced nothing must not leave the previous
+  // workspace's artifacts on screen.
+  await page.evaluate(async () => {
+    const [{ state }, activity] = await Promise.all([import('/js/state.js'), import('/js/activity.js')]);
+    state.workspaceFiles = new Map();
+    activity.onFilesChanged();
+  });
+  await expect(page.locator('#activity-artifacts')).not.toContainText('old.json');
+  await expect(page.locator('#activity-artifacts')).toContainText('Evidence and reports appear here');
+});
+
 test('the current finding card carries the leaning', async ({ page }) => {
   await stageTurn(page, { calls: [] });
   await page.evaluate(async () => {
