@@ -23,7 +23,45 @@ export function evalRouter({ startEval, startInjectionProbe, reportsDir, casesDi
   const state = {
     status: 'idle', runId: null, index: 0, total: 0, currentCase: null,
     startedAt: null, finishedAt: null, gate: null, aggregates: null, error: null,
+    caseErrors: [], caseErrorCount: 0,
   };
+
+  // A case that throws (billing error, spawn failure, appliance timeout) is still
+  // scored: with no verdict.json it reads as `inconclusive`, which counts as a
+  // false close. So an infra failure and a real model regression produce the same
+  // red gate. Collect the per-case errors the runners already emit, and report the
+  // run as failed when any fired — a contaminated gate is not a signal about the
+  // model, and must not be mistaken for one.
+  //
+  // `caseErrors` is a bounded sample for display; `caseErrorCount` is the real
+  // total, so the message can't understate a mass failure once the cap is hit.
+  const MAX_TRACKED_ERRORS = 20;
+  const trackProgress = (p) => {
+    if (typeof p.completed === 'number') state.index = p.completed; // completed count
+    if (typeof p.total === 'number') state.total = p.total;
+    if (p.id) state.currentCase = p.id;
+    if (p.phase === 'error') {
+      state.caseErrorCount++;
+      if (state.caseErrors.length < MAX_TRACKED_ERRORS) {
+        state.caseErrors.push({ id: p.id || null, error: redact(p.error || 'unknown error') });
+      }
+    }
+  };
+  const finish = ({ record }) => {
+    const failed = state.caseErrorCount;
+    Object.assign(state, {
+      status: failed ? 'error' : 'done',
+      finishedAt: new Date().toISOString(),
+      gate: record.gate,
+      aggregates: record.aggregates,
+      error: failed
+        ? `${failed} of ${state.total || failed} cases did not run — ${state.caseErrors[0].error}. The gate below scored the missing verdicts as inconclusive, so it is not a valid signal.`
+        : null,
+    });
+  };
+  const failRun = (err) => Object.assign(state, {
+    status: 'error', finishedAt: new Date().toISOString(), error: redact(err?.message || String(err)),
+  });
 
   router.post('/run', (req, res) => {
     if (state.status === 'running') {
@@ -40,24 +78,14 @@ export function evalRouter({ startEval, startInjectionProbe, reportsDir, casesDi
     const runId = `eval-${new Date().toISOString().replace(/[:.]/g, '-')}`;
     Object.assign(state, {
       status: 'running', runId, index: 0, total: caseIds?.length || 0, currentCase: null, maxParallel, mode,
-      startedAt: new Date().toISOString(), finishedAt: null, gate: null, aggregates: null, error: null,
+      startedAt: new Date().toISOString(), finishedAt: null, gate: null, aggregates: null, error: null, caseErrors: [], caseErrorCount: 0,
     });
     res.json({ ok: true, runId });
 
     startEval({
       runId, backendId, gateTarget, costCeiling, accuracyFloor, caseIds, maxParallel, mode, timestamp: new Date().toISOString(),
-      onProgress: (p) => {
-        if (typeof p.completed === 'number') state.index = p.completed; // completed count
-        if (typeof p.total === 'number') state.total = p.total;
-        if (p.id) state.currentCase = p.id;
-      },
-    })
-      .then(({ record }) => Object.assign(state, {
-        status: 'done', finishedAt: new Date().toISOString(), gate: record.gate, aggregates: record.aggregates,
-      }))
-      .catch((err) => Object.assign(state, {
-        status: 'error', finishedAt: new Date().toISOString(), error: redact(err?.message || String(err)),
-      }));
+      onProgress: trackProgress,
+    }).then(finish).catch(failRun);
   });
 
   // Warrant Phase 3: run the dedicated injection-probe harness (separate reports
@@ -78,24 +106,16 @@ export function evalRouter({ startEval, startInjectionProbe, reportsDir, casesDi
     const runId = `probe-${new Date().toISOString().replace(/[:.]/g, '-')}`;
     Object.assign(state, {
       status: 'running', runId, index: 0, total: probeIds?.length || 0, currentCase: null, maxParallel, mode: 'probe',
-      startedAt: new Date().toISOString(), finishedAt: null, gate: null, aggregates: null, error: null,
+      startedAt: new Date().toISOString(), finishedAt: null, gate: null, aggregates: null, error: null, caseErrors: [], caseErrorCount: 0,
     });
     res.json({ ok: true, runId });
 
+    // Same contamination rule as /run, and it matters more here: a probe that
+    // never ran must never be read as one the agent resisted.
     startInjectionProbe({
       runId, backendId, probeIds, maxParallel, timestamp: new Date().toISOString(),
-      onProgress: (p) => {
-        if (typeof p.completed === 'number') state.index = p.completed;
-        if (typeof p.total === 'number') state.total = p.total;
-        if (p.id) state.currentCase = p.id;
-      },
-    })
-      .then(({ record }) => Object.assign(state, {
-        status: 'done', finishedAt: new Date().toISOString(), gate: record.gate, aggregates: record.aggregates,
-      }))
-      .catch((err) => Object.assign(state, {
-        status: 'error', finishedAt: new Date().toISOString(), error: redact(err?.message || String(err)),
-      }));
+      onProgress: trackProgress,
+    }).then(finish).catch(failRun);
   });
 
   router.get('/status', (req, res) => res.json(state));

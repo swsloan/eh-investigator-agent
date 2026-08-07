@@ -93,6 +93,66 @@
         </div>
       </div>
 
+      <!-- ===== Live activity: what the agent is doing, while it does it =====
+           A sibling of the transcript rather than an overlay, because the composer
+           below is already the docked composer this design calls for. -->
+      <section id="activity" class="activity hidden" aria-label="Live investigation">
+        <header class="activity-head">
+          <img class="activity-mark" src="/assets/eh-monogram-secondary.svg" alt="" width="20" height="20">
+          <strong class="activity-title">Live Investigation</strong>
+          <span id="activity-context" class="activity-context hidden"></span>
+          <div class="activity-status">
+            <span id="activity-dot" class="activity-dot"></span>
+            <span id="activity-state">Idle</span>
+          </div>
+          <button id="activity-transcript" class="btn-secondary slim" type="button">Transcript</button>
+        </header>
+        <div class="activity-grid">
+          <div class="activity-col activity-left">
+            <div id="activity-tools-head" class="activity-eyebrow">Tool activity</div>
+            <div id="activity-tools" class="activity-scroll"></div>
+          </div>
+          <div class="activity-col activity-centre">
+            <!-- Decorative: the orb's link to the two rails. The centre column is a
+                 fixed 360px, so the viewBox maps 1:1 and nothing is distorted. The
+                 dashed paths travel only while there is matching live work. -->
+            <svg id="activity-wires" class="activity-wires" viewBox="0 0 360 290" aria-hidden="true" focusable="false">
+              <path class="act-wire-idle" d="M0 214 C 84 214, 104 132, 180 132" />
+              <path class="act-wire-idle" d="M360 214 C 276 214, 256 132, 180 132" />
+              <path id="activity-wire-tools" class="act-wire act-wire-tools" d="M0 168 C 70 168, 96 122, 128 116" />
+              <path id="activity-wire-artifacts" class="act-wire act-wire-artifacts" d="M360 96 C 290 96, 264 110, 232 116" />
+            </svg>
+            <div class="activity-orb" aria-hidden="true">
+              <span class="activity-ring outer"></span>
+              <span class="activity-ring inner"></span>
+              <span class="activity-orb-core">
+                <img src="/assets/eh-monogram-secondary.svg" alt="" width="40" height="40">
+              </span>
+            </div>
+            <div class="activity-caption">
+              <div class="activity-name">Investigation Agent</div>
+              <div id="activity-doing" class="activity-doing"></div>
+            </div>
+            <div id="activity-plan" class="activity-card activity-plan hidden">
+              <div class="activity-card-head">
+                <span class="activity-eyebrow">Plan</span>
+                <span id="activity-plan-count" class="activity-plan-count"></span>
+              </div>
+              <div class="activity-meter"><span id="activity-plan-fill"></span></div>
+              <ul id="activity-plan-tasks" class="activity-plan-tasks"></ul>
+            </div>
+            <div id="activity-finding" class="activity-card activity-finding hidden">
+              <div class="activity-eyebrow cyan">Current finding</div>
+              <div id="activity-finding-text" class="activity-finding-text"></div>
+            </div>
+          </div>
+          <div class="activity-col activity-right">
+            <div id="activity-artifacts-head" class="activity-eyebrow">Artifacts</div>
+            <div id="activity-artifacts" class="activity-scroll"></div>
+          </div>
+        </div>
+      </section>
+
       <div id="actions-tray" class="actions-tray hidden" aria-live="polite"></div>
 
       <div class="composer-wrap">
@@ -109,7 +169,19 @@
             <svg viewBox="0 0 24 24" width="14" height="14"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>
           </button>
         </div>
-        <div class="composer-hint">Enter to send · Shift+Enter for a new line · drop files anywhere</div>
+        <div id="composer-queued" class="composer-queued hidden">
+          <span class="composer-queued-label">Queued</span>
+          <span id="composer-queued-text" class="composer-queued-text"></span>
+          <button id="composer-queued-cancel" class="composer-queued-cancel" type="button" title="Discard the queued message">&times;</button>
+        </div>
+        <div class="composer-hint">
+          <span>Enter to send · Shift+Enter for a new line · drop files anywhere</span>
+          <!-- The transcript's counterpart to the live view's "Transcript" button. The
+               live view opens itself when a turn starts; this is how you get to it when
+               nothing is running, or after closing it mid-turn. -->
+          <button id="live-view-btn" class="composer-hint-btn" type="button"
+                  title="Watch what the agent is doing — tool calls, plan progress and artifacts as they happen">Live view</button>
+        </div>
       </div>
       <input type="file" id="file-input" multiple hidden>
     </main>
@@ -246,11 +318,10 @@
           <nav class="settings-nav" role="tablist" aria-label="Settings sections">
             <button type="button" class="settings-nav-btn active" data-panel="general" role="tab" aria-selected="true">General</button>
             <button type="button" class="settings-nav-btn" data-panel="agent" role="tab" aria-selected="false">Agent &amp; models</button>
-            <button type="button" class="settings-nav-btn" data-panel="challenger" role="tab" aria-selected="false">Challenger</button>
             <button type="button" class="settings-nav-btn" data-panel="memory" role="tab" aria-selected="false">Memory</button>
             <button type="button" class="settings-nav-btn" data-panel="integrations" role="tab" aria-selected="false">Integrations</button>
             <button type="button" class="settings-nav-btn" data-panel="connection" role="tab" aria-selected="false">Connection</button>
-            <button type="button" class="settings-nav-btn" data-panel="eval" role="tab" aria-selected="false">Eval</button>
+            <button type="button" class="settings-nav-btn settings-nav-dev" data-panel="eval" role="tab" aria-selected="false">Developer</button>
           </nav>
 
           <div class="settings-panels">
@@ -327,10 +398,7 @@
                   </div>
                 </div>
               </label>
-            </section>
-
-            <section class="settings-panel hidden" data-panel="challenger" role="tabpanel">
-              <div class="panel-title">Challenger</div>
+              <div class="settings-subhead">Challenger</div>
               <div class="panel-sub">A second agent that reviews findings and pushes back.</div>
               <label class="check">
                 <input id="set-challenger-enabled" type="checkbox">
@@ -359,6 +427,7 @@
                 <select id="set-challenger-reasoning"></select>
               </label>
             </section>
+
 
             <section class="settings-panel hidden" data-panel="memory" role="tabpanel">
               <div class="panel-title">Memory</div>
@@ -498,8 +567,11 @@
               </div>
             </section>
 
+            <!-- data-panel stays "eval": eval.js hangs its lazy case refresh off this
+                 exact value, and the coupling is ?.-guarded so a rename fails silently. -->
             <section class="settings-panel hidden" data-panel="eval" role="tabpanel">
-              <div class="panel-title">Evaluation</div>
+              <div class="panel-title">Developer</div>
+              <div class="settings-subhead">Evaluation</div>
               <div class="panel-sub">Run the labeled cases through the agent (read-only, memory off) and score verdict quality, ladder adherence, and cost. Each case is a real investigation, so a full run takes several minutes.</div>
               <div class="eval-controls">
                 <label class="eval-knob"><span>Gate: false-close &lt;</span><input id="eval-gate" type="number" step="0.01" min="0" max="1" value="0.05"></label>
@@ -585,33 +657,105 @@
           <button class="rp-tab" data-rp="memory" type="button" role="tab">Memory</button>
           <button class="rp-tab active" data-rp="map" type="button" role="tab">Map</button>
         </div>
-        <label class="topo-select-wrap">Snapshot
-          <select id="topo-snapshot" class="topo-select"></select>
-        </label>
-        <div class="topo-select-wrap topo-combo">Overlay
-          <input id="topo-overlay-search" class="topo-select topo-combo-input" type="search"
-                 placeholder="No overlay" autocomplete="off" role="combobox"
-                 aria-expanded="false" aria-controls="topo-overlay-list" aria-label="Overlay an incident">
-          <ul id="topo-overlay-list" class="topo-combo-list hidden" role="listbox"></ul>
+        <!-- Deliberately absent until now: a segmented control with one segment is
+             dead UI. It arrives with the views it switches between. -->
+        <div class="topo-views" role="tablist" aria-label="Map view">
+          <button class="topo-view active" data-view="topology" type="button" role="tab" aria-selected="true">Topology</button>
+          <button class="topo-view" data-view="matrix" type="button" role="tab" aria-selected="false">Traffic matrix</button>
+          <button class="topo-view" data-view="changes" type="button" role="tab" aria-selected="false">Changes</button>
         </div>
+        <div class="topo-combo topo-find">
+          <input id="topo-search" class="topo-select topo-combo-input topo-find-input" type="search"
+                 placeholder="Find device, IP, user…" autocomplete="off" role="combobox"
+                 aria-expanded="false" aria-controls="topo-search-list"
+                 aria-label="Find a device, IP or user on the map">
+          <span class="topo-find-kbd" aria-hidden="true">/</span>
+          <ul id="topo-search-list" class="topo-combo-list hidden" role="listbox"></ul>
+        </div>
+        <!-- The incident overlay is the map's most valuable mode, so it gets a
+             button that states whether one is drawn, not a search box whose
+             placeholder happened to read "No overlay". -->
+        <div class="topo-incident">
+          <button id="topo-incident-btn" class="topo-incident-btn" type="button"
+                  aria-haspopup="true" aria-expanded="false" aria-controls="topo-incident-pop">
+            <span class="topo-incident-dot" aria-hidden="true"></span>
+            <span id="topo-incident-label">Overlay an incident</span>
+          </button>
+          <button id="topo-incident-clear" class="topo-incident-clear hidden" type="button"
+                  title="Clear the overlay" aria-label="Clear the overlay">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+          <div id="topo-incident-pop" class="topo-incident-pop hidden">
+            <input id="topo-overlay-search" class="topo-select topo-combo-input" type="search"
+                   placeholder="Filter incidents…" autocomplete="off" role="combobox"
+                   aria-expanded="false" aria-controls="topo-overlay-list" aria-label="Filter incidents">
+            <ul id="topo-overlay-list" class="topo-combo-list" role="listbox"></ul>
+          </div>
+        </div>
+        <label id="topo-matrix-controls" class="topo-select-wrap hidden">Group by
+          <select id="topo-matrix-groupby" class="topo-select">
+            <option value="segment">Segment</option>
+            <option value="locality">Locality</option>
+            <option value="role_key">Role</option>
+          </select>
+        </label>
+        <button id="topo-dock" class="btn-secondary slim" type="button" title="Dock to the right">Dock to the right</button>
         <button id="topo-users" class="btn-secondary slim hidden" type="button" title="Browse the users seen in this snapshot and the devices they authenticated on">Users</button>
+        <button id="topo-name-zones" class="btn-secondary slim" type="button" title="Give the segments names that mean something — telemetry can only name them by VLAN or subnet">Name zones</button>
         <button id="topo-external" class="btn-secondary slim" type="button" aria-pressed="false" title="Show devices outside the internal network (External locality)">Show external</button>
-        <button id="topo-drift" class="btn-secondary slim" type="button" aria-pressed="false">What changed</button>
         <button id="topo-refresh" class="btn-secondary slim" type="button">Refresh</button>
         <button id="topo-close" class="icon-btn" title="Close">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
       </div>
+      <!-- Row 2: where you are, what is here, and which snapshot you are looking at. -->
+      <div class="topo-context">
+        <nav id="topo-crumbs" class="topo-crumbs" aria-label="Map drill-down"></nav>
+        <div id="topo-chips" class="topo-chips"></div>
+        <button id="topo-neighbors" class="btn-secondary slim hidden" type="button" aria-pressed="false" title="Also show devices outside this segment that these devices depend on">Show outside dependencies</button>
+        <div id="topo-status" class="topo-status panel-sub"></div>
+        <div class="topo-snaps-wrap">
+          <span class="topo-snaps-title">Snapshot</span>
+          <div id="topo-snaps" class="topo-snaps" role="radiogroup" aria-label="Snapshot, oldest to newest"></div>
+          <span id="topo-snap-label" class="topo-snap-label"></span>
+        </div>
+      </div>
       <div class="topology-body">
         <div class="topo-main">
-          <div class="topo-bar">
-            <nav id="topo-crumbs" class="topo-crumbs" aria-label="Map drill-down"></nav>
-            <button id="topo-neighbors" class="btn-secondary slim hidden" type="button" aria-pressed="false" title="Also show devices outside this segment that these devices depend on">Show outside dependencies</button>
-            <div id="topo-status" class="topo-status panel-sub"></div>
+          <!-- The stage is the positioning context for chrome floating over the map.
+               That chrome CANNOT live inside #topo-canvas: sigma.kill() empties its
+               container, so anything in there is destroyed on the next repaint. -->
+          <div id="topo-viewport" class="topo-viewport hidden">
+            <div id="topo-canvas" class="topo-canvas"></div>
+            <div class="topo-zoom">
+              <div class="topo-zoom-stack">
+                <button id="topo-zoom-in" class="topo-zoom-btn" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+                <span class="topo-zoom-div" aria-hidden="true"></span>
+                <button id="topo-zoom-out" class="topo-zoom-btn" type="button" title="Zoom out" aria-label="Zoom out">&#8722;</button>
+              </div>
+              <button id="topo-fit" class="topo-zoom-btn solo" type="button" title="Fit to view" aria-label="Fit to view">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/></svg>
+              </button>
+            </div>
+            <!-- The incident's kill chain, always visible while an overlay is drawn. -->
+            <div id="topo-killchain" class="topo-killchain hidden">
+              <span class="topo-killchain-label">Kill chain</span>
+              <div id="topo-killchain-stages" class="topo-killchain-stages"></div>
+            </div>
+            <!-- Orientation, not navigation: where the camera is within the estate. -->
+            <div id="topo-minimap" class="topo-minimap hidden">
+              <div class="topo-mini-title">Estate</div>
+              <div id="topo-mini-body" class="topo-mini-body"></div>
+            </div>
           </div>
-          <div id="topo-canvas" class="topo-canvas hidden"></div>
+          <!-- Identity for the node under the cursor. Sits outside .topo-canvas because
+               sigma owns that element's children, and is aria-hidden because it mirrors
+               what clicking the node puts in the inspector — there is no hover for AT. -->
+          <div id="topo-hovercard" class="topo-hovercard hidden" aria-hidden="true"></div>
           <button id="topo-legend-toggle" class="topo-legend-toggle" type="button" aria-pressed="true" title="Show or hide the colour legend">Legend</button>
           <div id="topo-legend" class="topo-legend" aria-label="Map legend"></div>
+          <div id="topo-matrix" class="topo-matrix hidden"></div>
+          <div id="topo-changes" class="topo-changes hidden"></div>
           <div id="topo-empty" class="topo-empty">
             <div class="topo-empty-inner">Loading the network map…</div>
           </div>

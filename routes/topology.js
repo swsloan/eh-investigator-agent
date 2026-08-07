@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
-import { listSnapshots, latestSnapshotId, readEnrichments, readIdentities, readNode, readSnapshotForDiff, readTier, topologyGraphName } from '../lib/topology-store.js';
+import { listSnapshots, latestSnapshotId, readEnrichments, readIdentities, readMatrix, readMatrixPairs, readMixedTier, readNode, readNodeHistory, readSegmentNames, readSnapshotForDiff, readTier, topologyGraphName, writeSegmentName } from '../lib/topology-store.js';
 import { buildOverlay } from '../lib/attack-overlay.js';
 import { describeDrift, diffSnapshots } from '../lib/topology-drift.js';
 
@@ -42,11 +42,18 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
 
   /**
    * Resolve the requested group to one whose topology graph actually exists.
-   * Validating against the live graph list means an arbitrary query string can
-   * never reach FalkorDB as a graph key — the same guard routes/memory-graph.js uses.
+   * Validating against the live graph list means an arbitrary group can never
+   * reach FalkorDB as a graph key — the same guard routes/memory-graph.js uses.
+   *
+   * The reads take the group as a query parameter; a write carries a JSON body
+   * and puts it there. Reading only the query string meant `PUT /segment-name`
+   * silently ignored the group the client asked for and fell back to the
+   * resolved one — which is invisible on a single-group deployment and writes
+   * the name into the wrong graph on any other. Query wins where both appear.
    */
   async function pickGroup(req) {
-    const requested = typeof req.query.group === 'string' ? req.query.group : '';
+    const requested = (typeof req.query.group === 'string' && req.query.group)
+      || (typeof req.body?.group === 'string' ? req.body.group : '');
     const fallback = resolveGroup?.() || '';
     const graphs = await graphList();
     for (const candidate of [requested, fallback]) {
@@ -77,6 +84,22 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
     res.status(500).json({ error: redact(err?.message || 'Topology query failed.') });
   }
 
+  /**
+   * Apply operator-assigned segment names to whatever is being served.
+   *
+   * Applied at the edge rather than in the store, because it is presentation: the
+   * stored `name` stays the telemetry fact (`vlan:20`), and every tier read, the
+   * matrix axes and the zone containers get the same override from one place. The
+   * original travels as `telemetry_name` so the UI can show what it is renaming.
+   */
+  function applyNames(names, rows = []) {
+    if (!rows.length) return rows;
+    return rows.map((row) => {
+      const named = names[row.key];
+      return named ? { ...row, name: named, telemetry_name: row.name, named: true } : row;
+    });
+  }
+
   router.get('/snapshots', async (req, res) => {
     if (!guard(req, res)) return;
     try {
@@ -97,6 +120,21 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
       }
       const snapshotId = await pickSnapshot(req, group);
       if (!snapshotId) return res.json({ group, snapshot_id: '', nodes: [], edges: [], zoom: 0, empty: true });
+
+      // `expanded` asks for the zone view: segments, with the named ones opened into
+      // their devices. It is its own read because the payload is mixed-resolution and
+      // has no single `zoom`; every other parameter combination keeps the old path.
+      if (typeof req.query.expanded === 'string') {
+        const mixed = await readMixedTier(client, group, {
+          snapshotId,
+          expanded: req.query.expanded.split(',').map((k) => k.trim()).filter(Boolean),
+          external: req.query.external === '1' || req.query.external === 'true',
+          limit: req.query.limit,
+        });
+        const names = await readSegmentNames(client, group);
+        return res.json({ group, ...mixed, nodes: applyNames(names, mixed.nodes), segment_names: names });
+      }
+
       const tier = await readTier(client, group, {
         snapshotId,
         zoom: req.query.zoom,
@@ -114,7 +152,29 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
           : null,
         limit: req.query.limit,
       });
-      res.json({ group, ...tier });
+      const names = await readSegmentNames(client, group);
+      // The whole map travels too: zone containers, breadcrumbs and device metadata
+      // label a segment from its key, not from a node in the payload.
+      res.json({ group, ...tier, nodes: applyNames(names, tier.nodes), segment_names: names });
+    } catch (err) { fail(res, err); }
+  });
+
+  /**
+   * Name a segment (or clear the name with an empty string).
+   *
+   * A write, so it is deliberately its own endpoint rather than a query flag, and
+   * the only mutating topology route besides ingest. The name is operator input:
+   * `writeSegmentName` escapes it as a Cypher literal and caps its length.
+   */
+  router.put('/segment-name', async (req, res) => {
+    if (!guard(req, res)) return;
+    try {
+      const key = typeof req.body?.key === 'string' ? req.body.key.trim() : '';
+      if (!key) return res.status(400).json({ error: 'A segment key is required.' });
+      const name = typeof req.body?.name === 'string' ? req.body.name : '';
+      const group = await pickGroup(req);
+      await writeSegmentName(client, group, key, name);
+      res.json({ group, key, name: name.trim().slice(0, 60), names: await readSegmentNames(client, group) });
     } catch (err) { fail(res, err); }
   });
 
@@ -186,6 +246,68 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
   });
 
   /** Enrichments recorded for one device (Slice 5). Polled by the device panel. */
+  // One device's traffic over the retained snapshots, for the inspector's trend.
+  // Ordered and stamped here by joining the snapshot headers, so the client gets a
+  // series it can draw without a second request.
+  // Who talks to whom, as a square. Its own endpoint because a matrix is not a
+  // node/edge payload and has no zoom.
+  router.get('/matrix', async (req, res) => {
+    if (!guard(req, res)) return;
+    try {
+      const group = await pickGroup(req);
+      const snapshotId = await pickSnapshot(req, group);
+      if (!snapshotId) return res.json({ group, snapshot_id: '', axes: [], cells: [], empty: true });
+      const matrix = await readMatrix(client, group, {
+        snapshotId,
+        groupBy: typeof req.query.groupBy === 'string' ? req.query.groupBy : 'segment',
+        external: req.query.external === '1' || req.query.external === 'true',
+        limit: req.query.limit,
+      });
+      // Axes are segments under the default grouping, so they carry the names too.
+      const names = await readSegmentNames(client, group);
+      res.json({ group, ...matrix, axes: applyNames(names, matrix.axes) });
+    } catch (err) { fail(res, err); }
+  });
+
+  router.get('/matrix/pairs', async (req, res) => {
+    if (!guard(req, res)) return;
+    try {
+      const group = await pickGroup(req);
+      const snapshotId = await pickSnapshot(req, group);
+      if (!snapshotId) return res.json({ group, snapshot_id: '', pairs: [] });
+      const pairs = await readMatrixPairs(client, group, {
+        snapshotId,
+        groupBy: typeof req.query.groupBy === 'string' ? req.query.groupBy : 'segment',
+        src: typeof req.query.src === 'string' ? req.query.src : '',
+        dst: typeof req.query.dst === 'string' ? req.query.dst : '',
+        limit: req.query.limit,
+      });
+      res.json({ group, snapshot_id: snapshotId, pairs });
+    } catch (err) { fail(res, err); }
+  });
+
+  router.get('/node/:key/history', async (req, res) => {
+    if (!guard(req, res)) return;
+    try {
+      const group = await pickGroup(req);
+      const [rows, snapshots] = await Promise.all([
+        readNodeHistory(client, group, { key: req.params.key, limit: req.query.limit }),
+        listSnapshots(client, group, 100),
+      ]);
+      const stamp = new Map(snapshots.map((s) => [s.id, s.collected_at]));
+      const series = rows
+        .filter((r) => stamp.has(r.snapshot_id))
+        .map((r) => ({
+          snapshot_id: r.snapshot_id,
+          collected_at: stamp.get(r.snapshot_id),
+          bytes_total: Number(r.bytes_total) || 0,
+          peer_count: Number(r.peer_count) || 0,
+        }))
+        .sort((a, b) => String(a.collected_at).localeCompare(String(b.collected_at)));
+      res.json({ group, key: req.params.key, series });
+    } catch (err) { fail(res, err); }
+  });
+
   router.get('/enrichments/:key', async (req, res) => {
     if (!guard(req, res)) return;
     try {

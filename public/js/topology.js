@@ -16,7 +16,16 @@
 // CSP with no inline script and no bundler.
 
 import { $ } from './dom.js';
+import {
+  isExpanded, onRpSurfaceChange, registerRpPanel, rpSurfaceLabel, setRpTab, toggleRpSurface,
+} from './right-panel.js';
 import { avatarSvg, identityType, roleGlyphInline, roleIconDataUri } from './topo-glyphs.js';
+import { changeKeys, renderChanges } from './topo-changes.js';
+import { incidentCells, matrixModel, pairId, renderMatrix, renderPairs } from './topo-matrix.js';
+import {
+  badgeAt, clearAttack, clearZones, drawAttack, drawZones, emphasisePath,
+  ensureAttackLayer, ensureZoneLayer, miniMapPointAt, renderMiniMap, zoneAt,
+} from './topo-layers.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -129,8 +138,31 @@ let hoveredNode = null; // device under the cursor, to trace its dependencies (p
 let lastData = null;   // last painted tier, so a theme flip can repaint without refetching
 let overlay = null;    // the incident currently drawn on top, or null for the plain map
 let overlayStats = { steps: 0, paths: 0, nodes: 0 }; // last overlay panel counts (for back-to-incident)
+let attackModel = null; // {paths, patientZero, externals, pairBySeq} for the vector layer
+let hoveredPair = null; // step badge under the cursor, so hover work is done once
+let matrixGroupBy = 'segment';
+
+/** The status line for whatever the topology last painted. */
+function statusForData() {
+  if (!lastData) return '';
+  const count = lastData.nodes.length;
+  return `<b>${TIERS[lastData.zoom]}</b> · ${count} node${count === 1 ? '' : 's'} · `
+    + `${lastData.edges.length} link${lastData.edges.length === 1 ? '' : 's'}`;
+}
+
+/** Light the inspector row for the step a badge stands for, and scroll it into view. */
+function highlightIncidentStep(pairId) {
+  let first = null;
+  for (const row of document.querySelectorAll('.topo-ev[data-pair]')) {
+    const match = row.dataset.pair === pairId;
+    row.classList.toggle('lit', match);
+    if (match && !first) first = row;
+  }
+  first?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
 let drift = null;      // the active snapshot comparison, or null
 let identitiesCache = []; // [{name, principal, devices:[{key,name,ip,role,locality}]}]
+let snapshots = []; // [{id, collected_at, device_count, ...}], newest first as served
 let incidentsCache = [];  // [{id, title, disposition, confidence, events, createdAt}]
 let state = {
   group: '',
@@ -143,11 +175,44 @@ let state = {
   showExternal: false, // default view is internal-only; toggle reveals External nodes
   showNeighbors: false, // in a scoped device view, pull one-hop peers outside the scope
   loading: false,
-  autoTier: true,      // camera-driven LOD; suspended while drilled into a cluster
+  autoTier: true,      // camera-driven LOD; only live under ?lod=camera (see CAMERA_LOD)
+  zones: true,         // the zone view: segments as containers, opened in place
+  expanded: [],        // segment keys currently opened into their devices
 };
 
-/** A segment key (`vlan:204`, `net:10.0.0.0/24`, `loc:Internal`) as a short label. */
+// Camera-ratio level-of-detail is retired: zooming past a band refetched and
+// repainted the whole graph, so the map teleported under the cursor. Expansion is
+// explicit now. The old behaviour stays reachable for one release for estates where
+// zones degenerate — a single segment, or roles unknown everywhere — after which
+// this flag and the TIER_BANDS machinery go.
+const CAMERA_LOD = new URLSearchParams(window.location.search).get('lod') === 'camera';
+
+// A map is a workspace, not glanceable state: it opens on the screen unless the user
+// has said otherwise, at which point the shared right-panel preference wins.
+const MAP_DEFAULT_SURFACE = 'expanded';
+
+// Operator-assigned segment names, keyed by segment key. Served with every map
+// read, because a name has to reach the places that label a segment from its key
+// alone — zone containers, breadcrumbs, a device's metadata line — not just the
+// nodes in the payload.
+let segmentNames = {};
+
+/**
+ * A segment key (`vlan:204`, `net:10.0.0.0/24`, `loc:Internal`) as a short label.
+ *
+ * An operator name wins when there is one: telemetry can only say what a segment
+ * *is* on the wire, and what it *means* ("Storage & Backup") is knowledge only the
+ * operator has. Every caller goes through here, so naming a segment renames it
+ * everywhere at once.
+ */
 function prettySegment(s) {
+  const key = String(s || '');
+  if (segmentNames[key]) return segmentNames[key];
+  return key.replace(/^(vlan|net|loc):/, (_, k) => (k === 'vlan' ? 'VLAN ' : ''));
+}
+
+/** The telemetry label, ignoring any operator name — for "renaming X" affordances. */
+function telemetrySegment(s) {
   return String(s || '').replace(/^(vlan|net|loc):/, (_, k) => (k === 'vlan' ? 'VLAN ' : ''));
 }
 
@@ -157,6 +222,19 @@ function prettyRole(r) {
 }
 
 let legendVisible = true; // the colour legend is on by default; a toggle hides it
+
+/**
+ * The tier a single node is drawn at.
+ *
+ * A zone payload is mixed — devices inside opened segments, aggregates everywhere
+ * else — so colour, size and labelling are per node rather than per payload. Nodes
+ * from the old single-tier reads carry no `tier` and fall back to the payload's.
+ */
+function tierOf(node, zoom) {
+  if (node?.tier === 'device') return 3;
+  if (node?.tier === 'segment') return 1;
+  return zoom;
+}
 
 function colorFor(node, zoom) {
   // Every tier carries meaning in its colour rather than going flat blue in the
@@ -245,10 +323,13 @@ function renderCrumbs() {
     state.crumbs = idx < 0 ? [] : state.crumbs.slice(0, idx + 1);
     const last = state.crumbs[state.crumbs.length - 1];
     state.parent = last?.parent || '';
-    state.zoom = last ? last.zoom : 0;
+    state.zoom = last ? last.zoom : (CAMERA_LOD ? 0 : 1);
     state.scope = last?.scope || '';
     state.keys = last?.keys || null;   // leaving the incident view drops its key scope
     state.autoTier = state.crumbs.length === 0;
+    // "All" is the zone view again; anything deeper is a scoped single-tier read and
+    // must stop asking for the mixed payload, which ignores parent/scope/keys.
+    state.zones = !CAMERA_LOD && state.crumbs.length === 0;
     updateNeighborBtn();
     load();
   }));
@@ -269,6 +350,99 @@ function bytes(n) {
   if (v >= 1e6) return `${(v / 1e6).toFixed(1)} MB`;
   if (v >= 1e3) return `${(v / 1e3).toFixed(1)} KB`;
   return `${v} B`;
+}
+
+
+/**
+ * A device's traffic across the retained snapshots: a sparkline plus the current
+ * totals.
+ *
+ * Fetched after the panel is written rather than before it, so the identity and
+ * details never wait on a trend. The card is honest about its own axis — the series
+ * is "the last N snapshots", not a fixed 7 days, because snapshot cadence is
+ * whatever the operator has been running.
+ */
+async function renderDeviceTrend(key) {
+  const host = $('topo-trend');
+  if (!host) return;
+  let series = [];
+  try {
+    const params = new URLSearchParams();
+    if (state.group) params.set('group', state.group);
+    const res = await fetch(`/api/topology/node/${encodeURIComponent(key)}/history?${params}`);
+    if (!res.ok) { host.remove(); return; }
+    ({ series = [] } = await res.json());
+  } catch { host.remove(); return; }
+  // Stale response for a device the user has already navigated away from.
+  if (currentDeviceKey !== key) return;
+  if (!series.length) { host.remove(); return; }
+
+  const latest = series[series.length - 1];
+  const values = series.map((p) => Number(p.bytes_total) || 0);
+  const peak = Math.max(...values, 1);
+  const W = 240;
+  const H = 44;
+  // A single snapshot is a point, not a trend; draw it as a flat line rather than
+  // dividing by zero.
+  const step = series.length > 1 ? W / (series.length - 1) : 0;
+  const pts = values.map((v, i) => `${(i * step).toFixed(1)},${(H - (v / peak) * (H - 4) - 2).toFixed(1)}`);
+  const line = `M${pts.join('L')}`;
+  const area = `${line}L${W},${H}L0,${H}Z`;
+  const span = series.length === 1
+    ? 'one snapshot'
+    : `${series.length} snapshots`;
+
+  host.innerHTML = `
+    <div class="topo-ins-h">Traffic · ${esc(span)}</div>
+    <svg class="topo-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      <path class="topo-spark-area" d="${area}"></path>
+      <path class="topo-spark-line" d="${line}"></path>
+    </svg>
+    <div class="topo-spark-axis">
+      <span>${esc(snapshotStampShort(series[0].collected_at))}</span>
+      <span>${esc(snapshotStampShort(latest.collected_at))}</span>
+    </div>
+    <div class="topo-tiles">
+      <div class="topo-tile"><span class="topo-tile-label">Bytes</span><b>${esc(bytes(latest.bytes_total))}</b></div>
+      <div class="topo-tile"><span class="topo-tile-label">Peers</span><b>${Number(latest.peer_count) || 0}</b></div>
+    </div>`;
+}
+
+/** `Aug 3` — enough to place a point on the axis without crowding it. */
+function snapshotStampShort(raw) {
+  const d = raw ? new Date(raw) : null;
+  return d && !Number.isNaN(d.getTime())
+    ? d.toLocaleString(undefined, { month: 'short', day: 'numeric' })
+    : String(raw || '').slice(0, 10);
+}
+
+/**
+ * Hand the device to the agent. A prefill rather than a spawned session: seeding a
+ * session raises workspace and approval lifecycle questions that this button should
+ * not be deciding. It carries the context the analyst can see — which snapshot, and
+ * which incident step if one is drawn — so the agent starts where they are.
+ */
+function investigateDevice(device) {
+  const parts = [`Investigate ${device.name || device.key}`];
+  const ident = [device.ip, device.key].filter(Boolean).join(', ');
+  if (ident) parts.push(`(${ident})`);
+  const context = [];
+  const snap = snapshots.find((s) => s.id === state.snapshotId);
+  if (snap) context.push(`snapshot ${snapshotStampShort(snap.collected_at)}`);
+  if (overlay) {
+    const step = overlay.events.find((e) => e.src === device.key || e.dst === device.key);
+    context.push(step
+      ? `incident "${overlay.title}" step ${step.seq + 1} (${step.tactic || 'unclassified'})`
+      : `incident "${overlay.title}"`);
+  }
+  const text = `${parts.join(' ')}${context.length ? ` — context: ${context.join(', ')}` : ''}`;
+  close(); // the map is a full-screen overlay; the composer is behind it
+  const input = $('input');
+  if (!input) return;
+  input.value = text;
+  input.focus();
+  input.dispatchEvent(new Event('input', { bubbles: true })); // grow the textarea
+  input.setSelectionRange(text.length, text.length);
 }
 
 async function showDevice(key) {
@@ -331,8 +505,12 @@ async function showDevice(key) {
         )).join('')}</ul>`
         : '',
       enrichmentsHtml(enrichments),
+      `<div id="topo-trend" class="topo-trend"></div>`,
       rows ? `<div class="topo-ins-h">Top conversations</div><ul class="topo-ins-list topo-peers">${rows}</ul>` : '',
       `<div class="topo-ins-foot panel-sub">Peers reflect the significant-traffic topology (top-N per device), not every connection.</div>`,
+      `<button type="button" id="topo-investigate" class="topo-investigate">`
+      + `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>`
+      + `Investigate this device</button>`,
       askHtml(),
     ].join(''));
     // Clicking a user cross-links to that identity's device set.
@@ -340,6 +518,8 @@ async function showDevice(key) {
     $('topo-inc-back')?.addEventListener('click', backToIncident);
     wireAsk(device.key);
     currentDeviceKey = device.key; // now showing this device; enrichment polls may refresh it
+    $('topo-investigate')?.addEventListener('click', () => investigateDevice(device));
+    renderDeviceTrend(device.key);
   } catch {
     inspector('<div class="topo-inspector-empty panel-sub">Could not load device detail.</div>');
   }
@@ -464,6 +644,7 @@ function drillInto(node) {
   state.scope = scope;
   state.keys = null;
   state.autoTier = false;
+  state.zones = false; // a drill is a scoped single-tier read
   updateNeighborBtn();
   load();
 }
@@ -481,8 +662,248 @@ function updateNeighborBtn() {
   }
 }
 
+// ---- Camera chrome ----------------------------------------------------------
+// Ratio bounds are shared with the sigma settings below so the buttons and the
+// wheel can never disagree about how far the map zooms. Remember that sigma's
+// ratio SHRINKS as you zoom in, so zooming in divides.
+const MIN_RATIO = 0.02;
+const MAX_RATIO = 4;
+const ZOOM_STEP = 1.4; // per button press
+
+/** Camera animations are JS, so the CSS reduced-motion floor cannot reach them. */
+function camDuration(ms) {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : ms;
+}
+
+/**
+ * The camera state that frames the whole graph. Sigma normalises node coordinates
+ * into the unit square, so (0.5, 0.5) always centres everything and the ratio is
+ * the only real choice — slightly over 1 so the outermost labels have room instead
+ * of being clipped flush against the container edge.
+ */
+function fitState(nodeCount) {
+  return { x: 0.5, y: 0.5, ratio: nodeCount <= 3 ? 1.08 : 1.18 };
+}
+
+function zoomCamera(factor) {
+  if (!sigma) return;
+  const cam = sigma.getCamera();
+  const ratio = Math.min(Math.max(cam.ratio * factor, MIN_RATIO), MAX_RATIO);
+  cam.animate({ ratio }, { duration: camDuration(180) });
+}
+
+/**
+ * Frame everything currently loaded. While auto-tier is on this can pull the camera
+ * back past a tier band and trigger a refetch of the wider tier — which is the right
+ * answer for a control that means "show me all of it".
+ */
+function fitToView() {
+  if (!sigma || !lastData) return;
+  sigma.getCamera().animate(fitState(lastData.nodes.length), { duration: camDuration(260) });
+}
+
+// Role → the coarse bucket the context bar counts by. Deliberately blunt: the point
+// is "what kind of place is this", not a taxonomy.
+const ROLE_GROUP = {
+  domain_controller: 'Servers', db_server: 'Servers', file_server: 'Servers', http_server: 'Servers',
+  dns_server: 'Infra', dhcp_server: 'Infra', gateway: 'Infra', nat_gateway: 'Infra',
+  firewall: 'Infra', load_balancer: 'Infra', vpn_gateway: 'Infra', web_proxy: 'Infra',
+  pc: 'Endpoints', mobile_device: 'Endpoints', printer: 'Endpoints',
+  ip_camera: 'Endpoints', medical_device: 'Endpoints',
+};
+const GROUP_ORDER = ['Servers', 'Endpoints', 'Infra', 'Other'];
+
+/**
+ * Composition of what is painted, as counts.
+ *
+ * Device tier only. On aggregate tiers a node's `role` is its DOMINANT role, so
+ * counting device_count against it would report every device in a file-server-heavy
+ * segment as a server — confidently wrong. The status line already carries the
+ * node/link totals for those tiers.
+ */
+function renderChips(data) {
+  const el = $('topo-chips');
+  if (!el) return;
+  if (data.zoom !== 3) { el.innerHTML = ''; return; }
+  const counts = new Map();
+  for (const n of data.nodes) {
+    if (n.neighbor) continue; // pulled in from outside the scope; not part of "here"
+    const group = ROLE_GROUP[n.role] || 'Other';
+    counts.set(group, (counts.get(group) || 0) + 1);
+  }
+  const critical = data.nodes.filter((n) => n.critical && !n.neighbor).length;
+  const chips = GROUP_ORDER
+    .filter((g) => counts.get(g))
+    .map((g) => `<span class="topo-chip">${g} <b>${counts.get(g)}</b></span>`);
+  if (critical) chips.push(`<span class="topo-chip crit">Critical <b>${critical}</b></span>`);
+  el.innerHTML = chips.join('');
+}
+
+// Above this many nodes, labelling everything stops helping: sigma paints them all
+// and they overlap into a smear. Measured against this renderer — 11 and 20 nodes
+// read cleanly with the roomy policy, 30 starts colliding, 48 is unreadable. Under
+// the cap every node is named; over it, only the bigger nodes (servers, DCs,
+// gateways, critical hosts) keep a label and the hover card covers the rest.
+const LABEL_ALL_MAX = 24;
+
+/** Sigma label settings for this payload: name everything, or triage by size. */
+function labelPolicy(data) {
+  if (data.nodes.length <= LABEL_ALL_MAX) {
+    return { labelRenderedSizeThreshold: 0, labelDensity: 4, labelGridCellSize: 60 };
+  }
+  // Over the cap the threshold triages by size. A mixed payload is mostly devices
+  // once anything is open, so it uses the device threshold.
+  const deviceHeavy = data.nodes.some((n) => tierOf(n, data.zoom) === 3);
+  return {
+    labelRenderedSizeThreshold: deviceHeavy ? 7 : 4,
+    labelDensity: 0.7,
+    labelGridCellSize: 110,
+  };
+}
+
+// ---- Hover card -------------------------------------------------------------
+// Sigma labels what it can fit (see the label policy in paint), but past a couple
+// of dozen nodes it has to drop labels or they pile into an unreadable smear. The
+// hover card is what makes that safe: whatever the label grid decided, a node under
+// the cursor always states who it is.
+
+let hoverCardNode = null; // graph key the card is currently describing, or null
+
+/** Identity markup for a node. Names come off the wire — escape everything. */
+function hoverCardHtml(raw, zoom) {
+  if (!raw) return '';
+  const name = esc(raw.name ?? raw.key ?? '');
+  if (!name) return '';
+  if (raw.external) {
+    return `<div class="topo-hc-name">${name}</div>
+      <div class="topo-hc-meta">External endpoint · outside the estate</div>`;
+  }
+
+  const bits = [];
+  let tags = '';
+  if (zoom === 3) {
+    if (raw.ip) bits.push(esc(raw.ip));
+    if (raw.role) bits.push(esc(prettyRole(raw.role)));
+    const seg = prettySegment(raw.segment);
+    if (seg) bits.push(esc(seg));
+    if (raw.critical) tags += '<span class="topo-hc-tag crit">Critical</span>';
+    if (raw.neighbor) tags += '<span class="topo-hc-tag">Outside this segment</span>';
+  } else {
+    const n = Number(raw.device_count) || 0;
+    if (n) bits.push(`${n} device${n === 1 ? '' : 's'}`);
+    // On aggregates `role` is the segment's DOMINANT role, not a device's own.
+    if (raw.role) bits.push(`mostly ${esc(prettyRole(raw.role).toLowerCase())}`);
+  }
+
+  const hint = zoom === 3 ? 'Click for details' : 'Click to drill in';
+  return `<div class="topo-hc-name">${name}</div>
+    ${bits.length ? `<div class="topo-hc-meta">${bits.join(' · ')}</div>` : ''}
+    ${tags ? `<div class="topo-hc-tags">${tags}</div>` : ''}
+    <div class="topo-hc-hint">${hint}</div>`;
+}
+
+/** Clamp v into [lo, hi], preferring lo when the span is too small to hold it. */
+function clamp(v, lo, hi) {
+  return hi < lo ? lo : Math.min(Math.max(v, lo), hi);
+}
+
+/**
+ * Park the card beside its node. Fixed-positioned off the canvas' client rect, so
+ * it needs no offset maths against the panel chrome and sigma's canvas teardown
+ * can't disturb it.
+ *
+ * Side preference is right-of-node, flipping left when that would overflow — but
+ * the flip is only a preference. On a narrow canvas (the inspector takes 320px,
+ * and the layout sheds the right column entirely under 1100px) neither side may
+ * fit, so the result is clamped into the canvas afterwards. Without that, flipping
+ * a 200px card beside a node 45px from the left edge puts it off-screen.
+ */
+function positionHoverCard(nodeKey) {
+  const el = $('topo-hovercard');
+  const container = $('topo-canvas');
+  if (!el || !container || !sigma || !graph?.hasNode(nodeKey)) return;
+  const p = sigma.graphToViewport({
+    x: graph.getNodeAttribute(nodeKey, 'x'),
+    y: graph.getNodeAttribute(nodeKey, 'y'),
+  });
+  const rect = container.getBoundingClientRect();
+  const gap = Math.max(14, (Number(graph.getNodeAttribute(nodeKey, 'size')) || 6) + 10);
+  el.classList.remove('hidden'); // must be laid out before it can be measured
+  const { offsetWidth: w, offsetHeight: h } = el;
+  let left = rect.left + p.x + gap;
+  if (left + w > rect.right - 8) left = rect.left + p.x - gap - w;
+  el.style.left = `${Math.round(clamp(left, rect.left + 8, rect.right - w - 8))}px`;
+  el.style.top = `${Math.round(clamp(rect.top + p.y - h / 2, rect.top + 8, rect.bottom - h - 8))}px`;
+}
+
+function showHoverCard(nodeKey) {
+  const el = $('topo-hovercard');
+  if (!el || !graph?.hasNode(nodeKey)) return;
+  const html = hoverCardHtml(graph.getNodeAttribute(nodeKey, 'raw'), lastData?.zoom ?? 3);
+  if (!html) return;
+  el.innerHTML = html;
+  hoverCardNode = nodeKey;
+  positionHoverCard(nodeKey);
+}
+
+function hideHoverCard() {
+  hoverCardNode = null;
+  $('topo-hovercard')?.classList.add('hidden');
+}
+
+/**
+ * The zones for a payload: one per segment, each owning the nodes drawn inside it.
+ *
+ * A collapsed segment owns exactly its own aggregate node, so the container still
+ * frames it — that is what makes opening one read as the same object changing
+ * resolution rather than the view being replaced.
+ */
+function zonesFor(data) {
+  if (!data?.mixed) return [];
+  const open = new Set(data.expanded || []);
+  const bySegment = new Map();
+  for (const n of data.nodes) {
+    const key = tierOf(n, data.zoom) === 3 ? n.segment : n.key;
+    if (!key) continue;
+    if (!bySegment.has(key)) bySegment.set(key, { members: [], node: null, devices: 0 });
+    const zone = bySegment.get(key);
+    zone.members.push(n.key);
+    if (tierOf(n, data.zoom) === 3) zone.devices += 1; else zone.node = n;
+  }
+  return [...bySegment.entries()].map(([key, zone]) => {
+    const expanded = open.has(key);
+    const count = expanded ? zone.devices : (Number(zone.node?.device_count) || 0);
+    return {
+      key,
+      count,
+      title: prettySegment(key).toUpperCase(),
+      sub: expanded
+        ? `${count} device${count === 1 ? '' : 's'} · open`
+        : `${count} device${count === 1 ? '' : 's'} · collapsed`,
+      memberKeys: zone.members,
+      expanded,
+      // The role hue tints the label; the boundary itself uses the zone tokens, which
+      // are tuned per theme. A 20-hue palette cannot be trusted to stay legible as a
+      // hairline on white.
+      accent: zone.node?.role ? (ROLE_COLOR[zone.node.role] || '') : '',
+    };
+  });
+}
+
+/** Open or close a zone, keeping the camera so the map does not jump underfoot. */
+function toggleZone(key) {
+  if (!key) return;
+  const open = new Set(state.expanded);
+  if (open.has(key)) open.delete(key); else open.add(key);
+  state.expanded = [...open];
+  load({ keepCamera: true });
+}
+
 function paint(data) {
   lastData = data;
+  // Set before anything labels a segment: prettySegment reads this.
+  if (data.segment_names) segmentNames = data.segment_names;
+  hideHoverCard(); // the graph is about to be rebuilt; any open card is stale
   const theme = themeColors();
   const G = window.graphology?.Graph || window.graphology;
   graph = new G({ type: 'undirected', allowSelfLoops: false, multi: false });
@@ -490,27 +911,33 @@ function paint(data) {
   // Device-tier nodes render as role ICONS (a white glyph on the role-coloured disc)
   // through sigma's image node program; aggregate tiers stay coloured circles. The
   // icon is a data: URI SVG, so it works under the strict CSP with no CDN.
-  const useIcons = data.zoom === 3 && Boolean(window.Sigma?.rendering?.createNodeImageProgram);
+  // A zone payload can contain devices at any zoom, so the image program is enabled
+  // whenever the payload holds one; `tier` decides per node whether it is used.
+  const hasDevices = data.nodes.some((n) => tierOf(n, data.zoom) === 3);
+  const useIcons = hasDevices && Boolean(window.Sigma?.rendering?.createNodeImageProgram);
   // Drop the domain suffix every device shares, so `dc1` shows instead of the FQDN.
-  const dnsSuffix = data.zoom === 3 ? commonDomainSuffix(data.nodes.map((n) => n.name)) : '';
+  const dnsSuffix = hasDevices
+    ? commonDomainSuffix(data.nodes.filter((n) => tierOf(n, data.zoom) === 3).map((n) => n.name))
+    : '';
 
   for (const n of data.nodes) {
     // Neighbor = a one-hop peer pulled in from OUTSIDE the scoped segment/cluster
     // ("show outside dependencies"). Muted and labelled with where it lives, so the
     // boundary is legible and the in-scope devices stay the focus.
-    const isNeighbor = data.zoom === 3 && n.neighbor;
-    const color = isNeighbor ? 'rgba(130,138,160,0.55)' : colorFor(n, data.zoom);
-    const short = data.zoom === 3 ? stripSuffix(n.name ?? n.key, dnsSuffix) : String(n.name ?? n.key);
+    const tier = tierOf(n, data.zoom);
+    const isNeighbor = tier === 3 && n.neighbor;
+    const color = isNeighbor ? 'rgba(130,138,160,0.55)' : colorFor(n, tier);
+    const short = tier === 3 ? stripSuffix(n.name ?? n.key, dnsSuffix) : String(n.name ?? n.key);
     graph.addNode(n.key, {
       x: Number(n.x) || 0,
       y: Number(n.y) || 0,
-      size: isNeighbor ? sizeFor(n, data.zoom) * 0.72 : sizeFor(n, data.zoom),
+      size: isNeighbor ? sizeFor(n, tier) * 0.72 : sizeFor(n, tier),
       // Sigma renders labels itself into canvas; it never parses HTML, but keep the
       // same escaping discipline as the rest of the UI — device names come off the
       // wire and are attacker-controllable (lib/telemetry-taint.js).
       label: isNeighbor ? `${short} · ${prettySegment(n.segment)}` : short,
       color,
-      ...(useIcons ? { type: 'image', image: roleIconDataUri(n.role, isNeighbor ? '#94a3b8' : color) } : {}),
+      ...(useIcons && tier === 3 ? { type: 'image', image: roleIconDataUri(n.role, isNeighbor ? '#94a3b8' : color) } : {}),
       neighbor: isNeighbor,
       raw: n,
     });
@@ -537,35 +964,82 @@ function paint(data) {
     renderEdgeLabels: false,
     defaultEdgeColor: theme.edge,
     labelColor: { color: theme.label },
-    labelDensity: 0.7,
-    labelGridCellSize: 110,
-    // Only the larger nodes (servers/DCs/critical) carry a label by default; the many
-    // workstations stay unlabelled until hovered, which sigma always labels.
-    labelRenderedSizeThreshold: data.zoom === 3 ? 7 : 4,
+    ...labelPolicy(data),
     labelSize: 12,
-    minCameraRatio: 0.02,
-    maxCameraRatio: 4,
+    minCameraRatio: MIN_RATIO,
+    maxCameraRatio: MAX_RATIO,
     zIndex: true,
   });
 
   // Sigma fits nodes flush to the container edges, which clips the labels of
   // whichever nodes land on the boundary. Pull the camera back slightly so the
   // outermost labels have room. Done before the LOD listener is attached so this
-  // deliberate framing can't be mistaken for a user zoom.
-  sigma.getCamera().setState({ ratio: data.nodes.length <= 3 ? 1.08 : 1.18 });
+  // deliberate framing can't be mistaken for a user zoom. Same state the
+  // fit-to-view button animates to.
+  sigma.getCamera().setState(fitState(data.nodes.length));
 
   sigma.on('clickNode', ({ node }) => {
+    // A drag ends in a click on the node it started from. Moving a node to see it is
+    // not a request to navigate away from it.
+    if (draggedJustNow()) return;
     const raw = graph.getNodeAttribute(node, 'raw');
     if (raw?.external) { showExternalNode(raw); return; } // C2/exfil: no cluster to drill, no device record
-    if (data.zoom === 3) showDevice(raw.key); else drillInto(raw);
+    if (tierOf(raw, data.zoom) === 3) { showDevice(raw.key); return; }
+    // In the zone view a segment opens in place; elsewhere it still replaces the view.
+    if (data.mixed) toggleZone(raw.key); else drillInto(raw);
   });
+
+  // The zone layer is pointer-transparent, so sigma reports the click and the layer
+  // is asked what was under it. Only the label band collapses an open zone: its body
+  // is empty canvas as far as the user is concerned.
+  sigma.on('clickStage', ({ event }) => {
+    // A step badge takes precedence over the zone under it: it is the smaller,
+    // more deliberate target.
+    const pair = attackModel ? badgeAt(event.x, event.y) : null;
+    if (pair) { highlightIncidentStep(pair); return; }
+    if (!zones.length) return;
+    const hit = zoneAt(event.x, event.y);
+    if (!hit) return;
+    if (hit.expanded && hit.region === 'label') toggleZone(hit.key);
+    else if (!hit.expanded) toggleZone(hit.key);
+  });
+
+  // Hovering the map lights the badge under the cursor, so the numbers read as
+  // targets rather than decoration.
+  if (attackModel) {
+    const container = $('topo-canvas');
+    container?.addEventListener('mousemove', (e) => {
+      if (!attackModel) return;
+      const rect = container.getBoundingClientRect();
+      const pair = badgeAt(e.clientX - rect.left, e.clientY - rect.top);
+      if (pair !== hoveredPair) {
+        hoveredPair = pair;
+        emphasisePath(attackLayer, pair || '');
+        container.classList.toggle('badge-hover', Boolean(pair));
+      }
+    });
+  }
 
   // Hover-to-trace: on the plain map, hovering a node emphasises its own edges and
   // fades the rest, so one device's dependencies are followable through the tangle.
-  // Skipped while an overlay or drift is active — those own the colouring.
-  if (!overlay && !drift) {
-    sigma.on('enterNode', ({ node }) => { hoveredNode = node; sigma.refresh(); });
-    sigma.on('leaveNode', () => { hoveredNode = null; sigma.refresh(); });
+  // Skipped while an overlay or drift is active — those own the colouring. The hover
+  // CARD is not gated that way: identifying what you are pointing at matters just as
+  // much mid-incident, and it only paints HTML beside the canvas.
+  const trace = !overlay && !drift;
+  sigma.on('enterNode', ({ node }) => {
+    if (trace) { hoveredNode = node; sigma.refresh(); }
+    showHoverCard(node);
+  });
+  sigma.on('leaveNode', () => {
+    if (trace) { hoveredNode = null; sigma.refresh(); }
+    hideHoverCard();
+  });
+  // Panning or zooming under an open card would leave it pointing at empty space.
+  sigma.getCamera().on('updated', () => { if (hoverCardNode) positionHoverCard(hoverCardNode); });
+
+  wireNodeDrag(container);
+
+  if (trace) {
     sigma.setSetting('edgeReducer', (edge, attrs) => {
       if (!hoveredNode) return attrs;
       return graph.hasExtremity(edge, hoveredNode)
@@ -578,15 +1052,41 @@ function paint(data) {
     });
   }
 
-  // Camera-driven level of detail: the whole point of the map metaphor.
-  sigma.getCamera().on('updated', () => {
-    if (!state.autoTier || state.loading) return;
-    const next = tierForRatio(sigma.getCamera().ratio, state.zoom);
-    if (next !== state.zoom) { state.zoom = next; load({ keepCamera: true }); }
-  });
+  // Camera-driven level of detail, only under ?lod=camera. Zoom is otherwise purely
+  // visual and resolution is chosen by opening a zone.
+  if (CAMERA_LOD) {
+    sigma.getCamera().on('updated', () => {
+      if (!state.autoTier || state.loading || state.zones) return;
+      const next = tierForRatio(sigma.getCamera().ratio, state.zoom);
+      if (next !== state.zoom) { state.zoom = next; load({ keepCamera: true }); }
+    });
+  }
 
+  // Zones re-project from graph space on every frame sigma paints, so they track
+  // the camera exactly rather than lagging a pan by a frame.
+  const layer = ensureZoneLayer($('topo-canvas'));
+  const attackLayer = ensureAttackLayer($('topo-canvas'));
+  const zones = zonesFor(data);
+  const mini = $('topo-minimap');
+  mini?.classList.toggle('hidden', zones.length === 0);
+
+  // applyOverlay builds the attack model from the payload, so it runs before the
+  // first projection; both layers then re-project on every frame sigma paints.
+  attackModel = null;
   applyOverlay(data);
   applyDrift(data);
+
+  const redraw = () => {
+    if (zones.length) {
+      drawZones(layer, sigma, graph, zones);
+      renderMiniMap(mini, sigma, graph, zones);
+    }
+    if (attackModel) drawAttack(attackLayer, sigma, graph, attackModel);
+  };
+  if (!zones.length) clearZones(layer);
+  if (!attackModel) clearAttack(attackLayer);
+  redraw();
+  sigma.on('afterRender', redraw);
 
   const count = data.nodes.length;
   const base = `<b>${TIERS[data.zoom]}</b> · ${count} node${count === 1 ? '' : 's'} · ${data.edges.length} link${data.edges.length === 1 ? '' : 's'}`;
@@ -595,7 +1095,80 @@ function paint(data) {
   else if (drift) suffix = ` · <b>${esc(drift.description)}</b>`;
   else if (data.neighbors) suffix = ' · <b>+ outside dependencies</b>';
   setStatus(base + suffix);
+  renderChips(data);
   renderLegend();
+}
+
+/* -------------------------------------------------------------- node drag */
+
+// Which node the pointer is holding, and whether it has actually travelled. The
+// distance matters: a click is a press and release in the same place, so without a
+// threshold every inspect would also be a one-pixel drag, and a deliberate drag
+// would still open the inspector on release.
+let dragNode = null;
+let dragMoved = false;
+let dragFrom = { x: 0, y: 0 }; // viewport coords of the press, to measure travel
+const DRAG_SLOP = 4; // viewport px before a press counts as a drag
+
+/** True if the last press turned into a drag — clickNode checks this and defers. */
+function draggedJustNow() {
+  return dragMoved;
+}
+
+/**
+ * Let a node be pulled out of the pile.
+ *
+ * A force layout puts a hub where its edges balance, which on a busy segment is the
+ * middle of everything it talks to. Dragging is how you get a node clear of its
+ * neighbours to read it and see which edges are actually its own — the thing
+ * hover-to-trace helps with but cannot do for two overlapping nodes.
+ *
+ * Positions are view-local on purpose: they are not written back to the snapshot.
+ * Stored coordinates are what make drift comparisons stable across snapshots
+ * (`alignTo` fits a transform on common nodes), and letting a mouse edit them would
+ * make "this device moved" mean two different things. Refresh restores the layout.
+ */
+function wireNodeDrag(container) {
+  const camera = sigma.getCamera();
+  const mouse = sigma.getMouseCaptor();
+
+  sigma.on('downNode', ({ node, event }) => {
+    dragNode = node;
+    dragMoved = false;
+    dragFrom = { x: event?.x ?? 0, y: event?.y ?? 0 };
+    // Highlighting makes the grabbed node obvious once it is moving through a crowd.
+    graph.setNodeAttribute(node, 'highlighted', true);
+  });
+
+  mouse.on('mousemovebody', (e) => {
+    if (!dragNode) return;
+    if (!dragMoved
+      && (Math.abs(e.x - dragFrom.x) > DRAG_SLOP || Math.abs(e.y - dragFrom.y) > DRAG_SLOP)) {
+      dragMoved = true;
+    }
+    const pos = sigma.viewportToGraph(e);
+    graph.setNodeAttribute(dragNode, 'x', pos.x);
+    graph.setNodeAttribute(dragNode, 'y', pos.y);
+    // Stop sigma panning the camera underneath the node being dragged.
+    e.preventSigmaDefault();
+    e.original.preventDefault();
+    e.original.stopPropagation();
+  });
+
+  const release = () => {
+    if (dragNode) graph.removeNodeAttribute(dragNode, 'highlighted');
+    dragNode = null;
+    // Cleared on the next frame, so the clickNode that follows this mouseup can
+    // still see that a drag happened and decline to open the inspector.
+    if (dragMoved) setTimeout(() => { dragMoved = false; }, 0);
+  };
+  mouse.on('mouseup', release);
+  mouse.on('mouseleave', release);
+
+  // The cursor is the only affordance that says a node can be moved at all.
+  sigma.on('enterNode', () => container?.classList.add('node-grab'));
+  sigma.on('leaveNode', () => container?.classList.remove('node-grab'));
+  camera.on('updated', () => { if (dragNode) hideHoverCard(); });
 }
 
 /** One legend row: a colour swatch (optionally ringed/muted) + its meaning. */
@@ -671,6 +1244,25 @@ function renderLegend() {
  * halo whose colour carries severity. Devices roll up to whatever the current tier
  * draws, so a change stays visible when zoomed out.
  */
+/**
+ * The drawn node that stands for a device, most-resolved first.
+ *
+ * Overlay and drift both key their findings by device, and the map may be drawing
+ * that device itself, its segment, its role cluster, or its locality — and in the
+ * zone view, different answers for different devices in the same payload. Indexing a
+ * fixed field by the payload's zoom cannot express that: a change inside an opened
+ * zone would lift to a segment node that is no longer drawn, and vanish.
+ */
+const LIFT_ORDER = ['key', 'role_key', 'segment', 'locality'];
+function liftToDrawn(tiers) {
+  if (!tiers || !graph) return '';
+  for (const field of LIFT_ORDER) {
+    const key = tiers[field];
+    if (key && graph.hasNode(key)) return key;
+  }
+  return '';
+}
+
 function applyDrift(data) {
   if (!drift || !graph || overlay) return;
   const HALO = { high: '#ef4444', medium: '#f59e0b', info: '#0ea5e9' };
@@ -683,13 +1275,12 @@ function applyDrift(data) {
     const current = worst.get(key);
     if (!current || RANK[severity] < RANK[current]) worst.set(key, severity);
   };
-  const FIELD = ['locality', 'segment', 'role_key', 'key'];
   for (const change of drift.changes) {
     const tiers = drift.tierMap?.[change.key];
-    if (tiers) { noteKey(tiers[FIELD[data.zoom]], change.severity); continue; }
+    if (tiers) { noteKey(liftToDrawn(tiers), change.severity); continue; }
     for (const endpoint of change.endpoints || change.devices || []) {
       const t = drift.tierMap?.[endpoint];
-      if (t) noteKey(t[FIELD[data.zoom]], change.severity);
+      if (t) noteKey(liftToDrawn(t), change.severity);
     }
   }
 
@@ -697,72 +1288,185 @@ function applyDrift(data) {
     graph.setNodeAttribute(key, 'color', HALO[severity] || HALO.info);
     graph.setNodeAttribute(key, 'size', (graph.getNodeAttribute(key, 'size') || 5) * 1.4);
   }
-  renderDriftPanel(worst.size);
+  driftPainted = worst.size > 0 || drift.changes.length === 0;
 }
 
-/** The "what changed" list, grouped severity-first. */
-function renderDriftPanel(markedNodes) {
-  if (!drift) return;
-  if (!drift.changes.length) {
-    inspector(`<div class="topo-ins-title">What changed</div>`
-      + `<div class="topo-ins-foot panel-sub">${esc(drift.description || 'No change since the previous snapshot.')}</div>`);
-    return;
+// ---- View switch ------------------------------------------------------------
+// Topology, matrix, changes. They share the snapshot, the group and the external
+// filter; everything else about them is different, so each owns its own surface
+// rather than trying to be the same canvas in three moods.
+
+let view = 'topology';
+let matrixState = null; // {model, selected} for the traffic matrix
+
+function setView(next) {
+  if (next === view) return;
+  view = next;
+  for (const b of document.querySelectorAll('.topo-view')) {
+    const on = b.dataset.view === next;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', String(on));
   }
-  const rows = drift.changes.map((c) => (
-    `<li class="topo-ev">
-       <span class="topo-ev-dot" style="--stage:${c.severity === 'high' ? '#ef4444' : c.severity === 'medium' ? '#f59e0b' : '#0ea5e9'}"></span>
-       <div>
-         <div class="topo-ev-head">${esc(c.label)}</div>
-         <div class="topo-ev-meta">${esc(c.detail)}</div>
-       </div>
-     </li>`
-  )).join('');
-  const from = drift.snapshots?.find((s) => s.id === drift.from);
-  const to = drift.snapshots?.find((s) => s.id === drift.to);
-  const stamp = (s) => esc(String(s?.collected_at || s?.id || '').replace('T', ' ').replace('Z', ''));
-  inspector([
-    `<div class="topo-ins-title">What changed</div>`,
-    `<div class="topo-ins-sub">${stamp(from)} → ${stamp(to)}</div>`,
-    `<div class="topo-ins-tags">`,
-    drift.summary.high ? `<span class="topo-tag crit">${drift.summary.high} high</span>` : '',
-    drift.summary.medium ? `<span class="topo-tag">${drift.summary.medium} medium</span>` : '',
-    drift.summary.info ? `<span class="topo-tag">${drift.summary.info} info</span>` : '',
-    `</div>`,
-    `<div class="topo-ins-h">Changes</div><ul class="topo-ins-list topo-events">${rows}</ul>`,
-    `<div class="topo-ins-foot panel-sub">${markedNodes} node${markedNodes === 1 ? '' : 's'} highlighted at this zoom.`
-      + (drift.truncated ? ' List truncated.' : '')
-      + `</div>`,
-  ].join(''));
+  $('topo-viewport')?.classList.toggle('hidden', next !== 'topology' || !lastData);
+  $('topo-matrix')?.classList.toggle('hidden', next !== 'matrix');
+  $('topo-changes')?.classList.toggle('hidden', next !== 'changes');
+  $('topo-empty')?.classList.toggle('hidden', next !== 'topology' || Boolean(lastData));
+  // Chrome that belongs to the map only.
+  for (const id of ['topo-neighbors', 'topo-chips']) $(id)?.classList.toggle('hidden', next !== 'topology');
+  $('topo-matrix-controls')?.classList.toggle('hidden', next !== 'matrix');
+  if (next === 'matrix') loadMatrix();
+  if (next === 'changes') loadChanges();
+  if (next === 'topology') {
+    // Looking at what changed and then looking at the map should not lose the
+    // answer — but the status may only claim a comparison the graph is drawing.
+    if (drift && !driftPainted) load({ keepCamera: true });
+    else { setStatus(statusForData() + (drift ? ` · <b>${esc(drift.description || '')}</b>` : '')); sigma?.refresh(); }
+  }
 }
 
-/** Toggle the snapshot comparison on/off. */
-async function toggleDrift() {
-  const btn = $('topo-drift');
-  if (drift) {
-    drift = null;
-    btn?.setAttribute('aria-pressed', 'false');
-    btn?.classList.remove('active');
-    inspector('<div class="topo-inspector-empty panel-sub">Zoom in to devices, then click one to inspect it.</div>');
-    if (lastData) { const cam = sigma && { ...sigma.getCamera().getState() }; paint(lastData); if (cam) sigma.getCamera().setState(cam); }
-    return;
+async function loadMatrix() {
+  const host = $('topo-matrix');
+  if (!host) return;
+  host.innerHTML = '<div class="topo-matrix-empty panel-sub">Loading traffic matrix…</div>';
+  setStatus('Traffic matrix');
+  try {
+    const params = new URLSearchParams({ groupBy: matrixGroupBy });
+    if (state.group) params.set('group', state.group);
+    if (state.snapshotId) params.set('snapshot', state.snapshotId);
+    if (state.showExternal) params.set('external', '1');
+    const res = await fetch(`/api/topology/matrix?${params}`);
+    const data = await res.json();
+    if (!res.ok) { host.innerHTML = `<div class="topo-matrix-empty panel-sub">${esc(data.error || 'Could not load the matrix.')}</div>`; return; }
+    // The overlaid incident marks the cells its traffic crosses — the matrix is
+    // where "which segments did the attack touch" is readable at estate scale.
+    const incident = overlay ? incidentCells(overlay, matrixGroupBy) : null;
+    matrixState = { model: matrixModel(data), selected: '', incident };
+    renderMatrix(host, matrixState.model, { incident });
+    setStatus(`<b>Traffic matrix</b> · ${matrixState.model.axes.length} groups · ${matrixState.model.byPair.size} pairs`
+      + (overlay ? ` · <b>${esc(overlay.title)}</b> overlay${incident?.size ? ` · ${incident.size} incident cell${incident.size === 1 ? '' : 's'}` : ' · no incident traffic between these groups'}` : ''));
+    wireMatrixCells();
+    inspector('<div class="topo-inspector-empty panel-sub">Click a cell to see the conversations behind it.</div>');
+  } catch {
+    host.innerHTML = '<div class="topo-matrix-empty panel-sub">Could not load the matrix.</div>';
   }
-  inspector('<div class="topo-inspector-empty panel-sub">Comparing snapshots…</div>');
+}
+
+function wireMatrixCells() {
+  for (const cell of $('topo-matrix')?.querySelectorAll('.topo-cell:not([disabled])') || []) {
+    cell.addEventListener('click', () => selectCell(cell.dataset.src, cell.dataset.dst));
+  }
+}
+
+async function selectCell(src, dst) {
+  if (!matrixState) return;
+  const id = pairId(src, dst);
+  matrixState.selected = id;
+  renderMatrix($('topo-matrix'), matrixState.model, { selected: id, incident: matrixState.incident });
+  wireMatrixCells();
+
+  const axis = (key) => matrixState.model.axes.find((a) => a.key === key);
+  const nameOf = (key) => prettySegment(axis(key)?.name || key);
+  const hit = matrixState.model.byPair.get(id) || { bytes: 0, links: 0 };
+  // Where the overlaid incident crosses this cell: its steps for the callout, and
+  // the device pairs it names so their conversations are flagged in the list.
+  const cellEvents = matrixState.incident?.get(id) || [];
+  const actor = (key) => overlay?.tierMap?.[key]?.name || key;
+  const detail = {
+    srcLabel: nameOf(src), dstLabel: nameOf(dst),
+    bytes: hit.bytes, links: hit.links, diagonal: src === dst,
+    steps: cellEvents.map((e) => ({ seq: e.seq, tactic: e.tactic, srcName: actor(e.src), dstName: actor(e.dst) })),
+    incidentPairs: cellEvents.length ? new Set(cellEvents.map((e) => pairId(e.src, e.dst))) : null,
+  };
+  renderPairs($('topo-inspector'), { ...detail, loading: true });
+  try {
+    const params = new URLSearchParams({ groupBy: matrixGroupBy, src, dst });
+    if (state.group) params.set('group', state.group);
+    if (state.snapshotId) params.set('snapshot', state.snapshotId);
+    const res = await fetch(`/api/topology/matrix/pairs?${params}`);
+    const data = await res.json();
+    if (matrixState.selected !== id) return; // the user moved on
+    renderPairs($('topo-inspector'), { ...detail, pairs: res.ok ? data.pairs || [] : [] });
+    $('topo-pairs-show')?.addEventListener('click', () => {
+      // Hand the cell's devices to the topology, which already knows how to scope
+      // itself to an explicit key set.
+      const keys = [...new Set((data.pairs || []).flatMap((pr) => [pr.src_key, pr.dst_key]))].filter(Boolean);
+      if (!keys.length) return;
+      state.keys = keys; state.zoom = 3; state.parent = ''; state.scope = '';
+      state.zones = false; state.autoTier = false;
+      state.crumbs = [{ zoom: 3, parent: '', scope: '', label: `${detail.srcLabel} → ${detail.dstLabel}`, keys }];
+      setView('topology');
+      load();
+    });
+  } catch {
+    renderPairs($('topo-inspector'), { ...detail, pairs: [] });
+  }
+}
+
+let changesShowInfo = false;
+let driftPainted = false; // whether the drawn graph already carries the drift halos
+
+/**
+ * Load and render the drift between the two most recent snapshots.
+ *
+ * `drift` stays set afterwards, so switching back to the topology still haloes the
+ * changed nodes and the status line still names the comparison. Looking at what
+ * changed and then looking at the map should not lose the answer.
+ */
+async function loadChanges() {
+  const host = $('topo-changes');
+  if (!host) return;
+  renderChanges(host, null);
+  setStatus('Comparing snapshots…');
   try {
     const params = new URLSearchParams();
     if (state.group) params.set('group', state.group);
     const res = await fetch(`/api/topology/drift?${params}`);
     const data = await res.json();
-    if (!res.ok) { inspector(`<div class="topo-inspector-empty panel-sub">${esc(data.error || 'Could not compare snapshots.')}</div>`); return; }
+    if (!res.ok) {
+      host.innerHTML = `<div class="topo-changes-empty panel-sub">${esc(data.error || 'Could not compare snapshots.')}</div>`;
+      return;
+    }
     drift = data;
-    btn?.setAttribute('aria-pressed', 'true');
-    btn?.classList.add('active');
-    // Selecting drift clears any incident overlay: they are two different questions.
-    if (overlay) { overlay = null; const s = $('topo-overlay-search'); if (s) s.value = ''; }
-    if (lastData) { const cam = sigma && { ...sigma.getCamera().getState() }; paint(lastData); if (cam) sigma.getCamera().setState(cam); }
-    else renderDriftPanel(0);
+    driftPainted = false;
+    paintChanges();
+    setStatus(`<b>Changes</b> · ${esc(drift.description || '')}`);
+    inspector('<div class="topo-inspector-empty panel-sub">Every change links to its place on the map.</div>');
   } catch {
-    inspector('<div class="topo-inspector-empty panel-sub">Could not compare snapshots.</div>');
+    host.innerHTML = '<div class="topo-changes-empty panel-sub">Could not compare snapshots.</div>';
   }
+}
+
+function paintChanges() {
+  const host = $('topo-changes');
+  if (!host || !drift) return;
+  renderChanges(host, drift, { showInfo: changesShowInfo });
+  $('topo-changes-info')?.addEventListener('click', () => {
+    changesShowInfo = !changesShowInfo;
+    paintChanges();
+  });
+  for (const btn of host.querySelectorAll('.topo-change-show')) {
+    btn.addEventListener('click', () => {
+      const change = drift.changes[Number(btn.dataset.index)];
+      showChangeOnMap(change);
+    });
+  }
+}
+
+/**
+ * Scope the topology to one change.
+ *
+ * A change names devices; the map may be drawing those devices, their segments, or
+ * neither. An explicit key set is the one scope that always resolves, and it is what
+ * the incident overlay already uses for the same reason.
+ */
+function showChangeOnMap(change) {
+  const keys = changeKeys(change).filter((k) => drift?.tierMap?.[k] || k);
+  if (!keys.length) return;
+  state.keys = keys; state.zoom = 3; state.parent = ''; state.scope = '';
+  state.zones = false; state.autoTier = false;
+  state.crumbs = [{ zoom: 3, parent: '', scope: '', label: change.label || 'Change', keys }];
+  setView('topology');
+  load();
 }
 
 /**
@@ -781,8 +1485,6 @@ function applyOverlay(data) {
   // a device isn't drawn, its locality is. The server ships each involved device's
   // tier coordinates for exactly this. External actors carry the same key at every
   // tier, so once injected they lift to themselves.
-  const FIELD = ['locality', 'segment', 'role_key', 'key'];
-
   // Inject external actor nodes (C2 / exfil) — they belong to no cluster and draw as
   // themselves at every zoom. Place each near the incident's internal footprint so the
   // path out of the estate reads clearly. Done before lifting, so they can be lifted to.
@@ -790,7 +1492,7 @@ function applyOverlay(data) {
   for (const ev of overlay.events) {
     for (const k of [ev.src, ev.dst]) {
       const t = overlay.tierMap?.[k];
-      if (t && !t.external) { const key = t[FIELD[data.zoom]]; if (key && graph.hasNode(key)) footprint.push(key); }
+      if (t && !t.external) { const key = liftToDrawn(t); if (key) footprint.push(key); }
     }
   }
   const center = centroidOfNodes(footprint);
@@ -807,17 +1509,20 @@ function applyOverlay(data) {
   const liftKey = (deviceKey) => {
     const tiers = overlay.tierMap?.[deviceKey];
     if (!tiers) return '';
-    const key = tiers[FIELD[data.zoom]] || '';
-    return key && graph.hasNode(key) ? key : '';
+    return liftToDrawn(tiers);
   };
 
   const involved = new Set();
   const steps = [];
+  const pairBySeq = new Map(); // event seq -> the path it is drawn on
   for (const ev of overlay.events) {
     const src = liftKey(ev.src);
     const dst = liftKey(ev.dst);
     for (const k of [src, dst]) if (k) involved.add(k);
-    if (src && dst && src !== dst) steps.push({ ...ev, from: src, to: dst });
+    if (src && dst && src !== dst) {
+      steps.push({ ...ev, from: src, to: dst });
+      pairBySeq.set(ev.seq, `${src} ${dst}`);
+    }
   }
 
   // Dim everything the incident didn't touch.
@@ -837,32 +1542,41 @@ function applyOverlay(data) {
   // each step separately would silently leave only the last one's label visible.
   const byPair = new Map();
   for (const step of steps) {
-    const id = `${step.from} ${step.to}`;
+    const id = `${step.from}\u0000${step.to}`;
     if (!byPair.has(id)) byPair.set(id, { from: step.from, to: step.to, steps: [] });
     byPair.get(id).steps.push(step);
   }
 
+  // Attack paths are drawn on the vector layer, not as sigma edges. A sigma edge is a
+  // straight line with a flat colour and a text label: it cannot bow, cannot carry a
+  // direction arrow, cannot animate, and its label collides with the node labels. The
+  // steps are the story, so they get real geometry.
+  const paths = [];
   for (const pair of byPair.values()) {
     // Colour by the furthest-along stage on this link: how bad it eventually got.
     const peak = pair.steps.reduce((a, b) => ((b.stage ?? -1) > (a.stage ?? -1) ? b : a));
-    const color = STAGE_COLOR[peak.stage ?? 0] || '#ef4444';
-    const numbers = pair.steps.map((s) => s.seq + 1).join(',');
-    const label = pair.steps.length === 1
-      ? `${numbers}. ${peak.tactic || 'step'}`
-      : `${numbers} · ${peak.tactic || 'steps'}`;
-    if (graph.hasEdge(pair.from, pair.to)) {
-      graph.setEdgeAttribute(pair.from, pair.to, 'color', color);
-      graph.setEdgeAttribute(pair.from, pair.to, 'size', 4);
-      graph.setEdgeAttribute(pair.from, pair.to, 'label', label);
-    } else {
-      // This conversation isn't in the significant-traffic topology (net_detail
-      // returns top-N peers), but the incident says it happened — draw it rather
-      // than dropping a real attack step off the map.
-      graph.addEdge(pair.from, pair.to, { color, size: 4, label, forced: true });
-    }
+    const numbers = pair.steps.map((st) => st.seq + 1).sort((a, b) => a - b);
+    paths.push({
+      id: `${pair.from} ${pair.to}`,
+      from: pair.from,
+      to: pair.to,
+      color: STAGE_COLOR[peak.stage ?? 0] || '#ef4444',
+      badge: String(numbers[0]),
+      title: pair.steps.length === 1
+        ? `Step ${numbers[0]}: ${peak.tactic || 'step'}`
+        : `Steps ${numbers.join(', ')} · ${peak.tactic || 'steps'}`,
+    });
   }
-  sigma.setSetting('renderEdgeLabels', byPair.size > 0);
+
+  // Patient zero: the source of the first step. Nothing on the map said where an
+  // incident began, and it is the first thing an analyst looks for.
+  const first = overlay.events.find((e) => e.seq === 0) || overlay.events[0];
+  const patientZero = first ? liftKey(first.src) : '';
+  const externals = (overlay.externals || []).map((e) => e.key).filter((k) => graph.hasNode(k));
+  attackModel = { paths, patientZero, externals, pairBySeq };
+  sigma.setSetting('renderEdgeLabels', false);
   overlayStats = { steps: steps.length, paths: byPair.size, nodes: involved.size };
+  renderIncidentChrome();
   renderOverlayPanel(overlayStats.steps, overlayStats.paths, overlayStats.nodes);
 }
 
@@ -880,7 +1594,8 @@ function renderOverlayPanel(drawnSteps, drawnPaths, involvedNodes) {
   }).join('');
   const rows = overlay.events.map((e) => {
     const idx = overlay.tacticOrder.indexOf(e.tactic);
-    return `<li class="topo-ev">
+    const pair = attackModel?.pairBySeq?.get(e.seq) || '';
+    return `<li class="topo-ev${pair ? ' linked' : ''}"${pair ? ` data-pair="${esc(pair)}"` : ''}>
       <span class="topo-ev-dot" style="--stage:${STAGE_COLOR[idx] || '#94a3b8'}"></span>
       <div>
         <div class="topo-ev-head">${esc(e.event)}${e.inferred ? ' <span class="topo-inferred" title="The devices for this step were inferred from the write-up, not stated in the verdict">inferred</span>' : ''}</div>
@@ -903,6 +1618,14 @@ function renderOverlayPanel(drawnSteps, drawnPaths, involvedNodes) {
       + (overlay.unbound ? ` ${overlay.unbound} event${overlay.unbound === 1 ? '' : 's'} name no device in this snapshot and are listed but not drawn.` : '')
       + `</div>`,
   ].join(''));
+
+  // Hovering a step lights its path on the map, which is the whole reason the
+  // sequence and the geometry are the same object rather than two lists.
+  const attackLayer = $('topo-canvas')?.querySelector('svg.topo-attack-layer');
+  for (const row of document.querySelectorAll('.topo-ev[data-pair]')) {
+    row.addEventListener('mouseenter', () => emphasisePath(attackLayer, row.dataset.pair));
+    row.addEventListener('mouseleave', () => emphasisePath(attackLayer, ''));
+  }
 }
 
 export async function load({ keepCamera = false } = {}) {
@@ -913,6 +1636,10 @@ export async function load({ keepCamera = false } = {}) {
     const params = new URLSearchParams({ zoom: String(state.zoom) });
     if (state.group) params.set('group', state.group);
     if (state.snapshotId) params.set('snapshot', state.snapshotId);
+    // The zone view is a whole-estate read with holes punched in it, so it takes no
+    // parent/scope: `expanded` is the only thing that varies. An empty value is still
+    // sent, since it is what selects the mixed payload.
+    if (state.zones) params.set('expanded', state.expanded.join(','));
     if (state.parent) params.set('parent', state.parent);
     if (state.scope) params.set('scope', state.scope);
     if (state.showExternal) params.set('external', '1');
@@ -930,22 +1657,74 @@ export async function load({ keepCamera = false } = {}) {
       return;
     }
     $('topo-empty').classList.add('hidden');
-    $('topo-canvas').classList.remove('hidden');
+    $('topo-viewport').classList.remove('hidden');
     paint(data);
     if (cam) sigma.getCamera().setState(cam);
     renderCrumbs();
     updateNeighborBtn();
   } catch (err) {
     console.error('[topology] load failed', err);
+    // Sigma measures its container at construction and throws if it has no width —
+    // which happens when the panel is painted before layout has settled. Reporting
+    // that as a server problem sent the wrong person looking, and worse, showEmpty
+    // hides the viewport, so the container stayed unmeasurable and every retry threw
+    // the same way: one bad frame wedged the map until a full reload. Wait for the
+    // container to have a size, then draw.
+    if (/has no (width|height)/i.test(String(err?.message || ''))) {
+      showEmpty('Sizing the map…');
+      retryWhenSized();
+      return;
+    }
     showEmpty('Could not reach the topology service.');
   } finally {
     state.loading = false;
   }
 }
 
+// Guard against stacking observers if several loads fail in a row.
+let awaitingSize = false;
+
+/**
+ * Redraw once the canvas actually has a size.
+ *
+ * ResizeObserver fires as soon as layout gives the element a box, which is the
+ * event that was missing; the rAF fallback covers the case where the element is
+ * already sized by the time we get here and no resize is coming.
+ */
+function retryWhenSized() {
+  if (awaitingSize) return;
+  const host = $('topo-viewport');
+  const canvas = $('topo-canvas');
+  if (!host || !canvas) return;
+  awaitingSize = true;
+
+  const attempt = () => {
+    // Un-hide first: a hidden viewport can never report a width, which is the trap
+    // the old path fell into.
+    host.classList.remove('hidden');
+    if (!canvas.clientWidth || !canvas.clientHeight) return false;
+    awaitingSize = false;
+    observer?.disconnect();
+    clearTimeout(timer);
+    load({ keepCamera: true });
+    return true;
+  };
+
+  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => attempt()) : null;
+  observer?.observe(canvas);
+  requestAnimationFrame(() => attempt());
+  // If a size never arrives, say so rather than leaving "Sizing the map…" forever.
+  const timer = setTimeout(() => {
+    if (!awaitingSize) return;
+    awaitingSize = false;
+    observer?.disconnect();
+    showEmpty('The map could not be sized in this panel. Try expanding it, or Refresh.');
+  }, 5000);
+}
+
 function showEmpty(message) {
   if (sigma) { sigma.kill(); sigma = null; }
-  $('topo-canvas').classList.add('hidden');
+  $('topo-viewport').classList.add('hidden');
   $('topo-legend')?.classList.add('hidden');
   $('topo-legend-toggle')?.classList.add('hidden');
   const el = $('topo-empty');
@@ -987,7 +1766,6 @@ function renderIncidentList(filter = '') {
       `<li role="option" class="topo-combo-item" data-id="${esc(i.id)}">${esc(incidentLabel(i))}</li>`
     )));
   list.innerHTML = items.join('');
-  list.classList.remove('hidden');
   $('topo-overlay-search')?.setAttribute('aria-expanded', 'true');
   list.querySelectorAll('.topo-combo-item').forEach((li) => li.addEventListener('mousedown', (e) => {
     // mousedown (not click) + preventDefault, so selecting doesn't lose input focus to
@@ -995,15 +1773,179 @@ function renderIncidentList(filter = '') {
     e.preventDefault();
     const id = li.dataset.id;
     hideIncidentList();
+    $('topo-incident-pop')?.classList.add('hidden');
+    $('topo-incident-btn')?.setAttribute('aria-expanded', 'false');
     const input = $('topo-overlay-search');
-    if (input) input.value = id ? incidentLabel(incidentsCache.find((x) => x.id === id)) : '';
+    if (input) input.value = '';
     selectOverlay(id);
   }));
 }
 
 function hideIncidentList() {
-  $('topo-overlay-list')?.classList.add('hidden');
+  $('topo-incident-pop')?.classList.add('hidden');
   $('topo-overlay-search')?.setAttribute('aria-expanded', 'false');
+  $('topo-incident-btn')?.setAttribute('aria-expanded', 'false');
+}
+
+// ---- Find on map ------------------------------------------------------------
+// Without this you can only reach a device by guessing which segment holds it and
+// drilling. The index is the whole device tier for the current snapshot, fetched
+// once on first use — the same read the incident overlay already does server-side.
+
+let deviceIndex = null;  // [] of device-tier nodes, or null when not yet fetched
+let deviceIndexKey = ''; // group|snapshot|external — a change invalidates the cache
+
+function invalidateDeviceIndex() { deviceIndex = null; deviceIndexKey = ''; }
+
+async function ensureDeviceIndex() {
+  const key = `${state.group}|${state.snapshotId}|${state.showExternal ? 1 : 0}`;
+  if (deviceIndex && deviceIndexKey === key) return deviceIndex;
+  const params = new URLSearchParams({ zoom: '3', limit: '5000' });
+  if (state.group) params.set('group', state.group);
+  if (state.snapshotId) params.set('snapshot', state.snapshotId);
+  if (state.showExternal) params.set('external', '1');
+  try {
+    const res = await fetch(`/api/topology/map?${params}`);
+    const data = await res.json();
+    deviceIndex = res.ok && Array.isArray(data.nodes) ? data.nodes : [];
+  } catch { deviceIndex = []; }
+  deviceIndexKey = key;
+  return deviceIndex;
+}
+
+/** Devices matched on name or IP, then users on name. Prefix hits rank first. */
+function searchResults(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const rank = (s) => (s.toLowerCase().startsWith(q) ? 0 : 1);
+  const devices = [];
+  for (const n of deviceIndex || []) {
+    const name = String(n.name ?? n.key ?? '');
+    const ip = String(n.ip ?? '');
+    if (!name.toLowerCase().includes(q) && !ip.toLowerCase().includes(q)) continue;
+    devices.push({
+      kind: 'device',
+      id: n.key,
+      label: name || ip || n.key,
+      meta: [ip, n.role ? prettyRole(n.role) : '', prettySegment(n.segment)].filter(Boolean).join(' · '),
+      node: n,
+      rank: Math.min(rank(name), rank(ip)),
+    });
+  }
+  const users = (identitiesCache || [])
+    .filter((i) => String(i.name || '').toLowerCase().includes(q))
+    .map((i) => ({
+      kind: 'user',
+      id: i.name,
+      label: i.name,
+      meta: `User · ${i.devices?.length || 0} device${i.devices?.length === 1 ? '' : 's'}`,
+      rank: rank(String(i.name || '')),
+    }));
+  const by = (a, b) => a.rank - b.rank || a.label.localeCompare(b.label);
+  return [...devices.sort(by).slice(0, 40), ...users.sort(by).slice(0, 10)];
+}
+
+function hideSearchList() {
+  $('topo-search-list')?.classList.add('hidden');
+  $('topo-search')?.setAttribute('aria-expanded', 'false');
+}
+
+function renderSearchList(query) {
+  const list = $('topo-search-list');
+  if (!list) return;
+  const results = searchResults(query);
+  if (!query.trim()) { hideSearchList(); return; }
+  list.innerHTML = results.length
+    ? results.map((r) => (
+      `<li role="option" class="topo-combo-item" data-kind="${r.kind}" data-id="${esc(r.id)}">`
+      + `<span class="topo-find-name">${esc(r.label)}</span>`
+      + (r.meta ? `<span class="topo-find-meta">${esc(r.meta)}</span>` : '')
+      + `</li>`
+    )).join('')
+    : `<li class="topo-combo-item topo-find-empty">No device, IP or user matches that.</li>`;
+  list.classList.remove('hidden');
+  $('topo-search')?.setAttribute('aria-expanded', 'true');
+  list.querySelectorAll('.topo-combo-item[data-id]').forEach((li) => {
+    // mousedown + preventDefault so the choice is read before blur steals focus,
+    // matching the incident picker.
+    li.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const hit = results.find((r) => r.id === li.dataset.id && r.kind === li.dataset.kind);
+      if (hit) selectSearchResult(hit);
+    });
+  });
+}
+
+/** Centre the camera on a node that is already painted. */
+function flyTo(key) {
+  if (!sigma || !graph?.hasNode(key)) return;
+  const d = sigma.getNodeDisplayData(key);
+  if (!d) return;
+  const cam = sigma.getCamera();
+  // Jumping to a device is an explicit navigation, so suspend camera-driven LOD the
+  // way drilling does — otherwise the zoom-in below can cross a tier band and refetch
+  // a different tier, throwing away the very device that was asked for.
+  state.autoTier = false;
+  cam.animate({ x: d.x, y: d.y, ratio: Math.min(cam.ratio, 0.6) }, { duration: camDuration(320) });
+}
+
+async function selectSearchResult(hit) {
+  hideSearchList();
+  const input = $('topo-search');
+  if (input) input.value = hit.kind === 'user' ? hit.label : (hit.node?.name || hit.label);
+  if (hit.kind === 'user') { await showUser(hit.id); return; }
+
+  if (graph?.hasNode(hit.id)) { flyTo(hit.id); showDevice(hit.id); return; }
+
+  // Off-screen: bring its segment into view first, then land on the device. Falling
+  // back to a keys= view keeps search working for a device with no segment.
+  const segment = hit.node?.segment || '';
+  if (segment) {
+    state.crumbs = [{ zoom: 3, parent: segment, scope: 'segment', label: prettySegment(segment) }];
+    state.zoom = 3; state.parent = segment; state.scope = 'segment'; state.keys = null;
+    state.zones = false;
+  } else {
+    state.crumbs = [{ zoom: 3, parent: '', scope: '', label: hit.label, keys: [hit.id] }];
+    state.zoom = 3; state.parent = ''; state.scope = ''; state.keys = [hit.id];
+    state.zones = false;
+  }
+  state.autoTier = false;
+  updateNeighborBtn();
+  await load();
+  if (graph?.hasNode(hit.id)) { flyTo(hit.id); showDevice(hit.id); }
+}
+
+
+/**
+ * Reflect the overlay in the chrome: the button says whether one is drawn, and the
+ * kill-chain strip carries the incident's shape without needing the inspector open.
+ */
+function renderIncidentChrome() {
+  const label = $('topo-incident-label');
+  const btn = $('topo-incident-btn');
+  const clear = $('topo-incident-clear');
+  const strip = $('topo-killchain');
+  const stages = $('topo-killchain-stages');
+  if (!label || !btn) return;
+
+  const active = Boolean(overlay);
+  btn.classList.toggle('active', active);
+  clear?.classList.toggle('hidden', !active);
+  label.textContent = active ? overlay.title : 'Overlay an incident';
+  btn.title = active ? `Incident overlay: ${overlay.title}` : 'Draw an incident over the map';
+
+  if (!strip || !stages) return;
+  strip.classList.toggle('hidden', !active || !overlay.stages?.length);
+  if (!active || !overlay.stages?.length) { stages.replaceChildren(); return; }
+  // Numbered chips joined by arrows: the order is the story.
+  stages.innerHTML = overlay.stages.map((stage, i) => {
+    const idx = overlay.tacticOrder.indexOf(stage.tactic);
+    const color = STAGE_COLOR[idx] || '#ef4444';
+    return (i ? '<span class="topo-killchain-arrow" aria-hidden="true">&rarr;</span>' : '')
+      + `<span class="topo-killchain-stage" style="--stage:${color}">`
+      + `<span class="topo-killchain-num">${i + 1}</span>${esc(stage.tactic)}`
+      + `<b>${Number(stage.count) || 0}</b></span>`;
+  }).join('');
 }
 
 /** Select an incident to draw, or '' to return to the plain map. */
@@ -1015,9 +1957,12 @@ async function selectOverlay(sessionId) {
     $('topo-external')?.setAttribute('aria-pressed', 'false');
     $('topo-external')?.classList.remove('active');
     // Returning to the plain map leaves any incident framing behind.
-    state.keys = null; state.crumbs = []; state.zoom = 0; state.parent = ''; state.scope = ''; state.autoTier = true;
+    state.keys = null; state.crumbs = []; state.zoom = CAMERA_LOD ? 0 : 1; state.parent = ''; state.scope = ''; state.autoTier = true;
+    state.zones = !CAMERA_LOD; state.expanded = [];
+    renderIncidentChrome();
     load();
-    inspector('<div class="topo-inspector-empty panel-sub">Zoom in to devices, then click one to inspect it.</div>');
+    inspector('<div class="topo-inspector-empty panel-sub">Click a zone to open it, or a device to inspect it.</div>');
+    if (view === 'matrix') loadMatrix(); // drop the incident cells too
     return;
   }
   inspector('<div class="topo-inspector-empty panel-sub">Loading incident…</div>');
@@ -1029,7 +1974,7 @@ async function selectOverlay(sessionId) {
     overlay = { ...data, tacticOrder: TACTIC_ORDER };
     // An incident and a snapshot comparison answer different questions; showing both
     // at once would mean two competing colour languages on the same nodes.
-    if (drift) { drift = null; $('topo-drift')?.setAttribute('aria-pressed', 'false'); $('topo-drift')?.classList.remove('active'); }
+    if (drift) drift = null; // an incident overlay and a drift comparison are different reads
     // Start HIGH-LEVEL and zoomable — like the map it's drawn on. The whole estate is
     // shown at the segment tier with the incident's clusters highlighted and everything
     // else dimmed; camera-driven LOD stays on, so zooming in redraws the path at each
@@ -1038,12 +1983,110 @@ async function selectOverlay(sessionId) {
     // External-locality device, so make sure those are shown while an overlay is active.
     state.keys = null; state.parent = ''; state.scope = ''; state.crumbs = [];
     state.zoom = 1; state.autoTier = true;
+    state.zones = false; // the overlay owns the framing until it is cleared
     state.showExternal = true;
     $('topo-external')?.setAttribute('aria-pressed', 'true');
     $('topo-external')?.classList.add('active');
     await load();
+    // The matrix reads the same overlay: the cells the incident's traffic crosses
+    // light up, so "which segments did the attack touch" survives estate scale.
+    if (view === 'matrix') loadMatrix();
   } catch {
     inspector('<div class="topo-inspector-empty panel-sub">Could not load that incident.</div>');
+  }
+}
+
+/* ----------------------------------------------------------- naming zones */
+
+/**
+ * Name the segments.
+ *
+ * ExtraHop can only tell us what a segment is on the wire — `VLAN 20`,
+ * `10.42.0.0/24` — because Network Localities live in the Trigger API, which this
+ * app cannot call (DESIGN-network-topology.md). What a segment *means* is operator
+ * knowledge, so this asks for it: every segment in the snapshot, listed once, with
+ * its telemetry label kept visible beside the name so the mapping stays auditable.
+ *
+ * Names are durable and snapshot-independent, so they survive re-mapping — that is
+ * the whole point of naming a thing rather than annotating one observation of it.
+ */
+async function openZoneNames() {
+  inspector('<div class="topo-inspector-empty panel-sub">Loading segments…</div>');
+  try {
+    const params = new URLSearchParams({ zoom: '1' });
+    if (state.group) params.set('group', state.group);
+    if (state.snapshotId) params.set('snapshot', state.snapshotId);
+    if (state.showExternal) params.set('external', '1');
+    const res = await fetch(`/api/topology/map?${params}`);
+    const data = await res.json();
+    if (!res.ok) { inspector(`<div class="topo-inspector-empty panel-sub">${esc(data.error || 'Could not list segments.')}</div>`); return; }
+    if (data.segment_names) segmentNames = data.segment_names;
+    const segments = [...(data.nodes || [])].sort((a, b) => (Number(b.device_count) || 0) - (Number(a.device_count) || 0));
+    if (!segments.length) { inspector('<div class="topo-inspector-empty panel-sub">No segments in this snapshot.</div>'); return; }
+    renderZoneNames(segments);
+  } catch {
+    inspector('<div class="topo-inspector-empty panel-sub">Could not list segments.</div>');
+  }
+}
+
+function renderZoneNames(segments) {
+  const rows = segments.map((s) => {
+    const telemetry = telemetrySegment(s.key);
+    const current = segmentNames[s.key] || '';
+    const count = Number(s.device_count) || 0;
+    return `<li>
+      <label class="topo-name-row">
+        <span class="topo-name-key mono">${esc(telemetry)}</span>
+        <span class="topo-name-count panel-sub">${count} device${count === 1 ? '' : 's'}</span>
+        <input class="topo-select topo-name-input" type="text" maxlength="60" autocomplete="off"
+               data-key="${esc(s.key)}" value="${esc(current)}" placeholder="Name this zone…">
+      </label>
+    </li>`;
+  }).join('');
+  inspector([
+    `<div class="topo-ins-h">Name zones</div>`,
+    `<div class="topo-ins-sub panel-sub">Telemetry names a segment by its VLAN or subnet. Give it the name your team uses — it applies everywhere on the map and survives re-mapping.</div>`,
+    `<ul class="topo-ins-list topo-names">${rows}</ul>`,
+    `<div id="topo-name-status" class="topo-ins-foot panel-sub">Press Enter, or click away, to save. Clear a name to go back to the telemetry label.</div>`,
+  ].join(''));
+
+  for (const input of $('topo-inspector')?.querySelectorAll('.topo-name-input') || []) {
+    const commit = () => saveZoneName(input);
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      // Escape abandons the edit rather than saving a half-typed name.
+      if (e.key === 'Escape') { input.value = segmentNames[input.dataset.key] || ''; input.blur(); }
+    });
+  }
+}
+
+/** Persist one name, then relabel the drawn map without refetching the tier. */
+async function saveZoneName(input) {
+  const key = input.dataset.key;
+  const name = input.value.trim();
+  if (!key || name === (segmentNames[key] || '')) return; // nothing changed
+  const status = $('topo-name-status');
+  try {
+    const res = await fetch('/api/topology/segment-name', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ key, name, group: state.group }),
+    });
+    const data = await res.json();
+    if (!res.ok) { if (status) status.textContent = data.error || 'Could not save that name.'; return; }
+    segmentNames = data.names || segmentNames;
+    if (status) {
+      status.textContent = name
+        ? `Named ${telemetrySegment(key)} → ${name}.`
+        : `${telemetrySegment(key)} is back to its telemetry label.`;
+    }
+    // The map is already drawn from a payload whose labels are now stale, so redraw
+    // it — keeping the camera, because renaming a zone is not a navigation.
+    if (view === 'topology') load({ keepCamera: true });
+    else if (view === 'matrix') loadMatrix();
+  } catch {
+    if (status) status.textContent = 'Could not save that name.';
   }
 }
 
@@ -1114,10 +2157,11 @@ async function showUser(name) {
   if (!identity) return;
   const keys = identity.devices.map((d) => d.key).filter(Boolean);
   overlay = null; drift = null;
-  const pick = $('topo-overlay-pick'); if (pick) pick.value = '';
+  const os = $('topo-overlay-search'); if (os) os.value = '';
   if (keys.length) {
     state.crumbs = [{ zoom: 3, parent: '', scope: '', label: `User: ${name}`, keys }];
     state.zoom = 3; state.parent = ''; state.scope = ''; state.keys = keys; state.autoTier = false;
+    state.zones = false;
     await load();
   }
   const devRows = identity.devices.map((d) => (
@@ -1136,32 +2180,95 @@ async function showUser(name) {
   $('topo-inspector')?.querySelectorAll('.topo-dev-link').forEach((b) => b.addEventListener('click', () => showDevice(b.dataset.key)));
 }
 
+/** `Aug 3, 22:52 · 114 devices`, falling back to the raw stamp if it won't parse. */
+function snapshotLabel(s) {
+  const raw = s.collected_at || '';
+  const d = raw ? new Date(raw) : null;
+  const when = d && !Number.isNaN(d.getTime())
+    ? d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : String(raw || s.id).replace('T', ' ').replace('Z', '');
+  return `${when} · ${Number(s.device_count) || 0} devices`;
+}
+
+/**
+ * Snapshots as a timeline rather than a <select>: retention keeps a dozen at most
+ * (EH_TOPOLOGY_KEEP), so they all fit as squares and the history is legible at a
+ * glance. Oldest on the left so "now" is where the eye finishes.
+ *
+ * It replaces a native control, so it owes native behaviour: a radiogroup with
+ * roving tabindex, arrow-key movement, and the full stamp on every square for
+ * anyone who cannot see the ramp.
+ */
+function renderSnapshotTimeline() {
+  const wrap = $('topo-snaps');
+  const label = $('topo-snap-label');
+  if (!wrap || !label) return;
+  if (!snapshots.length) {
+    wrap.innerHTML = '';
+    label.textContent = 'No snapshots yet';
+    return;
+  }
+  const ordered = [...snapshots].reverse(); // served newest-first
+  wrap.innerHTML = ordered.map((s, i) => {
+    const active = s.id === state.snapshotId;
+    const age = ordered.length - 1 - i; // 0 = newest
+    const tone = age === 0 ? 3 : age === 1 ? 2 : 1;
+    return `<button type="button" role="radio" class="topo-snap${active ? ' active' : ''}"`
+      + ` data-tone="${tone}" data-id="${esc(s.id)}" aria-checked="${active}"`
+      + ` tabindex="${active ? '0' : '-1'}" title="${esc(snapshotLabel(s))}"`
+      + ` aria-label="${esc(snapshotLabel(s))}"></button>`;
+  }).join('');
+  const current = ordered.find((s) => s.id === state.snapshotId) || ordered[ordered.length - 1];
+  label.textContent = snapshotLabel(current);
+}
+
+/** Switch snapshots: a different point in time is a different map, so reset the view. */
+function selectSnapshot(id, { focus = false } = {}) {
+  if (!id || id === state.snapshotId) return;
+  state.snapshotId = id;
+  state.crumbs = []; state.parent = ''; state.scope = ''; state.zoom = CAMERA_LOD ? 0 : 1;
+  state.keys = null; state.autoTier = true;
+  state.zones = !CAMERA_LOD; state.expanded = [];
+  invalidateDeviceIndex();
+  renderSnapshotTimeline();
+  if (focus) $('topo-snaps')?.querySelector('.topo-snap.active')?.focus();
+  loadIdentities();
+  load();
+}
+
 async function loadSnapshots() {
   try {
     const res = await fetch('/api/topology/snapshots');
     if (!res.ok) return;
-    const { group, snapshots } = await res.json();
-    state.group = group || '';
-    const sel = $('topo-snapshot');
-    if (!sel) return;
-    sel.innerHTML = (snapshots || []).map((s) => (
-      `<option value="${esc(s.id)}">${esc((s.collected_at || s.id).replace('T', ' ').replace('Z', ''))} · ${Number(s.device_count) || 0} devices</option>`
-    )).join('');
-    sel.disabled = !snapshots?.length;
-    if (snapshots?.length) state.snapshotId = snapshots[0].id;
+    const data = await res.json();
+    state.group = data.group || '';
+    snapshots = Array.isArray(data.snapshots) ? data.snapshots : [];
+    if (snapshots.length) state.snapshotId = snapshots[0].id;
+    renderSnapshotTimeline();
   } catch { /* the empty state already explains it */ }
 }
 
 function open() {
   $('topology-overlay').classList.remove('hidden');
   setRpTab('map');
-  state = { ...state, zoom: 0, parent: '', scope: '', crumbs: [], keys: null, showExternal: false, showNeighbors: false, autoTier: true };
+  applySurface();
+  // The map opens on the zone view: every segment as a labelled container, none of
+  // them opened. Under ?lod=camera it opens on the old locality tier instead.
+  state = {
+    ...state,
+    zoom: CAMERA_LOD ? 0 : 1,
+    parent: '', scope: '', crumbs: [], keys: null,
+    showExternal: false, showNeighbors: false, autoTier: true,
+    zones: !CAMERA_LOD, expanded: [],
+  };
   overlay = null; // the map always opens plain; an incident is something you choose
   drift = null;
   legendVisible = true;
   const os = $('topo-overlay-search'); if (os) os.value = '';
-  $('topo-drift')?.setAttribute('aria-pressed', 'false');
-  $('topo-drift')?.classList.remove('active');
+  renderIncidentChrome();
+  setView('topology');
+  drift = null;
+  changesShowInfo = false;
   for (const id of ['topo-external', 'topo-neighbors']) {
     $(id)?.setAttribute('aria-pressed', 'false');
     $(id)?.classList.remove('active');
@@ -1171,12 +2278,30 @@ function open() {
 
 function close({ activate = 'files' } = {}) {
   $('topology-overlay').classList.add('hidden');
+  document.body.classList.remove('map-docked');
+  hideHoverCard(); // fixed-positioned: it would outlive the overlay otherwise
   if (sigma) { sigma.kill(); sigma = null; }
-  setRpTab(activate);
+  if (activate) setRpTab(activate);
 }
 
-function setRpTab(which) {
-  document.querySelectorAll('.rp-tab').forEach((b) => b.classList.toggle('active', b.dataset.rp === which));
+/**
+ * Dock or expand, following the shared right-panel preference.
+ *
+ * Docking narrows the canvas without a window resize, so sigma has to be told: its
+ * own resize handling is bound to the window, and it would otherwise keep painting
+ * at the old width.
+ */
+function applySurface() {
+  const overlay = $('topology-overlay');
+  if (!overlay || overlay.classList.contains('hidden')) return;
+  const docked = !isExpanded(MAP_DEFAULT_SURFACE);
+  overlay.classList.toggle('docked', docked);
+  document.body.classList.toggle('map-docked', docked);
+  const dock = $('topo-dock');
+  const label = rpSurfaceLabel(MAP_DEFAULT_SURFACE);
+  if (dock) { dock.textContent = label; dock.title = label; }
+  // Let the layout settle before measuring.
+  requestAnimationFrame(() => sigma?.refresh());
 }
 
 export function isTopologyOpen() { return !$('topology-overlay')?.classList.contains('hidden'); }
@@ -1184,24 +2309,52 @@ export function closeTopology() { close(); }
 
 export function initTopology() {
   if (!$('topology-overlay')) return;
-  // Each right-panel tab owns its own listener; passing the chosen tab through keeps
-  // the handlers order-independent (memory.js does the same).
-  document.querySelectorAll('.rp-tab').forEach((b) => b.addEventListener('click', () => {
-    if (b.dataset.rp === 'map') open(); else close({ activate: b.dataset.rp });
-  }));
+  // The strip is wired in one place now; this panel just says what it is.
+  registerRpPanel('map', { open, close: () => close({ activate: null }) });
+  $('topo-dock')?.addEventListener('click', () => toggleRpSurface(MAP_DEFAULT_SURFACE));
+  onRpSurfaceChange(applySurface);
   $('topo-close')?.addEventListener('click', () => close());
-  $('topo-snapshot')?.addEventListener('change', (e) => {
-    state.snapshotId = e.target.value;
-    state.crumbs = []; state.parent = ''; state.scope = ''; state.zoom = 0; state.keys = null; state.autoTier = true;
-    loadIdentities();
-    load();
+  $('topo-snaps')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.topo-snap');
+    if (btn) selectSnapshot(btn.dataset.id);
+  });
+  $('topo-snaps')?.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const btns = [...($('topo-snaps')?.querySelectorAll('.topo-snap') || [])];
+    const i = btns.findIndex((b) => b.getAttribute('aria-checked') === 'true');
+    const next = btns[e.key === 'ArrowLeft' ? Math.max(0, i - 1) : Math.min(btns.length - 1, i + 1)];
+    if (next && next !== btns[i]) selectSnapshot(next.dataset.id, { focus: true });
   });
   const overlaySearch = $('topo-overlay-search');
-  overlaySearch?.addEventListener('focus', () => renderIncidentList(overlaySearch.value));
+  const incidentPop = $('topo-incident-pop');
+  const openIncidentPop = (open) => {
+    incidentPop?.classList.toggle('hidden', !open);
+    $('topo-incident-btn')?.setAttribute('aria-expanded', String(open));
+    if (open) { renderIncidentList(overlaySearch?.value || ''); overlaySearch?.focus(); }
+  };
+  $('topo-incident-btn')?.addEventListener('click', () => {
+    openIncidentPop(incidentPop?.classList.contains('hidden'));
+  });
+  $('topo-incident-clear')?.addEventListener('click', () => {
+    if (overlaySearch) overlaySearch.value = '';
+    selectOverlay('');
+  });
   overlaySearch?.addEventListener('input', () => renderIncidentList(overlaySearch.value));
-  overlaySearch?.addEventListener('blur', () => setTimeout(hideIncidentList, 150));
+  overlaySearch?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation(); // or app.js closes the whole map
+    openIncidentPop(false);
+    $('topo-incident-btn')?.focus();
+  });
+  // Clicking anywhere else dismisses it, the way a menu should.
+  document.addEventListener('click', (e) => {
+    if (incidentPop?.classList.contains('hidden')) return;
+    if (e.target.closest('.topo-incident')) return;
+    openIncidentPop(false);
+  });
   $('topo-users')?.addEventListener('click', openUsers);
-  $('topo-drift')?.addEventListener('click', toggleDrift);
+  $('topo-name-zones')?.addEventListener('click', openZoneNames);
   $('topo-external')?.addEventListener('click', () => {
     state.showExternal = !state.showExternal;
     const b = $('topo-external');
@@ -1216,8 +2369,56 @@ export function initTopology() {
     b?.classList.toggle('active', state.showNeighbors);
     load({ keepCamera: true });
   });
+  const search = $('topo-search');
+  search?.addEventListener('focus', async () => { await ensureDeviceIndex(); renderSearchList(search.value); });
+  search?.addEventListener('input', async () => { await ensureDeviceIndex(); renderSearchList(search.value); });
+  search?.addEventListener('blur', () => setTimeout(hideSearchList, 150));
+  search?.addEventListener('keydown', (e) => {
+    // Escape closes the result list first. Without stopping propagation here the
+    // document-level handler in app.js would close the whole map instead.
+    if (e.key === 'Escape' && !$('topo-search-list')?.classList.contains('hidden')) {
+      e.stopPropagation();
+      hideSearchList();
+    }
+  });
+  // `/` focuses search, the way it does in the mockup and most map UIs — but never
+  // while the caret is already in a field, or it would swallow the character.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== '/' || !isTopologyOpen()) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    e.preventDefault();
+    $('topo-search')?.focus();
+  });
+
+  // Mini-map click pans to that part of the estate. Graph space is converted to the
+  // camera's framed space by round-tripping through the viewport, which is the only
+  // path sigma exposes between the two.
+  $('topo-mini-body')?.addEventListener('click', (e) => {
+    if (!sigma) return;
+    const point = miniMapPointAt($('topo-mini-body'), e.clientX, e.clientY);
+    if (!point) return;
+    const framed = sigma.viewportToFramedGraph(sigma.graphToViewport(point));
+    state.autoTier = false;
+    sigma.getCamera().animate({ x: framed.x, y: framed.y }, { duration: camDuration(300) });
+  });
+
+  for (const b of document.querySelectorAll('.topo-view')) {
+    b.addEventListener('click', () => setView(b.dataset.view));
+  }
+  $('topo-matrix-groupby')?.addEventListener('change', (e) => {
+    matrixGroupBy = e.target.value;
+    if (view === 'matrix') loadMatrix();
+  });
+
+  $('topo-zoom-in')?.addEventListener('click', () => zoomCamera(1 / ZOOM_STEP));
+  $('topo-zoom-out')?.addEventListener('click', () => zoomCamera(ZOOM_STEP));
+  $('topo-fit')?.addEventListener('click', fitToView);
   $('topo-legend-toggle')?.addEventListener('click', () => { legendVisible = !legendVisible; renderLegend(); });
-  $('topo-refresh')?.addEventListener('click', () => { loadSnapshots().then(() => load()); });
+  $('topo-refresh')?.addEventListener('click', () => {
+    invalidateDeviceIndex();
+    loadSnapshots().then(() => (view === 'matrix' ? loadMatrix() : load()));
+  });
   window.addEventListener('resize', () => { if (isTopologyOpen() && sigma) sigma.refresh(); });
 
   // Canvas can't read CSS variables, so a theme switch would otherwise leave the map

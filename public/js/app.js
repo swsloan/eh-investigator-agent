@@ -40,6 +40,8 @@ import { closeApprovals, initApprovals, isApprovalsOpen } from './approvals.js';
 import { initTheme } from './theme.js';
 import { closeBackendUpdateDialog, initBackendUpdate, isBackendUpdateDialogOpen, refreshBackendUpdate } from './backend-update.js';
 import { initAuth } from './auth.js';
+import { initActivity } from './activity.js';
+import { initRightPanel, registerRpPanel } from './right-panel.js';
 
 function initEscapeHandling() {
   document.addEventListener('keydown', (event) => {
@@ -79,12 +81,17 @@ export function startApp() {
   initInvestigationPlan({ openGeneratedHtml: openGeneratedHtmlViewer });
   initSettings();
   initComposer();
+  initActivity();
   initSessionStream({ refreshFiles, loadSessions });
   initSessionMenus();
   initApprovals();
   initEval();
   initMemory();
   initTopology();
+  // Files is a docked grid column rather than an overlay, so "opening" it is just
+  // closing the two that are. Registered last, after the panels that own themselves.
+  registerRpPanel('files', { open: () => {}, close: () => {} });
+  initRightPanel();
   initBackendUpdate();
   initEscapeHandling();
   boot();

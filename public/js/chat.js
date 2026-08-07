@@ -8,7 +8,12 @@ import {
   integrationForToolCall,
   integrationSourceForToolCall,
 } from './integration-badges.js';
+import { onRunningChanged, setCurrentFinding } from './activity.js';
+import { flushQueuedMessage } from './composer.js';
 import { newUsage, state } from './state.js';
+import { replaceFindingPlaceholders, splitFindings } from './findings.js';
+import { phraseFor, reasonFor, resultSummary, toolLabel } from './tool-phrases.js';
+import { endCall, resetCalls, startCall, updateCall } from './tool-store.js';
 import { fmtBytes, fmtTime, fmtTokens } from './utils.js';
 import { applyIdleStatus, setStatus } from './status.js';
 
@@ -22,7 +27,12 @@ export function autoscroll(force = false) {
 }
 
 export function setRunning(isRunning) {
+  const was = state.running;
   state.running = isRunning;
+  onRunningChanged(isRunning);
+  // A message typed during the turn goes out at the boundary, not into a 409.
+  if (was && !isRunning) flushQueuedMessage();
+  updatePlanStrip();
   updateSessionModelButton();
   dom.sendBtn.classList.toggle('hidden', isRunning);
   dom.stopBtn.classList.toggle('hidden', !isRunning);
@@ -225,11 +235,44 @@ export function startAgentMessage() {
   wrap.className = 'msg msg-agent';
   wrap.innerHTML = `
     <div class="agent-head"><div class="agent-dot"></div>Investigation Agent</div>
+    <div class="plan-strip hidden">
+      <span class="plan-strip-task"></span>
+      <span class="plan-strip-meter"><span></span></span>
+      <span class="plan-strip-count"></span>
+    </div>
     <div class="agent-body"></div>`;
   dom.chatEl.appendChild(wrap);
   state.currentAgentMsg = wrap.querySelector('.agent-body');
   state.blocks = new Map();
+  updatePlanStrip();
   autoscroll();
+}
+
+/**
+ * The plan's current task, on the turn that is working on it.
+ *
+ * The ribbon remains the full plan; this is the one line worth reading while text
+ * is streaming, and the review's point that the most narrative-rich element of the
+ * app was also its least legible. Shown only during a running turn — afterwards the
+ * message is history and the ribbon is the live view again.
+ */
+export function updatePlanStrip() {
+  const strip = state.currentAgentMsg?.parentElement?.querySelector('.plan-strip');
+  if (!strip) return;
+  const view = state.investigationPlan;
+  const progress = view?.progress;
+  const title = progress?.currentTask?.title || '';
+  if (!state.running || !view?.initialized || !title) { strip.classList.add('hidden'); return; }
+
+  const total = Number(progress.total) || 0;
+  const resolved = Number(progress.resolved) || 0;
+  const percent = Number.isFinite(Number(progress.percent))
+    ? Math.max(0, Math.min(100, Number(progress.percent)))
+    : (total ? (resolved / total) * 100 : 0);
+  strip.querySelector('.plan-strip-task').textContent = title;
+  strip.querySelector('.plan-strip-count').textContent = total ? `${resolved}/${total}` : '';
+  strip.querySelector('.plan-strip-meter > span').style.width = `${percent.toFixed(0)}%`;
+  strip.classList.remove('hidden');
 }
 
 function agentBody() {
@@ -272,6 +315,20 @@ export function discardEmptyReasoningBlock(block) {
   block.marker?.remove();
 }
 
+/**
+ * Markdown, with the agent's FINDING lines lifted out into chips. Two steps rather
+ * than one so a finding keeps its place in the narrative while none of the model's
+ * text is ever concatenated into an HTML string.
+ */
+function renderAgentMarkdown(el, raw) {
+  const { text, findings } = splitFindings(raw);
+  renderMarkdown(el, text);
+  replaceFindingPlaceholders(el, findings);
+  // The live view's current-finding card reads the same parse, so the chip in the
+  // transcript and the card beside the orb can never say different things.
+  if (findings.length) setCurrentFinding(findings[findings.length - 1]);
+}
+
 export function queueRender() {
   if (state.renderQueued) return;
   state.renderQueued = true;
@@ -279,7 +336,7 @@ export function queueRender() {
     state.renderQueued = false;
     for (const block of state.blocks.values()) {
       if (block.dirty) {
-        renderMarkdown(block.el, block.raw, { workspaceFiles: [...state.workspaceFiles.values()] });
+        renderAgentMarkdown(block.el, block.raw);
         // Only surface a reasoning block once it actually has visible content.
         if (/\S/.test(block.raw || '')) revealReasoningBlock(block);
         block.dirty = false;
@@ -331,7 +388,8 @@ export function agentErrorText(raw) {
   return `${prefix}${body}`.slice(0, 1200);
 }
 
-function toolSummary(name, args) {
+/** The literal arguments, for when no honest phrase can be derived from them. */
+function rawSummary(name, args) {
   if (!args) return '';
   if (name === 'bash') return args.command || '';
   if (name === 'read' || name === 'write' || name === 'edit') return args.path || args.file_path || '';
@@ -348,12 +406,30 @@ export function addToolCard(ev) {
       <span class="tool-summary"></span>
       <svg class="tool-chevron" viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3l5 5-5 5"/></svg>
     </div>
+    <div class="tool-progress hidden"></div>
+    <div class="tool-result hidden"></div>
     <div class="tool-detail">
       <div class="label">Input</div><pre class="tool-args"></pre>
       <div class="label out-label hidden">Output</div><pre class="tool-out hidden"></pre>
     </div>`;
-  card.querySelector('.tool-name').textContent = ev.toolName;
-  card.querySelector('.tool-summary').textContent = toolSummary(ev.toolName, ev.args);
+  // "ExtraHop · search_records", not "Bash": the shell is the transport, not the act.
+  const nameLabel = toolLabel(ev.toolName, ev.args);
+  card.querySelector('.tool-name').textContent = nameLabel.action
+    ? `${nameLabel.source} · ${nameLabel.action}`
+    : nameLabel.source;
+  // The store is the record of what ran; the card is one rendering of it.
+  const phrase = phraseFor(ev.toolName, ev.args);
+  startCall(ev, {
+    phrase,
+    label: toolLabel(ev.toolName, ev.args),
+    reason: reasonFor(ev.toolName, ev.args),
+    integrationSource: integrationSourceForToolCall(ev),
+  });
+  // A derived phrase is prose and a raw command is a literal, so the typography
+  // switches with it rather than setting every summary in monospace.
+  const summary = card.querySelector('.tool-summary');
+  summary.textContent = phrase || rawSummary(ev.toolName, ev.args);
+  summary.classList.toggle('phrase', Boolean(phrase));
   card.querySelector('.tool-args').textContent = JSON.stringify(ev.args, null, 2);
   const integrationSource = integrationSourceForToolCall(ev);
   if (integrationSource) card.dataset.integrationSource = integrationSource;
@@ -407,10 +483,40 @@ export function finishToolCard(ev) {
     out.classList.remove('hidden');
     card.querySelector('.out-label').classList.remove('hidden');
   }
+  // What it found, in the stream itself. Built from text nodes rather than markup:
+  // this is tool output, so nothing here should ever be parsed as HTML.
+  const summary = resultSummary({ output: text, isError: ev.isError });
+  endCall(ev, { output: text, summary });
+  const line = card.querySelector('.tool-result');
+  if (summary && line) {
+    line.replaceChildren(...summary.map((seg) => {
+      const node = document.createElement(seg.strong ? 'strong' : 'span');
+      node.textContent = seg.text;
+      return node;
+    }));
+    line.classList.remove('hidden');
+  }
   autoscroll();
 }
 
+/**
+ * Progress on a call that is still running.
+ *
+ * `tool_execution_update` has been on the wire since the Pi backend landed and has
+ * never had a client handler, so a five-minute query looked identical to a hung one.
+ */
+export function updateToolCard(ev) {
+  const record = updateCall(ev);
+  if (!record) return;
+  const card = state.toolCards.get(ev.toolCallId);
+  const line = card?.querySelector('.tool-progress');
+  if (!card || !line) return;
+  line.textContent = record.progress;
+  line.classList.toggle('hidden', !record.progress);
+}
+
 export function resetStreamRendering() {
+  resetCalls();
   state.currentAgentMsg = null;
   state.pendingReplayAssistantBoundary = false;
   state.blocks = new Map();

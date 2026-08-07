@@ -6,6 +6,7 @@ import { themeReportHtml } from './theme.js';
 import { dom, $ } from './dom.js';
 import { captureSessionScope, isCurrentSessionScope, state } from './state.js';
 import { csvDownloadName, downloadName, fmtBytes, fmtTime, pdfDownloadName, triggerDownload } from './utils.js';
+import { onFilesChanged } from './activity.js';
 
 const ICON_FILE = '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>';
 const ICON_UPLOAD = '<path d="M12 17V7M7 11l5-5 5 5"/><path d="M4 21h16"/>';
@@ -77,6 +78,14 @@ function isReportSeen(file) {
 
 function markReportSeen(file) {
   try { localStorage.setItem(reportSeenKey(file), '1'); } catch { /* ignore private-mode quota errors */ }
+}
+
+/**
+ * The kind glyph for a file, reused by the live view's artifacts rail so an
+ * artifact looks the same in both places rather than being a bare filename there.
+ */
+export function fileIconSvg(file) {
+  return fileIconMarkup(file);
 }
 
 function fileIconMarkup(file, { muted = false } = {}) {
@@ -248,6 +257,7 @@ export async function refreshFiles() {
   state.knownFiles = currentFiles;
   state.workspaceFiles = new Map(files.map((file) => [file.path, file]));
   renderTree(files, newPaths);
+  onFilesChanged(); // the live view's artifacts rail reads the same list
   dom.chatEl.querySelectorAll('.msg-agent .md').forEach((element) => {
     linkWorkspaceFileReferences(element, files);
   });

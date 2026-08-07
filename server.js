@@ -190,7 +190,6 @@ const challenger = createChallengerCoordinator({
   getModelCatalog: () => catalogFor(prefs().backend),
   secretStore,
 });
-const memory = createMemoryCoordinator({ getConfig: prefs });
 // Network topology (Slice A): ingests the `network-topology` skill's
 // evidence/topology/topology.json at turn end and stores a positioned snapshot in a
 // sibling FalkorDB graph. Constructed here — before sessions are restored below —
@@ -202,6 +201,9 @@ const falkor = createFalkorClient({
   password: process.env.FALKORDB_PASSWORD || '',
 });
 const topologyGroup = () => deriveGroupId(prefs().extrahop?.host, process.env, prefs().memory?.groupId);
+// The memory coordinator shares the client and the group resolution so a capture
+// is only reported "captured" once the episode is actually readable in the graph.
+const memory = createMemoryCoordinator({ getConfig: prefs, client: falkor, resolveGroup: topologyGroup });
 const topology = createTopologyCoordinator({
   client: falkor,
   getConfig: prefs,
