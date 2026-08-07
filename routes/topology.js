@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
-import { listSnapshots, latestSnapshotId, readEnrichments, readIdentities, readMatrix, readMatrixPairs, readMixedTier, readNode, readNodeHistory, readSnapshotForDiff, readTier, topologyGraphName } from '../lib/topology-store.js';
+import { listSnapshots, latestSnapshotId, readEnrichments, readIdentities, readMatrix, readMatrixPairs, readMixedTier, readNode, readNodeHistory, readSegmentNames, readSnapshotForDiff, readTier, topologyGraphName, writeSegmentName } from '../lib/topology-store.js';
 import { buildOverlay } from '../lib/attack-overlay.js';
 import { describeDrift, diffSnapshots } from '../lib/topology-drift.js';
 
@@ -77,6 +77,22 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
     res.status(500).json({ error: redact(err?.message || 'Topology query failed.') });
   }
 
+  /**
+   * Apply operator-assigned segment names to whatever is being served.
+   *
+   * Applied at the edge rather than in the store, because it is presentation: the
+   * stored `name` stays the telemetry fact (`vlan:20`), and every tier read, the
+   * matrix axes and the zone containers get the same override from one place. The
+   * original travels as `telemetry_name` so the UI can show what it is renaming.
+   */
+  function applyNames(names, rows = []) {
+    if (!rows.length) return rows;
+    return rows.map((row) => {
+      const named = names[row.key];
+      return named ? { ...row, name: named, telemetry_name: row.name, named: true } : row;
+    });
+  }
+
   router.get('/snapshots', async (req, res) => {
     if (!guard(req, res)) return;
     try {
@@ -108,7 +124,8 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
           external: req.query.external === '1' || req.query.external === 'true',
           limit: req.query.limit,
         });
-        return res.json({ group, ...mixed });
+        const names = await readSegmentNames(client, group);
+        return res.json({ group, ...mixed, nodes: applyNames(names, mixed.nodes), segment_names: names });
       }
 
       const tier = await readTier(client, group, {
@@ -128,7 +145,29 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
           : null,
         limit: req.query.limit,
       });
-      res.json({ group, ...tier });
+      const names = await readSegmentNames(client, group);
+      // The whole map travels too: zone containers, breadcrumbs and device metadata
+      // label a segment from its key, not from a node in the payload.
+      res.json({ group, ...tier, nodes: applyNames(names, tier.nodes), segment_names: names });
+    } catch (err) { fail(res, err); }
+  });
+
+  /**
+   * Name a segment (or clear the name with an empty string).
+   *
+   * A write, so it is deliberately its own endpoint rather than a query flag, and
+   * the only mutating topology route besides ingest. The name is operator input:
+   * `writeSegmentName` escapes it as a Cypher literal and caps its length.
+   */
+  router.put('/segment-name', async (req, res) => {
+    if (!guard(req, res)) return;
+    try {
+      const key = typeof req.body?.key === 'string' ? req.body.key.trim() : '';
+      if (!key) return res.status(400).json({ error: 'A segment key is required.' });
+      const name = typeof req.body?.name === 'string' ? req.body.name : '';
+      const group = await pickGroup(req);
+      await writeSegmentName(client, group, key, name);
+      res.json({ group, key, name: name.trim().slice(0, 60), names: await readSegmentNames(client, group) });
     } catch (err) { fail(res, err); }
   });
 
@@ -217,7 +256,9 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
         external: req.query.external === '1' || req.query.external === 'true',
         limit: req.query.limit,
       });
-      res.json({ group, ...matrix });
+      // Axes are segments under the default grouping, so they carry the names too.
+      const names = await readSegmentNames(client, group);
+      res.json({ group, ...matrix, axes: applyNames(names, matrix.axes) });
     } catch (err) { fail(res, err); }
   });
 
