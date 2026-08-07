@@ -42,11 +42,18 @@ export function topologyRouter({ getConfig, client, coordinator, sessions, resol
 
   /**
    * Resolve the requested group to one whose topology graph actually exists.
-   * Validating against the live graph list means an arbitrary query string can
-   * never reach FalkorDB as a graph key — the same guard routes/memory-graph.js uses.
+   * Validating against the live graph list means an arbitrary group can never
+   * reach FalkorDB as a graph key — the same guard routes/memory-graph.js uses.
+   *
+   * The reads take the group as a query parameter; a write carries a JSON body
+   * and puts it there. Reading only the query string meant `PUT /segment-name`
+   * silently ignored the group the client asked for and fell back to the
+   * resolved one — which is invisible on a single-group deployment and writes
+   * the name into the wrong graph on any other. Query wins where both appear.
    */
   async function pickGroup(req) {
-    const requested = typeof req.query.group === 'string' ? req.query.group : '';
+    const requested = (typeof req.query.group === 'string' && req.query.group)
+      || (typeof req.body?.group === 'string' ? req.body.group : '');
     const fallback = resolveGroup?.() || '';
     const graphs = await graphList();
     for (const candidate of [requested, fallback]) {
