@@ -27,7 +27,7 @@ are rounding errors: **458 tokens in, 2,479 out, on a $31 session.**
 
 So the cost function is essentially:
 
-```
+```text
 cost ≈ (turns) × (context size at that turn) × cache-read rate
 ```
 

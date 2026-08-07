@@ -111,10 +111,23 @@ export function renderMatrix(host, model, { selected = '', incident = null } = {
     return;
   }
 
-  const head = [`<span class="topo-matrix-corner"></span>`]
-    .concat(axes.map((a) => `<span class="topo-matrix-col" title="${esc(label(a))}">${esc(label(a))}</span>`))
-    .join('');
+  // An ARIA grid addresses a cell by its row and column, so every cell has to sit
+  // inside a `row` and the labels have to be real headers. Without that a screen
+  // reader is read a stream of byte counts with no way to tell which segment pair
+  // any of them belongs to — which is the entire content of this view.
+  //
+  // The row wrappers carry `display: contents` (see .topo-matrix-rowgroup) so they
+  // add the semantics without becoming grid items and collapsing the layout: the
+  // corner, headers and cells must stay *direct* children of the CSS grid.
+  const head = `<div class="topo-matrix-rowgroup" role="row">`
+    + `<span class="topo-matrix-corner" role="columnheader"></span>`
+    + axes.map((a) => `<span class="topo-matrix-col" role="columnheader" title="${esc(label(a))}">${esc(label(a))}</span>`).join('')
+    + `</div>`;
 
+  // One tab stop for the whole grid, then arrow keys — the grid pattern. Tabbing
+  // through every cell of a 90×90 matrix is not navigation. The roving stop is the
+  // selected cell if there is one, else the first.
+  let rovingSet = false;
   const rows = axes.map((rowAxis) => {
     const cells = axes.map((colAxis) => {
       const id = pairId(rowAxis.key, colAxis.key);
@@ -123,28 +136,43 @@ export function renderMatrix(host, model, { selected = '', incident = null } = {
       const bytes = hit?.bytes || 0;
       const hot = Boolean(incident?.has(id));
       const alpha = rampAlpha(bytes, diagonal ? peakDiag : peakOff);
+      const isSelected = selected === id;
       const classes = ['topo-cell'];
       if (diagonal) classes.push('diagonal');
       if (!bytes) classes.push('empty');
       if (hot) classes.push('incident');
-      if (selected === id) classes.push('selected');
-      const title = `${label(rowAxis)} → ${label(colAxis)}${diagonal ? ' (within itself)' : ''}: `
-        + `${fmtBytes(bytes) || 'no traffic'}${hot ? ' · incident traffic' : ''}`;
-      // The value is only printed where the cell is dark enough to read it on.
+      if (isSelected) classes.push('selected');
+      // Reads as a sentence, because this is the cell's whole accessible name:
+      // "VLAN 30 to VLAN 20: 1.6 GB, incident traffic".
+      const name = `${label(rowAxis)} to ${label(colAxis)}${diagonal ? ' (within itself)' : ''}: `
+        + `${fmtBytes(bytes) || 'no traffic'}${hot ? ', incident traffic' : ''}`;
+      const title = name.replace(' to ', ' → ');
+      // The value is only printed where the cell is dark enough to read it on, so
+      // the printed text is never the accessible name.
       const text = bytes && alpha > 0.34 ? fmtBytes(bytes) : '';
-      // An incident cell stays clickable with no recorded bytes: the overlay's
-      // steps are the story there, even when the snapshot kept no volume for it.
+      // An incident cell is meaningful with no recorded bytes: the overlay's steps
+      // are the story there. Everything else with no traffic is `aria-disabled`
+      // rather than `disabled`, so it stays reachable and can say "no traffic" —
+      // a disabled button is skipped entirely, leaving holes in the grid.
+      const actionable = Boolean(bytes || hot);
+      const roving = !rovingSet && (isSelected || (!selected && actionable));
+      if (roving) rovingSet = true;
       return `<button type="button" class="${classes.join(' ')}" role="gridcell"`
         + ` data-src="${esc(rowAxis.key)}" data-dst="${esc(colAxis.key)}"`
         + ` style="--cell-alpha:${alpha.toFixed(3)}" title="${esc(title)}"`
-        + `${bytes || hot ? '' : ' disabled'}>${esc(text)}</button>`;
+        + ` aria-label="${esc(name)}"${isSelected ? ' aria-selected="true"' : ''}`
+        + ` tabindex="${roving ? '0' : '-1'}"`
+        + `${actionable ? '' : ' aria-disabled="true"'}>${esc(text)}</button>`;
     }).join('');
-    return `<span class="topo-matrix-row" title="${esc(label(rowAxis))}">${esc(label(rowAxis))}</span>${cells}`;
+    return `<div class="topo-matrix-rowgroup" role="row">`
+      + `<span class="topo-matrix-row" role="rowheader" title="${esc(label(rowAxis))}">${esc(label(rowAxis))}</span>`
+      + `${cells}</div>`;
   }).join('');
 
   host.innerHTML = `
     <div class="topo-matrix-scroll">
       <div class="topo-matrix-grid" role="grid"
+           aria-label="Traffic between groups. Rows talk to columns."
            style="grid-template-columns: 150px repeat(${axes.length}, minmax(64px, 92px))">
         ${head}${rows}
       </div>
@@ -159,6 +187,36 @@ export function renderMatrix(host, model, { selected = '', incident = null } = {
         <span class="topo-matrix-hint">Rows talk to columns · click a cell for the conversations behind it</span>
       </div>
     </div>`;
+
+  // A snapshot where nothing is actionable (every cell empty, no overlay) would
+  // otherwise leave the grid with no tab stop at all — unreachable by keyboard.
+  if (!host.querySelector('.topo-cell[tabindex="0"]')) {
+    host.querySelector('.topo-cell')?.setAttribute('tabindex', '0');
+  }
+}
+
+/**
+ * Move the grid's single tab stop.
+ *
+ * Exported because the roving tabindex is part of the grid's contract — the
+ * renderer decides where the stop starts, and the key handler moves it — and both
+ * halves have to agree or the grid ends up with two stops or none.
+ */
+export function moveRovingFocus(host, from, dRow, dCol) {
+  const rows = [...(host?.querySelectorAll('.topo-matrix-rowgroup[role="row"]') || [])]
+    .filter((r) => r.querySelector('.topo-cell'));
+  const rowIndex = rows.findIndex((r) => r.contains(from));
+  if (rowIndex === -1) return null;
+  const cols = [...rows[rowIndex].querySelectorAll('.topo-cell')];
+  const colIndex = cols.indexOf(from);
+  const nextRow = Math.min(rows.length - 1, Math.max(0, rowIndex + dRow));
+  const nextCol = Math.min(cols.length - 1, Math.max(0, colIndex + dCol));
+  const target = [...rows[nextRow].querySelectorAll('.topo-cell')][nextCol];
+  if (!target || target === from) return null;
+  from.setAttribute('tabindex', '-1');
+  target.setAttribute('tabindex', '0');
+  target.focus();
+  return target;
 }
 
 /** The right-rail detail for one selected cell. */

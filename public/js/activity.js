@@ -70,7 +70,12 @@ function stopElapsed() {
 export function onRunningChanged(running) {
   if (running) {
     turnStartedAt = Date.now();
-    setActivityOpen(true);
+    // A view the user left open does not re-open, so setActivityOpen returns
+    // early and neither the elapsed timer nor the render restarts. It then sat
+    // reading "Idle" through a running turn, still showing the previous
+    // investigation's finding. Start the new turn explicitly.
+    setCurrentFinding(null);
+    if (active) { startElapsed(); renderAll(); } else setActivityOpen(true);
   } else {
     turnStartedAt = 0;
     if (!manual) setActivityOpen(false);

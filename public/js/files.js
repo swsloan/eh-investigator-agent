@@ -246,6 +246,10 @@ export async function refreshFiles() {
     state.knownFiles = currentFiles;
     state.workspaceFiles = new Map();
     dom.filesList.innerHTML = '<div class="files-empty">No files yet. Upload evidence or ask the agent to produce a report.</div>';
+    // The live view's artifacts rail reads the same list. Returning early left it
+    // showing the previous workspace's artifacts — most visibly after switching to
+    // a session that has produced nothing yet.
+    onFilesChanged();
     return;
   }
   const newPaths = new Set();
