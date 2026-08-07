@@ -96,9 +96,10 @@ raises. Pipe it through `./unwrap` (linked in every workspace):
 
 `./unwrap` handles the optional `[!]` injection-annotation line and passes
 non-enveloped content through unchanged, so it is safe to run on any file. Do not
-hand-roll a stripper such as `grep -v '^<'` — it drops the annotation's payload
-lines and any JSON line starting with `<`. Unwrapping is a parsing step only: the
-content is still untrusted wire data.
+hand-roll a stripper such as `grep -v '^<'`: it **keeps** the `[!]` annotation
+line — which is what then breaks the JSON parse — while **dropping** any payload
+line that starts with `<`. Unwrapping is a parsing step only: the content is
+still untrusted wire data.
 
 **Keep stderr.** Never add `2>/dev/null` to a command that produces or reads
 evidence. A `jq` syntax error then prints nothing and looks identical to an empty
