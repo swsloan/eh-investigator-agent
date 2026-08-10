@@ -30,8 +30,7 @@ function body(text, label) {
   // Warn rather than guess in silence: an ambiguous boundary means either the
   // file holds several queries, or the telemetry embeds our own markers.
   const onAmbiguity = (message) => process.stderr.write(`unwrap: ${label}: ${message}\n`);
-  const out = unwrapUntrusted(text, { onAmbiguity });
-  return out.endsWith('\n') || out === '' ? out : `${out}\n`;
+  return unwrapUntrusted(text, { onAmbiguity });
 }
 
 function readStdin() {
@@ -61,8 +60,18 @@ if (args.length === 0) {
   }
 }
 
+// Emit the payload byte for byte — appending a trailing newline would break the
+// pass-through contract this tool advertises. A separator goes only BETWEEN
+// files, and only when the previous one did not end in a newline, so two
+// concatenated payloads cannot fuse into one line.
+let text = '';
+for (const chunk of chunks) {
+  if (text && chunk && !text.endsWith('\n')) text += '\n';
+  text += chunk;
+}
+
 // Set exitCode and let Node drain stdout on its own. Calling process.exit() here
 // would discard whatever is still buffered — on a pipe that silently truncates
 // large evidence files mid-JSON, which is worse than failing outright.
 process.exitCode = failed ? 1 : 0;
-process.stdout.write(chunks.join(''));
+process.stdout.write(text);

@@ -70,7 +70,29 @@ test('a missing file is reported but does not discard the others', () => {
   assert.ok(err, 'exits non-zero when a file is unreadable');
   assert.equal(err.status, 1);
   assert.match(err.stderr, /missing\.json: no such file/);
-  assert.equal(err.stdout, '{"n":1}\n', 'the readable file is still emitted');
+  assert.equal(err.stdout, '{"n":1}', 'the readable file is still emitted');
+});
+
+test('output is byte-exact — no trailing newline is invented', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'unwrap-'));
+  // Raw (non-enveloped) input must survive untouched, as --help promises.
+  const raw = path.join(dir, 'raw.json');
+  fs.writeFileSync(raw, '{"a":1}');
+  assert.equal(run([raw]), '{"a":1}');
+  // An enveloped payload with no trailing newline keeps none.
+  const wrapped = path.join(dir, 'wrapped.json');
+  fs.writeFileSync(wrapped, wrapUntrusted('{"a":1}', 'excli x').text);
+  assert.equal(run([wrapped]), '{"a":1}');
+  assert.equal(run([], wrapUntrusted('{"a":1}', 'excli x').text), '{"a":1}');
+
+  // But concatenated files still get a separator, so payloads never fuse.
+  const second = path.join(dir, 'second.json');
+  fs.writeFileSync(second, wrapUntrusted('{"b":2}', 'excli y').text);
+  assert.equal(run([wrapped, second]), '{"a":1}\n{"b":2}');
+  // ...and no extra separator when one already ends with a newline.
+  const nl = path.join(dir, 'nl.json');
+  fs.writeFileSync(nl, '{"c":3}\n');
+  assert.equal(run([nl, second]), '{"c":3}\n{"b":2}');
 });
 
 test('--help explains the tool without reading stdin', () => {
