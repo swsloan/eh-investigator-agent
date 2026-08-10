@@ -41,7 +41,7 @@ tags/releases, so pin an **immutable commit SHA**:
    `EXCLI_VERSION` to the new `<version>-<hash>` (from the `dist/` filenames).
 3. Replace the checksums trust anchor with the new release's excli lines. `V`
    must be the **full `EXCLI_VERSION`** (`<version>-<hash>`, e.g.
-   `0.0.111-2fdebedca0`) so the filename matches what `fetch-excli.sh` looks for.
+   `0.0.158-3bfbf25b6b`) so the filename matches what `fetch-excli.sh` looks for.
    Fail closed — validate the download is non-empty before swapping the anchor:
    ```bash
    SHA=<new-commit-sha>; V=<version>-<hash>
