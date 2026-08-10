@@ -26,8 +26,11 @@ if (args.includes('-h') || args.includes('--help')) {
   process.exit(0);
 }
 
-function body(text) {
-  const out = unwrapUntrusted(text);
+function body(text, label) {
+  // Warn rather than guess in silence: an ambiguous boundary means either the
+  // file holds several queries, or the telemetry embeds our own markers.
+  const onAmbiguity = (message) => process.stderr.write(`unwrap: ${label}: ${message}\n`);
+  const out = unwrapUntrusted(text, { onAmbiguity });
   return out.endsWith('\n') || out === '' ? out : `${out}\n`;
 }
 
@@ -44,11 +47,11 @@ const chunks = [];
 let failed = false;
 
 if (args.length === 0) {
-  chunks.push(body(readStdin()));
+  chunks.push(body(readStdin(), '<stdin>'));
 } else {
   for (const file of args) {
     try {
-      chunks.push(body(fs.readFileSync(file, 'utf8')));
+      chunks.push(body(fs.readFileSync(file, 'utf8'), path.basename(file)));
     } catch (err) {
       // Report and keep going, so one missing file does not discard the rest.
       const reason = err.code === 'ENOENT' ? 'no such file' : err.message;
