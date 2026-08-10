@@ -81,6 +81,7 @@ export function handleEvent(ev) {
       for (const event of ev.events) handleEvent(event);
       state.replaying = false;
       dom.chatEl.classList.remove('replaying');
+      state.snapshotsApplied += 1;
       setRunning(ev.running);
       requestAnimationFrame(() => requestAnimationFrame(() => {
         dom.chatScroll.scrollTop = dom.chatScroll.scrollHeight;
