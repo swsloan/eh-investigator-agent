@@ -109,7 +109,8 @@ describes the present. "Nothing is being hidden right now" is a much weaker clai
 than "this did not happen", and the two must not be conflated in a verdict.
 
 Rule fields come from the ExtraHop REST API and vary by firmware, so inspect the
-keys of one rule before aggregating: `./unwrap … | jq '.rules[0] | keys_unsorted'`.
+keys of one rule before aggregating:
+`./unwrap evidence/entities/tuning-rules.json | jq '.rules[0] | keys_unsorted'`.
 
 A rule that hides the very activity you are investigating is itself a finding: it
 may be ordinary tuning, or it may be how someone arranged for this not to be
