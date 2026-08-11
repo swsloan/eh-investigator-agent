@@ -6,7 +6,7 @@ import { getAppVersion } from '../lib/app-version.js';
 
 export function healthRouter({
   getConfig, sessions, root, getActiveBackend, getModelCatalog, secretStore,
-  excliBroker, reversingLabsBroker, researchBroker, investigationPlanBroker,
+  excliBroker, reversingLabsBroker, researchBroker, tuningBroker, investigationPlanBroker,
   getMemoryStatus,
 }) {
   const router = express.Router();
@@ -34,6 +34,7 @@ export function healthRouter({
       excliBroker,
       reversingLabsBroker,
       researchBroker,
+      tuningBroker,
       investigationPlanBroker,
       getMemoryStatus,
     });

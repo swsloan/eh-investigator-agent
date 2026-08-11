@@ -1,0 +1,75 @@
+#!/usr/bin/env node
+// Read-only view of detection tuning (hiding) rules — what the appliance is
+// suppressing. `search_detections` excludes suppressed detections, so this is how
+// "no detections found" becomes a statement you can defend.
+//
+// Read-only: there is no create/update/delete operation here. Proposing a tuning
+// rule is a governed write, not something this interface can do.
+import net from 'node:net';
+
+const socketPath = process.env.EH_TUNING_BROKER_SOCKET;
+
+function fail(message, code = 1) {
+  process.stderr.write(`${message}\n`);
+  process.exit(code);
+}
+
+function usage() {
+  return [
+    'Usage:',
+    '  ./tuning-interface status',
+    '  ./tuning-interface list',
+    '  ./tuning-interface get -json \'{"id":123}\'',
+    '',
+    'Lists the detection tuning (hiding) rules in force. `search_detections` does',
+    'NOT return detections a rule hides, so run list before reporting that a',
+    'detection type is absent. Output is enveloped telemetry — pipe it through',
+    './unwrap to parse it:',
+    '',
+    '  ./tuning-interface list > evidence/entities/tuning-rules.json',
+    '  ./unwrap evidence/entities/tuning-rules.json | jq \'.count\'',
+  ].join('\n');
+}
+
+if (!socketPath) fail('Tuning broker is not configured. Run tuning-interface from an investigation workspace through the web UI.');
+
+const operation = process.argv[2];
+if (!['status', 'list', 'get'].includes(operation)) fail(usage(), 64);
+let payload = {};
+if (operation === 'get') {
+  if (process.argv[3] !== '-json' || !process.argv[4]) fail(usage(), 64);
+  try { payload = JSON.parse(process.argv[4]); } catch { fail('The -json value must be valid JSON.', 64); }
+}
+
+const socket = net.createConnection(socketPath);
+// Decode as a stream: a per-chunk toString('utf8') can split a multi-byte
+// character and silently substitute U+FFFD, which still parses as JSON.
+socket.setEncoding('utf8');
+let buffer = '';
+let completed = false;
+socket.on('connect', () => socket.write(`${JSON.stringify({ operation, payload, cwd: process.cwd() })}\n`));
+socket.on('data', (chunk) => {
+  // One request, one response. Without this guard a second data event re-parses
+  // the same buffered prefix and writes the payload again — which, redirected to
+  // an evidence file, doubles the envelope and corrupts it.
+  if (completed) return;
+  buffer += chunk;
+  const nl = buffer.indexOf('\n');
+  if (nl === -1) return;
+  let message;
+  try { message = JSON.parse(buffer.slice(0, nl)); } catch { fail('Tuning broker sent an invalid response.'); }
+  completed = true;
+  if (message.error) fail(message.error);
+  // `list`/`get` come back already wrapped in the untrusted-telemetry envelope;
+  // emit it verbatim so the envelope reaches the model intact.
+  if (message.result && typeof message.result.enveloped === 'string') {
+    process.stdout.write(message.result.enveloped);
+  } else {
+    process.stdout.write(`${JSON.stringify(message.result, null, 2)}\n`);
+  }
+  socket.end();
+});
+socket.on('error', (err) => fail(err.code === 'ENOENT' ? 'Tuning broker is not running.' : err.message));
+socket.on('close', () => {
+  if (!completed) fail('Tuning broker closed without a response.');
+});
