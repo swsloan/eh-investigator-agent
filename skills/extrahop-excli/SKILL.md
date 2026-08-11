@@ -86,6 +86,7 @@ claim, and not one you can make from that call alone.
 create or remove a rule through it.
 
 ```bash
+mkdir -p evidence/entities
 ./tuning-interface status                                   # configured? read-only?
 ./tuning-interface list > evidence/entities/tuning-rules.json
 ./unwrap evidence/entities/tuning-rules.json | jq '.count'

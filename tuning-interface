@@ -49,6 +49,10 @@ let buffer = '';
 let completed = false;
 socket.on('connect', () => socket.write(`${JSON.stringify({ operation, payload, cwd: process.cwd() })}\n`));
 socket.on('data', (chunk) => {
+  // One request, one response. Without this guard a second data event re-parses
+  // the same buffered prefix and writes the payload again — which, redirected to
+  // an evidence file, doubles the envelope and corrupts it.
+  if (completed) return;
   buffer += chunk;
   const nl = buffer.indexOf('\n');
   if (nl === -1) return;
