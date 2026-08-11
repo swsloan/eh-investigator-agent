@@ -20,6 +20,7 @@ import { recoverInterruptedActions } from './lib/action-recover.js';
 import { listActionsAcrossWorkspaces } from './lib/action-store.js';
 import { ReversingLabsBroker } from './lib/reversinglabs-broker.js';
 import { ResearchBroker } from './lib/research-broker.js';
+import { TuningBroker } from './lib/tuning-broker.js';
 import { InvestigationPlanBroker } from './lib/investigation-plan-broker.js';
 import { localOriginGuard } from './lib/local-origin.js';
 import { resolveAuthConfig, startupAuthError, createAuthState, authPublicRouter, authGuard } from './lib/auth.js';
@@ -173,6 +174,16 @@ const researchBroker = new ResearchBroker({
   secretStore,
 });
 researchBroker.start();
+// Suppression visibility (read-only). `search_detections` excludes detections a
+// tuning rule hides, and the excli surface has no read path for those rules, so
+// this broker reads them over REST. Credentials stay in this process.
+const tuningBroker = new TuningBroker({
+  root: ROOT,
+  sessions,
+  getConfig: () => config,
+  secretStore,
+});
+tuningBroker.start();
 // Governed write path: the agent proposes write actions here (read-only socket);
 // a human approves them via /api/actions, and only then does the server-side
 // executor run the write. Depends on excliBroker for the capability catalog and
@@ -284,6 +295,7 @@ function broadcast(sessionId, event) {
 function buildSessionEnv(settings, backendId, sessionOrId) {
   const env = buildAgentEnv(settings, {
     brokerSocketPath: excliBroker.socketPath,
+    tuningBrokerSocketPath: tuningBroker.socketPath,
     reversingLabsBrokerSocketPath: reversingLabsBroker.socketPath,
     reversingLabsEnabled: reversingLabsEnabled(settings, secretStore),
     researchBrokerSocketPath: researchBroker.socketPath,
@@ -565,6 +577,7 @@ app.use('/api', healthRouter({
   excliBroker,
   reversingLabsBroker,
   researchBroker,
+  tuningBroker,
   investigationPlanBroker,
   getMemoryStatus,
 }));
@@ -722,7 +735,7 @@ const shutdownCoordinator = createShutdownCoordinator({
   sessions,
   sseClients,
   // actionBroker is fork-specific (the governed write path) and must stop too.
-  brokers: [excliBroker, actionBroker, reversingLabsBroker, researchBroker, investigationPlanBroker],
+  brokers: [excliBroker, actionBroker, reversingLabsBroker, researchBroker, tuningBroker, investigationPlanBroker],
   stopAuxiliary: () => {
     for (const res of globalActionClients) { try { res.end(); } catch { /* already closed */ } }
     globalActionClients.clear();

@@ -76,6 +76,38 @@ mkdir -p scratch evidence/metrics
 ./excli-interface execute_metric_query -json "$(cat scratch/ldap-hygiene-query.json)" > evidence/metrics/ldap-hygiene-total.json
 ```
 
+## Suppressed detections (what you are not being shown)
+
+`search_detections` **excludes detections hidden by a tuning rule**. So "no
+detections found" means "none that are not suppressed" — which is a different
+claim, and not one you can make from that call alone.
+
+`./tuning-interface` reads the rules in force. It is read-only; there is no way to
+create or remove a rule through it.
+
+```bash
+./tuning-interface status                                   # configured? read-only?
+./tuning-interface list > evidence/entities/tuning-rules.json
+./unwrap evidence/entities/tuning-rules.json | jq '.count'
+```
+
+Run it before reporting that a detection type is absent, and whenever a negative
+finding carries the verdict. Then say which it is:
+
+- `count: 0` — nothing is suppressed, so absence is real. State that.
+- `count > 0` — read the rules and say whether any could hide what you were
+  looking for. Cite the evidence file.
+- `status` says not configured — you cannot tell. Say *that*, rather than
+  implying absence.
+
+Rule fields come from the ExtraHop REST API and vary by firmware, so inspect the
+keys of one rule before aggregating: `./unwrap … | jq '.rules[0] | keys_unsorted'`.
+
+A rule that hides the very activity you are investigating is itself a finding: it
+may be ordinary tuning, or it may be how someone arranged for this not to be
+seen. Note who authored it and when, and never treat suppression as evidence of
+benignity.
+
 ## Processing output (keep raw JSON out of context)
 
 Redirect large tool output to an `evidence/` file, then summarize it locally and
