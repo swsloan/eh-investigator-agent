@@ -30,7 +30,7 @@ export function settingsRouter({ getConfig, setConfig, secretStore, onConfigChan
     try {
       config = applyUpdate(previous, req.body || {}, { secretStore });
     } catch (err) {
-      if (err?.code === 'INVALID_RX360_TENANT_ID') {
+      if (err?.code === 'INVALID_RX360_TENANT_ID' || err?.code === 'INVALID_EXTRAHOP_HOST') {
         return res.status(400).json({ error: err.message });
       }
       throw err;
