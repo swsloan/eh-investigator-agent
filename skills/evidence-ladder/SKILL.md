@@ -60,7 +60,7 @@ before you spend depth, and it makes "did you frame before digging?" checkable.
 | Rung | Answers | Climb when | Primary excli tools |
 |------|---------|-----------|---------------------|
 | **Tier 1 — Metrics** | *Where and when.* Bound the timeline, top talkers, anomalous volume, candidate blast radius. | Always start here. | `execute_metric_query`, `search_metric_catalog`, `search_devices` |
-| **Tier 2 — Records** | *What happened.* The specific connections, TLS/HTTP/DNS/LDAP exchanges, usernames, exact hostnames that confirm or kill the hypothesis. | Metrics point at a place/time but can't answer the deciding question. Always bound by time window + filter. | `search_records`, `search_detectionactivity`, `get_detectiontypemetadata`, `./tuning-interface list` (what is suppressed) |
+| **Tier 2 — Records** | *What happened.* The specific connections, TLS/HTTP/DNS/LDAP exchanges, usernames, exact hostnames that confirm or kill the hypothesis. | Metrics point at a place/time but can't answer the deciding question. Always bound by time window + filter. | `search_records`, `search_detectionlogs` (EQL — the only source of detection participants/properties), `get_detection`, `get_detectiontypemetadata`, `./tuning-interface list` (what is suppressed) |
 | **Tier 3 — Packets** | *Prove it.* Exact payload, a protocol edge case, or legal-grade evidence. | Records leave a **genuine** deciding question that only bytes can settle **and the verdict still turns on it**. Not to add certainty to a verdict already decided. | `download_pcap` (+ `tshark`) |
 
 Rules:
