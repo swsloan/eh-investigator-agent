@@ -135,7 +135,7 @@ permissions from there.
 If you have an `excli` archive file:
 
 ```bash
-EXCLI_ARCHIVE=/path/to/excli-darwin-arm64-0.0.111-2fdebedca0.tar.gz ./start.sh
+EXCLI_ARCHIVE=/path/to/excli-darwin-arm64-0.0.161-589c824437.tar.gz ./start.sh
 ```
 
 If `excli` is hosted at an internal URL:
@@ -145,7 +145,7 @@ EXCLI_URL=https://internal.example.com/excli-darwin-arm64.tar.gz ./start.sh
 ```
 
 If you put a matching archive under `vendor/`, for example
-`vendor/excli-linux-amd64-0.0.111-2fdebedca0.tar.gz`, the bootstrap script can discover it:
+`vendor/excli-linux-amd64-0.0.161-589c824437.tar.gz`, the bootstrap script can discover it:
 
 ```bash
 ./start.sh
