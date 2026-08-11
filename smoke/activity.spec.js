@@ -7,12 +7,18 @@ import { expect, test } from '@playwright/test';
 
 /** Put the app into a running turn with a plan and some tool calls. */
 async function stageTurn(page, { withPlan = true, calls = [] } = {}) {
-  // Wait for boot first. The app creates a session and its SSE snapshot sets
-  // running:false a beat later, which would otherwise overwrite the staged turn.
+  // Wait for the initial SSE snapshot to be APPLIED, not merely for the session
+  // to exist. The snapshot handler finishes with setRunning(ev.running), which is
+  // false for a fresh session — so a snapshot landing after we stage the turn
+  // silently resets running and hides #activity again. A session id appears
+  // before the snapshot, so waiting on it only works while the snapshot happens
+  // to win the race; on a cold start (first test in the run, no warm module
+  // cache) it loses, and the assertion sees a hidden view for its whole timeout.
+  // state.snapshotsApplied only ever increases, so this is order-independent.
   await expect.poll(() => page.evaluate(async () => {
     const { state } = await import('/js/state.js');
-    return state.session?.id ?? null;
-  })).not.toBeNull();
+    return state.session?.id ? state.snapshotsApplied : 0;
+  }), { message: 'initial SSE snapshot was never applied' }).toBeGreaterThan(0);
 
   return page.evaluate(async ({ withPlan, calls }) => {
     const [{ state }, store, activity] = await Promise.all([
@@ -61,6 +67,34 @@ test('a running turn opens the live view, and Transcript goes back', async ({ pa
   await expect(page.locator('#activity')).toBeHidden();
   await expect(page.locator('#chat-scroll')).toBeVisible();
   await expect(page.locator('.files-panel')).toBeVisible();
+});
+
+test('a slow SSE snapshot cannot reset a staged turn (cold-start race)', async ({ page }) => {
+  // This is the CI flake that made this file's first test fail intermittently:
+  // the snapshot handler ends with setRunning(ev.running) — false for a fresh
+  // session — so if it lands after the turn is staged it hides #activity again,
+  // and the assertion then watches a hidden view until it times out. Delaying the
+  // stream reproduces it every time; without stageTurn waiting on
+  // state.snapshotsApplied, this test fails at 100ms of delay upward.
+  await page.route('**/api/sessions/*/events*', async (route) => {
+    await new Promise((r) => setTimeout(r, 600));
+    await route.continue();
+  });
+  await page.goto('/'); // reload so the delayed stream is the one this page uses
+
+  await stageTurn(page, { calls: [{ id: 'a', name: 'bash', phrase: 'Searching detections' }] });
+  await expect(page.locator('#activity')).toBeVisible();
+
+  // The snapshot must already be in — otherwise it is still pending and would
+  // reset running the moment it arrives.
+  expect(await page.evaluate(async () => {
+    const { state } = await import('/js/state.js');
+    return state.snapshotsApplied;
+  })).toBeGreaterThan(0);
+
+  // And nothing arriving later takes the view away again.
+  await page.waitForTimeout(1000);
+  await expect(page.locator('#activity')).toBeVisible();
 });
 
 test('the centre column mirrors the plan and says what is running', async ({ page }) => {

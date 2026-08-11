@@ -24,6 +24,12 @@ export const state = {
   // response from the previously viewed session can't overwrite the new one.
   sessionGeneration: 0,
   eventSource: null,
+  // Count of full-transcript snapshots applied on this connection. Bumped by the
+  // SSE `snapshot` handler, which finishes by calling setRunning(ev.running) —
+  // so anything that needs to act after the initial replay has landed (rather
+  // than merely after the session exists) can wait for this to be non-zero.
+  // Also the honest read on reconnect churn, which once double-counted usage.
+  snapshotsApplied: 0,
   running: false,
   idleStatus: { state: 'ok', text: 'Ready', title: 'Ready' },
   backendUpdate: null,
