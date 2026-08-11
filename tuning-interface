@@ -42,11 +42,14 @@ if (operation === 'get') {
 }
 
 const socket = net.createConnection(socketPath);
+// Decode as a stream: a per-chunk toString('utf8') can split a multi-byte
+// character and silently substitute U+FFFD, which still parses as JSON.
+socket.setEncoding('utf8');
 let buffer = '';
 let completed = false;
 socket.on('connect', () => socket.write(`${JSON.stringify({ operation, payload, cwd: process.cwd() })}\n`));
 socket.on('data', (chunk) => {
-  buffer += chunk.toString('utf8');
+  buffer += chunk;
   const nl = buffer.indexOf('\n');
   if (nl === -1) return;
   let message;

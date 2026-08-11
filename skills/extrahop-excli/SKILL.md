@@ -94,11 +94,19 @@ create or remove a rule through it.
 Run it before reporting that a detection type is absent, and whenever a negative
 finding carries the verdict. Then say which it is:
 
-- `count: 0` — nothing is suppressed, so absence is real. State that.
+- `count: 0` — **no rule currently in force explains the result.** That is all it
+  proves. It does not establish that the detection type is absent, and it cannot
+  rule out a rule that applied during the window you investigated and has since
+  been deleted. Keep your other caveats: the time range you queried, the `limit`
+  you passed, and the scope of the query.
 - `count > 0` — read the rules and say whether any could hide what you were
   looking for. Cite the evidence file.
 - `status` says not configured — you cannot tell. Say *that*, rather than
   implying absence.
+
+Suppression is one of several reasons a search comes back empty, and the list only
+describes the present. "Nothing is being hidden right now" is a much weaker claim
+than "this did not happen", and the two must not be conflated in a verdict.
 
 Rule fields come from the ExtraHop REST API and vary by firmware, so inspect the
 keys of one rule before aggregating: `./unwrap … | jq '.rules[0] | keys_unsorted'`.
