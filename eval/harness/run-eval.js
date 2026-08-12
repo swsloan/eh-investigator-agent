@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadCases } from './cases.js';
 import { scoreRun } from './score.js';
+import { loadPrevDetails } from './history.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
@@ -72,20 +73,6 @@ export function readResult(resultsDir, id) {
   return v;
 }
 
-// Previous same-backend run detail, for regression flags.
-function loadPrevDetail(backend) {
-  const hf = path.join(REPORTS_DIR, 'history.jsonl');
-  if (!fs.existsSync(hf)) return null;
-  const recs = fs.readFileSync(hf, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
-    .filter((r) => r.backend === backend)
-    .sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));
-  for (let i = recs.length - 1; i >= 0; i--) {
-    const df = path.join(REPORTS_DIR, `${recs[i].run_id}.json`);
-    if (fs.existsSync(df)) return JSON.parse(fs.readFileSync(df, 'utf8'));
-  }
-  return null;
-}
-
 async function main() {
   // Parsed here rather than at module scope so an invalid value fails the
   // command through main()'s handler instead of exiting on import.
@@ -122,7 +109,9 @@ async function main() {
   if (missing.length) console.warn(`WARN: no verdict for ${missing.length} case(s): ${missing.join(', ')} (scored inconclusive)`);
 
   const { record, detail } = scoreRun({
-    cases, results, meta, prevDetail: loadPrevDetail(meta.backend), gateTarget: GATE,
+    cases, results, meta, gateTarget: GATE,
+    // #127: a window of prior runs, so one sample cannot assert a regression.
+    prevDetails: loadPrevDetails(REPORTS_DIR, meta.backend),
     // undefined = keep the scorer's default; null = measure but never gate.
     ...(falseAlarmTarget === undefined ? {} : { falseAlarmTarget }),
   });
