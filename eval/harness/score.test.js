@@ -1,7 +1,7 @@
 // Unit test for the scorer. Run: node --test eval/harness/score.test.js
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { scoreRun } from './score.js';
+import { classifyChange, scoreRun } from './score.js';
 
 const cases = [
   { id: 'mal-A', expected: { disposition: 'malicious', attack: ['T1'], min_rung: 'records' } },
@@ -49,12 +49,17 @@ test('confusion matrix and calibration', () => {
   assert.equal(byBucket.high.n, 3);
 });
 
-test('per-case flags and regression detection', () => {
+test('per-case flags, and one prior sample no longer asserts a regression', () => {
+  // Changed by #127. This used to expect `regressed_from` off a single prior
+  // run; one sample cannot tell a step change from a coin toss, so the flip is
+  // now reported as unconfirmed and the information survives without the flag
+  // that pulls a reviewer into an investigation.
   const prevDetail = { run_id: 'test-0', cases: [{ id: 'mal-B', status: 'pass' }, { id: 'mal-A', status: 'pass' }] };
   const { detail } = scoreRun({ cases, results, meta, prevDetail });
   const byId = Object.fromEntries(detail.cases.map((c) => [c.id, c]));
   assert.equal(byId['mal-B'].status, 'fail');
-  assert.equal(byId['mal-B'].regressed_from, 'test-0', 'mal-B regressed pass->fail');
+  assert.equal(byId['mal-B'].regressed_from, undefined, 'one sample is not evidence');
+  assert.equal(byId['mal-B'].regression_unconfirmed, true, 'but the flip is still reported');
   assert.equal(byId['fp-A'].scores.false_climb, true, 'fp-A over-climbed to packets');
   assert.equal(byId['mal-A'].regressed_from, undefined, 'mal-A stayed pass');
 });
@@ -223,4 +228,129 @@ test('the offending case is flagged per row, not only in the rate', () => {
   assert.equal(byId['ben-1'].scores.false_alarm, true);
   assert.equal(byId['ben-2'].scores.false_alarm, false);
   assert.equal(byId['mal-1'].scores.false_alarm, false, 'a malicious case can never be a false alarm');
+});
+
+// ---- Stability-gated regression flags (#127) ----
+
+/** A prior-run window (newest first) asserting `id`'s status in each run. */
+const windowOf = (...statuses) => statuses.map((s, i) => ({
+  run_id: `prev-${i}`, cases: [{ id: 'mal-B', status: s }],
+}));
+
+const classify = (prevDetails) => {
+  const { detail } = scoreRun({ cases, results, meta, prevDetails });
+  return detail.cases.find((c) => c.id === 'mal-B'); // fails in these fixtures
+};
+
+test('a case that flips between runs is unstable, never a regression', () => {
+  // The issue's case: plaintext-http-creds passed, failed, failed. Comparing one
+  // sample to one sample called that a regression and cost a four-run A/B to
+  // disprove.
+  const c = classify(windowOf('fail', 'pass', 'fail'));
+  assert.equal(c.status, 'fail');
+  assert.equal(c.unstable, true);
+  assert.equal(c.regressed_from, undefined, 'a coin toss cannot regress');
+  assert.equal(c.regression_unconfirmed, undefined);
+  assert.deepEqual(c.prior_statuses, ['fail', 'pass', 'fail'], 'the evidence is recorded, not just the verdict');
+});
+
+test('a case that was consistently passing and now fails IS a regression', () => {
+  const c = classify(windowOf('pass', 'pass', 'pass'));
+  assert.equal(c.regressed_from, 'prev-0', 'named against its most recent prior run');
+  assert.equal(c.unstable, undefined);
+});
+
+test('two consistent prior passes are enough to confirm', () => {
+  assert.equal(classify(windowOf('pass', 'pass')).regressed_from, 'prev-0');
+  const one = classify(windowOf('pass'));
+  assert.equal(one.regressed_from, undefined, 'one is not');
+  assert.equal(one.regression_unconfirmed, true);
+});
+
+test('a case that was already failing has not regressed', () => {
+  const c = classify(windowOf('fail', 'fail'));
+  assert.equal(c.regressed_from, undefined);
+  assert.equal(c.unstable, undefined, 'consistently failing is stable, just bad');
+  assert.equal(c.regression_unconfirmed, undefined);
+});
+
+test('a case with no history is neither a regression nor unstable', () => {
+  const c = classify([]);
+  assert.equal(c.regressed_from, undefined);
+  assert.equal(c.unstable, undefined);
+  assert.equal(c.prior_statuses, undefined);
+});
+
+test('instability is judged on the prior samples, not on this run', () => {
+  // A case whose history flaps stays unstable even when it passes today —
+  // otherwise the flag would appear and vanish with the coin toss it describes.
+  const prevDetails = [
+    { run_id: 'p0', cases: [{ id: 'mal-A', status: 'fail' }] },
+    { run_id: 'p1', cases: [{ id: 'mal-A', status: 'pass' }] },
+    { run_id: 'p2', cases: [{ id: 'mal-A', status: 'fail' }] },
+  ];
+  const { detail } = scoreRun({ cases, results, meta, prevDetails });
+  const malA = detail.cases.find((c) => c.id === 'mal-A');
+  assert.equal(malA.status, 'pass', 'passing this time');
+  assert.equal(malA.unstable, true, 'and still known to flip');
+});
+
+test('a case absent from some prior runs uses only the runs that ran it', () => {
+  const prevDetails = [
+    { run_id: 'p0', cases: [{ id: 'other', status: 'pass' }] },   // mal-B not run
+    { run_id: 'p1', cases: [{ id: 'mal-B', status: 'pass' }] },
+    { run_id: 'p2', cases: [{ id: 'mal-B', status: 'pass' }] },
+  ];
+  const c = classify(prevDetails);
+  assert.deepEqual(c.prior_statuses, ['pass', 'pass'], 'gaps are skipped, not counted as passes');
+  assert.equal(c.regressed_from, 'p1', 'named against the newest run that actually has it');
+});
+
+test('one change is a change; going back and forth is instability', () => {
+  // The distinction that keeps this fix from causing the opposite error: a case
+  // that moved once and stayed moved must not be written off as flaky.
+  assert.equal(classifyChange('fail', ['fail', 'fail', 'pass', 'pass']).unstable, false, 'regressed once, stayed');
+  assert.equal(classifyChange('pass', ['pass', 'pass', 'fail', 'fail']).unstable, false, 'fixed once, stayed');
+  assert.equal(classifyChange('fail', ['pass', 'fail', 'pass']).unstable, true, 'flaps');
+  assert.equal(classifyChange('fail', ['fail', 'pass', 'fail', 'pass']).unstable, true);
+});
+
+test('classifyChange is the single rule, and is directly checkable', () => {
+  assert.equal(classifyChange('fail', ['pass', 'pass']).regressed, true);
+  assert.equal(classifyChange('fail', ['pass', 'fail']).regressed, false, 'not all priors passed');
+  assert.equal(classifyChange('fail', ['pass', 'fail']).unstable, false, 'one transition is not bimodal');
+  assert.equal(classifyChange('pass', ['pass', 'pass']).regressed, false);
+  assert.equal(classifyChange('fail', []).regressed, false);
+  // Junk statuses are ignored rather than counted as a sample.
+  assert.deepEqual(classifyChange('fail', ['pass', undefined, 'pass', 'skipped']).priorStatuses, ['pass', 'pass']);
+  assert.equal(classifyChange('fail', ['pass', undefined, 'pass']).regressed, true);
+});
+
+test('samples are counted per case, so narrow runs cannot blind the suite', () => {
+  // The exact history that produced this issue: a burst of single-case runs
+  // while debugging one flaky case. Windowing by RUN would push every other
+  // case out and silently downgrade real regressions to "unconfirmed".
+  const prevDetails = [
+    { run_id: 'debug-3', cases: [{ id: 'mal-B', status: 'fail' }] },
+    { run_id: 'debug-2', cases: [{ id: 'mal-B', status: 'pass' }] },
+    { run_id: 'debug-1', cases: [{ id: 'mal-B', status: 'fail' }] },
+    { run_id: 'full-2', cases: [{ id: 'mal-A', status: 'pass' }, { id: 'mal-B', status: 'pass' }] },
+    { run_id: 'full-1', cases: [{ id: 'mal-A', status: 'pass' }, { id: 'mal-B', status: 'pass' }] },
+  ];
+  const { detail } = scoreRun({ cases, results, meta, prevDetails });
+  const byId = Object.fromEntries(detail.cases.map((c) => [c.id, c]));
+  assert.deepEqual(byId['mal-A'].prior_statuses, ['pass', 'pass'], 'mal-A still has its samples');
+  assert.equal(byId['mal-A'].status, 'pass');
+  assert.equal(byId['mal-B'].unstable, true, 'the case being debugged is the flaky one');
+  assert.equal(byId['mal-B'].regressed_from, undefined);
+});
+
+test('prior samples are capped, so an old defect stops colouring the verdict', () => {
+  const many = Array.from({ length: 9 }, (_, i) => ({
+    run_id: `p${i}`, cases: [{ id: 'mal-B', status: 'pass' }],
+  }));
+  const { detail } = scoreRun({ cases, results, meta, prevDetails: many });
+  const malB = detail.cases.find((c) => c.id === 'mal-B');
+  assert.equal(malB.prior_statuses.length, 5, 'the five most recent samples');
+  assert.equal(malB.regressed_from, 'p0', 'named against the newest');
 });

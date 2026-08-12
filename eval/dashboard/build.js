@@ -234,9 +234,17 @@ function caseTable(detail) {
     const flags = [];
     if (c.scores.false_climb) flags.push('<span class="pill" style="color:var(--warn);background:var(--warn-bg)">over-climb</span>');
     if (under) flags.push('<span class="pill" style="color:var(--warn);background:var(--warn-bg)">under-dug</span>');
+    // #127: a case whose history disagrees with itself is unstable, not regressed.
+    // Shown whichever way it landed this time, because the useful fact is that
+    // this row's result is a coin toss — that is what stops a reviewer spending
+    // an afternoon on it.
+    if (c.unstable) {
+      const seen = (c.prior_statuses || []).join(', ');
+      flags.push(`<span class="pill" style="color:var(--warn);background:var(--warn-bg)" title="prior runs: ${esc(seen)}">unstable</span>`);
+    }
     const status = c.status === 'pass'
       ? '<span class="pill ok">pass</span>'
-      : `<span class="pill bad">${regressed ? 'regression' : 'fail'}</span>`;
+      : `<span class="pill bad">${regressed ? 'regression' : (c.regression_unconfirmed ? 'fail (new)' : 'fail')}</span>`;
     const predWrong = !c.scores.verdict_correct ? ` style="color:var(--bad)"` : '';
     return `<tr class="rowlink"><td class="mono">${esc(c.id)}</td><td>${esc(c.detection_source)}</td>
 <td>${esc(c.expected.disposition)}</td><td${predWrong}>${esc(c.predicted.disposition)}</td>
@@ -253,17 +261,22 @@ function caseTable(detail) {
 function computeDiff(prevDetail, curDetail) {
   const prevMap = new Map(prevDetail.cases.map((c) => [c.id, c]));
   const curMap = new Map(curDetail.cases.map((c) => [c.id, c]));
-  const regressions = [], fixes = [], changed = [], unchanged = [], added = [], removed = [];
+  const regressions = [], fixes = [], changed = [], unchanged = [], added = [], removed = [], unstable = [];
   for (const [id, cur] of curMap) {
     const prev = prevMap.get(id);
     if (!prev) { added.push({ cur }); continue; }
-    if (prev.status === 'pass' && cur.status === 'fail') regressions.push({ prev, cur });
+    // #127: this comparison is two samples wide by construction, so it cannot
+    // tell a regression from a flip on its own. The scorer has already judged
+    // that against a window of prior runs — defer to it rather than reaching a
+    // second, worse verdict here, which is what `--fail-on-regression` acted on.
+    if (prev.status === 'pass' && cur.status === 'fail' && !cur.unstable) regressions.push({ prev, cur });
+    else if (prev.status === 'pass' && cur.status === 'fail') unstable.push({ prev, cur });
     else if (prev.status === 'fail' && cur.status === 'pass') fixes.push({ prev, cur });
     else if (prev.predicted.disposition !== cur.predicted.disposition) changed.push({ prev, cur });
     else unchanged.push({ prev, cur });
   }
   for (const [id, prev] of prevMap) if (!curMap.has(id)) removed.push({ prev });
-  return { regressions, fixes, changed, unchanged, added, removed };
+  return { regressions, fixes, changed, unchanged, added, removed, unstable };
 }
 
 function diffFileName(prevRun, curRun) {
@@ -311,6 +324,9 @@ function diffSection(title, rows, tone, emptyMsg) {
 function diffPage(prevRun, curRun, prevDetail, curDetail) {
   const d = computeDiff(prevDetail, curDetail);
   const summary = `${d.regressions.length} regression(s) &middot; ${d.fixes.length} fix(es) &middot; ${d.changed.length} other change(s) &middot; ${d.unchanged.length} unchanged`
+    // #127: counted separately so a flip on a bimodal case is neither inflated
+    // into a regression nor quietly dropped from the summary.
+    + (d.unstable.length ? ` &middot; ${d.unstable.length} unstable flip(s)` : '')
     + (d.added.length ? ` &middot; ${d.added.length} new` : '') + (d.removed.length ? ` &middot; ${d.removed.length} removed` : '');
   const body = `
 <header class="masthead"><div class="doc-kind">Run diff</div>
@@ -459,6 +475,11 @@ function main() {
         fail = true;
       } else {
         console.log('CI regression check: PASS');
+      }
+      // #127: say what was set aside and why, so a suppressed flip is visible
+      // rather than silently absent — an unstable case is still worth fixing.
+      if (d.unstable.length) {
+        console.log(`  (${d.unstable.length} flip(s) not counted as regressions — unstable case(s): ${d.unstable.map((r) => r.cur.id).join(', ')})`);
       }
     }
     if (fail) process.exit(1);

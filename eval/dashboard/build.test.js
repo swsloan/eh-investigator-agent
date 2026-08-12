@@ -94,3 +94,57 @@ test('no NaN reaches the page when a metric appears mid-history', () => {
   assert.ok(!/NaN/.test(html), 'a missing comparand renders nothing, not NaN');
   assert.ok(!/undefined/.test(html));
 });
+
+// ---- Regressed vs unstable (#127) ----
+
+/** A detail whose single case carries the scorer's stability verdict. */
+function detailWith(runId, status, extra = {}) {
+  return {
+    run_id: runId,
+    cases: [{
+      id: 'flaky', detection_source: 'behavioral',
+      expected: { disposition: 'benign', attack: [], min_rung: 'metrics' },
+      predicted: { disposition: status === 'pass' ? 'benign' : 'malicious', confidence: 'high', highest_rung_used: 'metrics', attack: [] },
+      scores: { verdict_correct: status === 'pass', cost_usd: 1, false_climb: false, false_alarm: status !== 'pass' },
+      status,
+      ...extra,
+    }],
+  };
+}
+
+function buildWith(runs, details) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eh-dash-'));
+  fs.writeFileSync(path.join(dir, 'history.jsonl'), runs.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  for (const d of details) fs.writeFileSync(path.join(dir, `${d.run_id}.json`), JSON.stringify(d));
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'eh-dash-out-'));
+  buildDashboard({ dataDir: dir, outDir: out });
+  const files = Object.fromEntries(fs.readdirSync(out).map((f) => [f, fs.readFileSync(path.join(out, f), 'utf8')]));
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(out, { recursive: true, force: true });
+  return files;
+}
+
+test('an unstable case is labelled unstable, not called a regression', () => {
+  const runs = [run('eval-10', {}), run('eval-11', { verdict_accuracy: 0 })];
+  const files = buildWith(runs, [
+    detailWith('eval-10', 'pass'),
+    detailWith('eval-11', 'fail', { unstable: true, prior_statuses: ['pass', 'fail'] }),
+  ]);
+  const page = files['eval-11.html'];
+  assert.match(page, /unstable/, 'the row says the case flips');
+  assert.ok(!/>regression</.test(page), 'and never calls this a regression');
+  const diff = Object.entries(files).find(([f]) => f.startsWith('diff-'))?.[1] || '';
+  assert.match(diff, /0 regression\(s\)/, 'the diff does not count it either');
+  assert.match(diff, /1 unstable flip\(s\)/, 'but does report it was set aside');
+});
+
+test('a confirmed regression is still called one', () => {
+  const runs = [run('eval-12', {}), run('eval-13', { verdict_accuracy: 0 })];
+  const files = buildWith(runs, [
+    detailWith('eval-12', 'pass'),
+    detailWith('eval-13', 'fail', { regressed_from: 'eval-12', prior_statuses: ['pass', 'pass'] }),
+  ]);
+  assert.match(files['eval-13.html'], />regression</, 'a real change keeps the strong signal');
+  const diff = Object.entries(files).find(([f]) => f.startsWith('diff-'))?.[1] || '';
+  assert.match(diff, /1 regression\(s\)/);
+});
