@@ -472,9 +472,16 @@ its own. Writes follow a **propose → approve → execute** flow:
 2. **Approve.** A human approves or rejects it in the UI — an in-chat tray for
    the active session, and a **cross-session dashboard** (header badge + panel)
    that lists pending approvals across every session in real time, so a proposal
-   from a background or unattended run is never missed. Approvals show each
-   action's age (stale ones are flagged), a "session busy" state while that
-   session's agent is mid-turn, and optional desktop notifications.
+   from a background or unattended run is never missed. Delivery depends on
+   **presence** (#137): a proposal made while you have the session on screen
+   raises a prompt at proposal time; one made unattended (eval run, background
+   session, or nobody viewing) is stamped `unattended`, safety-logged, and waits
+   in the queue — it never blocks the run. Approvals show each action's age
+   (stale ones are flagged), an expiry countdown near the 24h TTL (expired
+   proposals are retired visibly, not silently), a "session busy" state while
+   that session's agent is mid-turn, and optional desktop notifications.
+   Destructive capabilities additionally require typing the tool name back
+   before Approve arms.
 3. **Execute.** Only `POST /api/actions/:id/decide` (behind the local-origin
    guard) can approve an action, and only the server-side executor
    (`ExcliBroker.executeApproved`) runs the write — re-validating that it is a

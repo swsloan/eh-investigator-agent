@@ -5,6 +5,7 @@ import { resetStreamRendering, setHasMessages, updateUsage } from './chat.js';
 import { $, dom } from './dom.js';
 import { closeViewer, refreshFiles } from './files.js';
 import { clearActionsTray, refreshActions } from './actions.js';
+import { closeActionPrompt } from './action-prompt.js';
 import { connect } from './sse.js';
 import { newUsage, state } from './state.js';
 
@@ -274,6 +275,7 @@ export function switchSession(session) {
   state.agentModel = session.agentState?.model || null;
   updateUsage();
   clearActionsTray(); // drop the previous session's actions before fetching this one's
+  closeActionPrompt(); // an approval prompt belongs to the session it was raised in (#137)
   connect(session.id);
   refreshFiles();
   refreshActions(session.id);

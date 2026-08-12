@@ -21,9 +21,9 @@ function seedProposed(session) {
   });
 }
 
-function mount(session, { executeApproved = async () => ({ ok: true }), observe } = {}) {
+function mount(session, { executeApproved = async () => ({ ok: true }), observe, broadcast } = {}) {
   const sessions = new Map([[session.id, session]]);
-  return (app) => app.use('/api/actions', actionsRouter({ sessions, executeApproved, observe }));
+  return (app) => app.use('/api/actions', actionsRouter({ sessions, executeApproved, observe, broadcast }));
 }
 
 // A read-back stub: resolves each probe's subject from `bySubject`. Used to drive
@@ -172,6 +172,44 @@ test('a capability with no verifier terminates as executed (backward compatible)
     assert.equal(body.ok, true);
     assert.equal(body.action.status, 'executed');
     assert.equal(body.action.verification.status, 'unsupported');
+  });
+  fs.rmSync(session.workspace, { recursive: true, force: true });
+});
+
+test('listing sweeps expired proposals to expired and broadcasts each transition (#137)', async () => {
+  const session = makeSession();
+  const stale = createAction(session.workspace, {
+    sessionId: session.id, capabilityId: 'update_detection', params: { id: 1 }, label: 'stale', ttlMs: -1000,
+  });
+  const fresh = seedProposed(session);
+  const events = [];
+  const broadcast = (id, e) => events.push({ id, e });
+  await withServer(mount(session, { broadcast }), async (base) => {
+    const res = await fetch(`${base}/api/actions?session=${session.id}`);
+    assert.equal(res.status, 200);
+    const list = await res.json();
+    assert.equal(list.find((a) => a.id === stale.id)?.status, 'expired', 'served as expired, not proposed');
+    assert.equal(list.find((a) => a.id === fresh.id)?.status, 'proposed');
+  });
+  assert.equal(readAction(session.workspace, stale.id).status, 'expired', 'transition persisted');
+  assert.equal(readAction(session.workspace, stale.id).decidedBy, 'system:expiry');
+  const swept = events.filter((x) => x.e.type === 'action_decided' && x.e.action.id === stale.id);
+  assert.equal(swept.length, 1, 'expiry broadcast so tray/index/audit see it');
+  fs.rmSync(session.workspace, { recursive: true, force: true });
+});
+
+test('the pending aggregate also sweeps expired proposals (#137)', async () => {
+  const session = makeSession();
+  createAction(session.workspace, {
+    sessionId: session.id, capabilityId: 'update_detection', params: { id: 1 }, label: 'stale', ttlMs: -1000,
+  });
+  seedProposed(session);
+  await withServer(mount(session), async (base) => {
+    const res = await fetch(`${base}/api/actions/pending`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.pendingCount, 1, 'only the fresh proposal is pending');
+    assert.ok(body.actions.every((a) => a.status !== 'expired'), 'expired never shows as open');
   });
   fs.rmSync(session.workspace, { recursive: true, force: true });
 });

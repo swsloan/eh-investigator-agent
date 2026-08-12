@@ -7,7 +7,7 @@ adversarial telemetry tried.
 
 ## What it records
 
-Five boundary events, each captured **where the guard already fires** (the guard
+Six boundary events, each captured **where the guard already fires** (the guard
 behavior is unchanged — see invariants):
 
 | Kind | Source | Meaning |
@@ -17,6 +17,7 @@ behavior is unchanged — see invariants):
 | `secret_redacted` | `containsSecretMaterial` gate in the message route | Secret material was detected in inbound content and blocked before it reached the model. |
 | `ssrf_blocked` | research fetch guard (`lib/research/fetch.js`) | A research fetch to a local/internal/non-public destination was denied. |
 | `exfil_blocked` | research fetch guard | An outbound fetch exceeded the response-size guard. |
+| `unattended_proposal` | action broker propose path (#137) | A write was proposed while no human was present (eval/background run, or nobody viewing the session); it awaits deferred review in the approvals queue. Records the tool and the presence reason — never the params. |
 
 ## Two hard invariants
 

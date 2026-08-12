@@ -305,6 +305,22 @@
       </div>
     </div>
 
+    <!-- ===== Attended approval prompt (#137): raised at proposal time when the
+         user has the proposing session on screen. Dismissing defers to the tray. -->
+    <div id="action-prompt-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="action-prompt-title">
+      <div class="modal-card action-prompt-card">
+        <div class="modal-head">
+          <span id="action-prompt-title">Approval needed</span>
+          <span class="modal-head-spacer"></span>
+          <button id="action-prompt-close" class="icon-btn" title="Review later (stays in the tray)" aria-label="Review later">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <div id="action-prompt-note" class="action-prompt-note"></div>
+        <div id="action-prompt-body" class="approvals-body"></div>
+      </div>
+    </div>
+
     <!-- ===== Settings modal ===== -->
     <div id="settings-modal" class="modal hidden">
       <div class="modal-card settings-card">

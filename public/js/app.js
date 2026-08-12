@@ -37,6 +37,7 @@ import {
 } from './sessions.js';
 import { refreshPreflight } from './status.js';
 import { closeApprovals, initApprovals, isApprovalsOpen } from './approvals.js';
+import { closeActionPrompt, initActionPrompt, isActionPromptOpen } from './action-prompt.js';
 import { initTheme } from './theme.js';
 import { closeBackendUpdateDialog, initBackendUpdate, isBackendUpdateDialogOpen, refreshBackendUpdate } from './backend-update.js';
 import { initAuth } from './auth.js';
@@ -47,6 +48,7 @@ function initEscapeHandling() {
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
     if (isBackendUpdateDialogOpen()) closeBackendUpdateDialog();
+    else if (isActionPromptOpen()) closeActionPrompt(); // defers the decision to the tray
     else if (isApprovalsOpen()) closeApprovals();
     else if (isDownloadMenuOpen()) closeDownloadMenu();
     else if (isMemoryOpen()) closeMemory();
@@ -85,6 +87,7 @@ export function startApp() {
   initSessionStream({ refreshFiles, loadSessions });
   initSessionMenus();
   initApprovals();
+  initActionPrompt();
   initEval();
   initMemory();
   initTopology();

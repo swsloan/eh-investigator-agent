@@ -21,6 +21,7 @@ import {
 import { dom } from './dom.js';
 import { onSessionEvent } from './memory.js';
 import { applyActionEvent } from './actions.js';
+import { maybePromptForAction, updateActionPrompt } from './action-prompt.js';
 import { newUsage, state } from './state.js';
 import { applyIdleStatus, setStatus } from './status.js';
 
@@ -214,9 +215,21 @@ export function handleEvent(ev) {
       break;
 
     case 'action_proposed':
+      applyActionEvent(ev); // updates the in-chat tray; the global stream drives the dashboard badge
+      // #137: an attended proposal prompts at proposal time — the user is here.
+      if (!state.replaying) maybePromptForAction(ev.action);
+      break;
+
     case 'action_decided':
     case 'action_result':
-      applyActionEvent(ev); // updates the in-chat tray; the global stream drives the dashboard badge
+      applyActionEvent(ev);
+      updateActionPrompt(ev.action); // close/refresh the prompt if it was showing this action
+      break;
+
+    // #137: persistent transcript notices from the governed write path (a
+    // proposal was recorded; a turn ended with proposals still unresolved).
+    case 'action_notice':
+      addSysNote(ev.message || 'A proposed change awaits approval.');
       break;
 
     case 'challenger_status':

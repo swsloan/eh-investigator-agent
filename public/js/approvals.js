@@ -63,6 +63,8 @@ export async function refreshApprovals() {
   if (isApprovalsOpen()) renderApprovalsBody(lastData);
 }
 
+let lastBadgeCount = 0;
+
 function updateBadge(count) {
   const el = $('approvals-count');
   if (el) {
@@ -75,7 +77,15 @@ function updateBadge(count) {
     btn.setAttribute('aria-label', count // C5: screen-reader label
       ? `${count} approval${count === 1 ? '' : 's'} awaiting review`
       : 'Pending approvals (none)');
+    // #137: a NEW pending approval pulses the badge once, so an unattended
+    // proposal registers even when the user is looking at another session.
+    if (count > lastBadgeCount) {
+      btn.classList.remove('badge-pulse');
+      void btn.offsetWidth; // restart the animation
+      btn.classList.add('badge-pulse');
+    }
   }
+  lastBadgeCount = count;
 }
 
 function renderApprovalsBody(data) {
