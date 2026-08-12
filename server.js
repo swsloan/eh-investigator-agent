@@ -17,7 +17,8 @@ import { ExcliBroker } from './lib/excli-broker.js';
 import { ActionBroker } from './lib/action-broker.js';
 import { ActionIndex } from './lib/action-index.js';
 import { recoverInterruptedActions } from './lib/action-recover.js';
-import { listActionsAcrossWorkspaces } from './lib/action-store.js';
+import { listActionsAcrossWorkspaces, listActions, sweepExpired } from './lib/action-store.js';
+import { markUnattended, resolvePresence } from './lib/presence.js';
 import { ReversingLabsBroker } from './lib/reversinglabs-broker.js';
 import { ResearchBroker } from './lib/research-broker.js';
 import { TuningBroker } from './lib/tuning-broker.js';
@@ -192,6 +193,9 @@ const actionBroker = new ActionBroker({
   root: ROOT,
   excli: excliBroker,
   broadcast: (sessionId, event) => broadcast(sessionId, event),
+  // #137: presence at proposal time — attended (someone has this session on
+  // screen) chooses a prompt-now delivery in the UI; unattended never blocks.
+  presenceFor: (session) => resolvePresence(session, sseClients.get(session.id)?.size || 0),
 });
 actionBroker.start();
 // Structured investigation plans. The agent's ./investigation-plan interface has
@@ -334,6 +338,23 @@ function createSession(id = crypto.randomUUID(), { backend: backendId } = {}) {
     redact,
   });
   session.on('event', (event) => broadcast(id, event));
+  // #137: a turn must not end quietly with an unresolved proposal. When a run
+  // finishes and this session still has writes awaiting approval, record a
+  // persistent notice so it lands in the transcript (and its replay), not only
+  // in the tray.
+  session.on('event', (event) => {
+    if (event.type !== 'agent_end') return;
+    let open = 0;
+    try { open = listActions(session.workspace).filter((a) => a.status === 'proposed').length; } catch { return; }
+    if (!open) return;
+    session.recordEvent({
+      type: 'action_notice',
+      at: Date.now(),
+      message: open === 1
+        ? 'This turn ended with 1 proposed change still awaiting your approval — see the tray below.'
+        : `This turn ended with ${open} proposed changes still awaiting your approval — see the tray below.`,
+    });
+  });
   challenger.attachSession(session);
   memory.attachSession(session);
   topology.attachSession(session); // ingest a topology snapshot if the turn produced one
@@ -353,6 +374,9 @@ function ensureTopologySession() {
     session = createSession(TOPOLOGY_SESSION_ID, { backend: prefs().backend });
     session.title = 'Network map enrichment';
     session.titleGenerated = false;
+    markUnattended(session, 'network map enrichment'); // #137: background session
+  } else if (!session.options.unattended) {
+    markUnattended(session, 'network map enrichment'); // restored across restarts
   }
   return session;
 }
@@ -374,6 +398,20 @@ restoreSessionsFromWorkspaces(WORKSPACES, createSession, { recoverState, redact 
 actionIndex.seed(listActionsAcrossWorkspaces(
   [...sessions.values()].map((s) => ({ sessionId: s.id, sessionTitle: s.title || 'New session', workspace: s.workspace })),
 ).actions);
+
+// #137: an expired proposal must be reported, not vanish. Sweep every session's
+// store at startup and on an interval, persisting `proposed → expired` and
+// broadcasting each transition so the tray, the cross-session index, the badge,
+// and the audit trail all agree — even when nobody happens to load the list.
+function sweepAllExpiredActions() {
+  for (const session of sessions.values()) {
+    let expired = [];
+    try { expired = sweepExpired(session.workspace); } catch { continue; }
+    for (const action of expired) broadcast(session.id, { type: 'action_decided', action });
+  }
+}
+sweepAllExpiredActions();
+setInterval(sweepAllExpiredActions, 10 * 60 * 1000).unref();
 
 // Resolve any write left mid-flight by a prior crash (Phase 3, #23): read the
 // target back and settle it as verified / verification_failed, or (unverifiable)

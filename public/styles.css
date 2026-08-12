@@ -3952,6 +3952,79 @@ body.mem-docked .app { grid-template-columns: 268px 1fr 0; width: calc(100vw - 4
 /* C4 — notify toggle */
 .approvals-notify.on { color: var(--sapphire); }
 .approvals-notify.on svg { fill: color-mix(in srgb, var(--sapphire) 20%, transparent); }
+
+/* ===== #137 — approval salience: presence, expiry, prompt, destructive confirm ===== */
+/* Proposed with nobody watching: worth an extra look before approving. */
+.action-presence {
+  font-size: var(--fs-100);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-2);
+  background: var(--chip-bg);
+  border: 1px solid var(--chip-border);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+/* Countdown once a proposal nears its hard TTL; the card edge warns too. */
+.action-expiry {
+  font-size: var(--fs-200);
+  font-weight: 700;
+  color: var(--warn-text);
+  white-space: nowrap;
+}
+.action-card.action-expiring { border-left-color: var(--warn-edge); }
+
+/* Attended prompt: raised at proposal time when the user is right there. */
+.action-prompt-card { width: min(560px, 92vw); max-height: 82vh; display: flex; flex-direction: column; }
+.action-prompt-note {
+  padding: 10px 16px 0;
+  font-size: var(--fs-300);
+  color: var(--text-2);
+  line-height: 1.45;
+}
+
+/* Destructive type-to-confirm: Approve stays disabled until the capability id
+   is typed back exactly. */
+.action-confirm { margin-top: 10px; }
+.action-confirm-note {
+  padding: 7px 10px;
+  font-size: var(--fs-300);
+  color: var(--danger-text);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  line-height: 1.4;
+}
+.action-confirm-input {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 10px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: var(--fs-300);
+  color: var(--ink);
+  background: var(--input-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+.action-confirm-input:focus { outline: none; border-color: var(--focus-border); }
+
+/* One pulse when a NEW approval lands, so an unattended proposal registers
+   even while the user is looking at another session. */
+.approvals-btn.badge-pulse .approvals-count { animation: approvals-pulse 1.2s ease-out 2; }
+@keyframes approvals-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn) 60%, transparent); }
+  70% { box-shadow: 0 0 0 8px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@supports not (background: color-mix(in srgb, red, blue)) {
+  .approvals-btn.badge-pulse .approvals-count { animation: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .approvals-btn.badge-pulse .approvals-count { animation: none; }
+}
 /* ===== Network topology map (Slice B) =====
    Full-screen only: a map wants the room, and it avoids the docked grid juggling
    the memory panel needs. Sigma paints into a canvas inside .topo-canvas; colours

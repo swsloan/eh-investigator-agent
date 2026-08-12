@@ -31,6 +31,28 @@ function pendingCount(actions) {
 // approval sitting unnoticed (e.g. from an unattended run) stands out.
 export const STALE_AFTER_MS = 60 * 60 * 1000; // 1 hour
 
+// #137: a proposal inside this window of its hard TTL shows an explicit
+// countdown, so expiry is anticipated instead of discovered afterwards.
+export const EXPIRY_WARN_MS = 4 * 60 * 60 * 1000; // 4 hours
+
+/** Milliseconds until `expiresAt`, or null when absent/unparseable. */
+export function timeUntilExpiry(expiresAt, now = Date.now()) {
+  if (!expiresAt) return null;
+  const t = new Date(expiresAt).getTime();
+  if (!Number.isFinite(t)) return null;
+  return t - now;
+}
+
+/** Compact remaining time, e.g. "3h 20m", "45m". */
+export function formatRemaining(ms) {
+  const min = Math.ceil(ms / 60000);
+  if (min < 1) return 'under a minute';
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  const rem = min % 60;
+  return rem ? `${hr}h ${rem}m` : `${hr}h`;
+}
+
 /** Compact relative age, e.g. "just now", "5m", "3h", "2d". */
 export function relativeAge(createdAt, now = Date.now()) {
   const ms = now - new Date(createdAt).getTime();
@@ -73,6 +95,12 @@ export function clearActionsTray() {
   renderActionsTray();
 }
 
+/** Re-render with current state — used when `state.running` flips, so decide
+ *  buttons appear the moment the agent's turn ends (#137). */
+export function rerenderActionsTray() {
+  renderActionsTray();
+}
+
 function renderActionsTray() {
   const tray = dom.actionsTray;
   if (!tray) return;
@@ -93,7 +121,9 @@ function renderActionsTray() {
 
   const list = document.createElement('div');
   list.className = 'actions-tray-list';
-  for (const action of actions) list.appendChild(actionCard(action));
+  // The decide endpoint 409s mid-turn; sessionRunning renders the busy note
+  // instead of buttons, and rerenderActionsTray() restores them at turn end.
+  for (const action of actions) list.appendChild(actionCard(action, { sessionRunning: state.running }));
 
   tray.replaceChildren(head, list);
 }
@@ -103,7 +133,7 @@ function renderActionsTray() {
  * (default: reflect it into the in-chat tray). The dashboard passes its own
  * handler. `showSession` prepends the origin session's title (cross-session view).
  */
-export function actionCard(action, { onResult, showSession = false, showAge = false } = {}) {
+export function actionCard(action, { onResult, showSession = false, showAge = false, sessionRunning = false } = {}) {
   const stale = action.status === 'proposed'
     && Number.isFinite(new Date(action.createdAt).getTime())
     && (Date.now() - new Date(action.createdAt).getTime()) > STALE_AFTER_MS;
@@ -133,6 +163,27 @@ export function actionCard(action, { onResult, showSession = false, showAge = fa
     destructive.className = 'action-destructive';
     destructive.textContent = 'destructive';
     headRow.appendChild(destructive);
+  }
+  // #137: proposed with no one watching — worth an extra look before approving,
+  // since nobody saw the reasoning that led to it.
+  if (action.presence === 'unattended') {
+    const presence = document.createElement('span');
+    presence.className = 'action-presence';
+    presence.textContent = 'unattended';
+    presence.title = action.presenceReason
+      ? `Proposed while unattended (${action.presenceReason}).`
+      : 'Proposed while no one was viewing the session.';
+    headRow.appendChild(presence);
+  }
+  // #137: expiry countdown once a proposal nears its hard TTL.
+  const remaining = action.status === 'proposed' ? timeUntilExpiry(action.expiresAt) : null;
+  if (remaining !== null && remaining <= EXPIRY_WARN_MS) {
+    const expiry = document.createElement('span');
+    expiry.className = 'action-expiry';
+    expiry.textContent = remaining <= 0 ? 'expiring' : `expires in ${formatRemaining(remaining)}`;
+    expiry.title = `Unapproved proposals expire at ${new Date(action.expiresAt).toLocaleString()} and must be re-proposed.`;
+    headRow.appendChild(expiry);
+    card.classList.add('action-expiring');
   }
   if (showAge && action.createdAt) {
     const age = document.createElement('span');
@@ -189,7 +240,7 @@ export function actionCard(action, { onResult, showSession = false, showAge = fa
   card.appendChild(feedback);
 
   if (action.status === 'proposed') {
-    if (action.sessionRunning) {
+    if (action.sessionRunning || sessionRunning) {
       // C2: the decide endpoint rejects (409) while the session's agent is
       // working. Surface that here instead of letting the click fail.
       const busy = document.createElement('div');
@@ -216,9 +267,60 @@ function actionButtons(action, feedback, onResult) {
   approve.textContent = 'Approve & run';
   const setBusy = (on) => { reject.disabled = on; approve.disabled = on; };
   reject.addEventListener('click', () => decide(action, 'reject', setBusy, feedback, onResult));
-  approve.addEventListener('click', () => decide(action, 'approve', setBusy, feedback, onResult));
+  approve.addEventListener('click', () => {
+    // #137: a destructive capability gets a deliberate second step — type the
+    // tool name to arm the approval — instead of one reflexive click.
+    if (action.destructive) {
+      const confirm = destructiveConfirm(action, feedback, onResult, () => {
+        confirm.replaceWith(actionButtons(action, feedback, onResult));
+      });
+      row.replaceWith(confirm);
+      return;
+    }
+    decide(action, 'approve', setBusy, feedback, onResult);
+  });
   row.append(reject, approve);
   return row;
+}
+
+/** Type-to-confirm block for destructive writes: Approve stays disabled until
+ *  the capability id is typed back exactly. `onCancel` restores the buttons. */
+function destructiveConfirm(action, feedback, onResult, onCancel) {
+  const wrap = document.createElement('div');
+  wrap.className = 'action-confirm';
+  const note = document.createElement('div');
+  note.className = 'action-confirm-note';
+  note.textContent = `This change is destructive and cannot be undone by the app. Type "${action.capabilityId}" to enable approval.`;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'action-confirm-input';
+  input.placeholder = action.capabilityId;
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.setAttribute('aria-label', `Type ${action.capabilityId} to confirm`);
+  const row = document.createElement('div');
+  row.className = 'action-buttons';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'action-btn action-reject';
+  cancel.textContent = 'Cancel';
+  const approve = document.createElement('button');
+  approve.type = 'button';
+  approve.className = 'action-btn action-approve';
+  approve.textContent = 'Approve & run';
+  approve.disabled = true;
+  const armed = () => input.value.trim() === action.capabilityId;
+  const setBusy = (on) => { cancel.disabled = on; input.disabled = on; approve.disabled = on || !armed(); };
+  input.addEventListener('input', () => { approve.disabled = !armed(); });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !approve.disabled) approve.click();
+  });
+  cancel.addEventListener('click', onCancel);
+  approve.addEventListener('click', () => decide(action, 'approve', setBusy, feedback, onResult));
+  row.append(cancel, approve);
+  wrap.append(note, input, row);
+  requestAnimationFrame(() => input.focus());
+  return wrap;
 }
 
 /**

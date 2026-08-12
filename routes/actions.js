@@ -1,7 +1,7 @@
 import express from 'express';
 import {
   readAction, listActions, transitionAction, isValidActionId, listActionsAcrossWorkspaces,
-  isExpired,
+  isExpired, sweepExpired,
 } from '../lib/action-store.js';
 import {
   isVerifiable, desiredStateFor, readbackState, preconditionOk, verifyWrite,
@@ -28,10 +28,20 @@ export function actionsRouter({
 }) {
   const router = express.Router();
 
+  // #137: expiry must be visible, so every list view retires stale proposals
+  // first (persisting `proposed → expired` and broadcasting each transition)
+  // rather than serving a "proposed" record that can no longer be approved.
+  function sweepSession(session) {
+    let expired = [];
+    try { expired = sweepExpired(session.workspace); } catch { return; }
+    for (const action of expired) broadcast(session.id, { type: 'action_decided', action });
+  }
+
   /** GET /api/actions?session=:id — list a session's actions (newest first). */
   router.get('/', (req, res) => {
     const session = sessions.get(String(req.query.session || ''));
     if (!session) return res.status(404).json({ error: 'Session not found' });
+    sweepSession(session);
     return res.json(listActions(session.workspace));
   });
 
@@ -43,6 +53,7 @@ export function actionsRouter({
    * filesystem scan if no index was wired. Read-only.
    */
   router.get('/pending', (req, res) => {
+    for (const session of sessions.values()) sweepSession(session);
     if (actionIndex) return res.json(actionIndex.snapshot(getSessionInfo));
     const entries = [...sessions.values()].map((s) => ({
       sessionId: s.id,

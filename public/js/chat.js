@@ -9,6 +9,8 @@ import {
   integrationSourceForToolCall,
 } from './integration-badges.js';
 import { onRunningChanged, setCurrentFinding } from './activity.js';
+import { rerenderActionsTray } from './actions.js';
+import { refreshActionPrompt } from './action-prompt.js';
 import { flushQueuedMessage } from './composer.js';
 import { newUsage, state } from './state.js';
 import { replaceFindingPlaceholders, splitFindings } from './findings.js';
@@ -32,6 +34,12 @@ export function setRunning(isRunning) {
   onRunningChanged(isRunning);
   // A message typed during the turn goes out at the boundary, not into a 409.
   if (was && !isRunning) flushQueuedMessage();
+  // #137: decide buttons are gated while the turn runs — re-render the tray and
+  // any open approval prompt the moment the running state flips.
+  if (was !== isRunning) {
+    rerenderActionsTray();
+    refreshActionPrompt();
+  }
   updatePlanStrip();
   updateSessionModelButton();
   dom.sendBtn.classList.toggle('hidden', isRunning);
