@@ -240,12 +240,70 @@ because delegation was aggregate-only. That is fixed — `scores` now carries
 `delegations`, `delegated_tokens` and `tokens` per case — but this run predates
 it.
 
-**Before Slice 2, do two cheap things:** repeat the 9-case run to bound
-variance, and read the now-recorded per-case attribution. If the saving is
-concentrated in cases that did not delegate, the premise has not been
-demonstrated regardless of the headline number. Also worth noting: cache reads
-could not be compared directly (the baseline predates the `cache_reads_per_case`
-breakout), so tokens and cost are the comparable fields for this pair.
+#### Repeat run (`eval-2026-08-12T17-13-33-985Z`) — the saving does not replicate
+
+Same 9 cases, same configuration, same code:
+
+| | Baseline | Run 1 | Run 2 |
+|---|---|---|---|
+| cost/case | $7.97 | $6.58 (−17.3%) | **$7.81 (−1.9%)** |
+| tokens/case | 14.95M | 12.82M | 16.46M |
+| `verdict_accuracy` | 1.0 | 1.0 | **0.889** |
+| `ladder_adherence` | 0.4444 | 0.6667 | **0.4444** |
+| `delegations_per_case` | — | 0.44 | 0.67 |
+| gate | PASS | PASS | PASS |
+
+**Run 1 and Run 2 are the same configuration and differ by 18.7%.** That is the
+noise floor of this eval, and it is larger than the effect being measured — so
+**a 9-case run cannot resolve a ~17% cost difference at one run per arm.** Run
+1's headline saving, its adherence improvement, and its perfect accuracy were
+all sampling noise: none of the three replicated.
+
+#### Attribution — the saving was never delegation's to claim
+
+Run 2 is the first run carrying per-case delegation, and it separates cleanly:
+
+| | n | Baseline | Run 2 | |
+|---|---|---|---|---|
+| cases that **delegated** | 5 | $41.21 | **$52.37** | **+27.1%** |
+| cases that did **not** delegate | 4 | $30.48 | **$17.95** | −41.1% |
+
+**Every dollar of the aggregate saving came from cases that never delegated, and
+the cases that did delegate got substantially more expensive.** That is the
+design's own risk #2 — "delegation overhead exceeds the cache-read saving" —
+observed directly rather than inferred.
+
+Also: the one failing case, `plaintext-http-creds` (benign called **malicious**
+at high confidence), was a case that delegated. n=1, so this is not evidence
+that delegation caused the miss — but it is the shape of risk #1 ("cheap agent
+misreads telemetry, lead inherits a wrong premise"), and it is why
+`false_close_rate` is the wrong-direction-only gate: the miss was benign→malicious,
+so the gate passed while accuracy fell.
+
+#### Verdict on the premise
+
+**The context-scoping premise is not demonstrated, and the measured direction is
+against it.** Per this document's own instruction — *"if the saving is small, the
+context-scoping premise is wrong and the rest of the design should be
+reconsidered rather than built"* — **Slices 2, 3 and 4 should not be built as
+designed.**
+
+What remains valid:
+
+- **Slice 0 (subagent visibility) stands on its own** and is already merged; it
+  is a UI capability, not a cost bet.
+- **The measurement plumbing is the durable asset**: delegated tokens are now
+  counted, per-case attribution is recorded, and `isDelegationTool` covers both
+  tool names. Any future delegation work can be judged instead of assumed.
+- If delegation is revisited, the target is **not** "delegate telemetry
+  broadly". The observed overhead is per-delegation, so the only shape worth
+  testing is a much narrower trigger — one where the payload is genuinely large
+  and the specialist's report is genuinely small — and it must be measured with
+  **≥3 runs per arm**, because this eval's noise floor is ~19%.
+
+Note: cache reads could not be compared directly against the baseline (it
+predates the `cache_reads_per_case` breakout), so tokens and cost are the
+comparable fields for these pairs.
 
 ### Slice 2 — Research + reporter on Sonnet
 
