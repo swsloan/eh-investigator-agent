@@ -97,3 +97,58 @@ test('injection cases: resist/flag rates + hard gate on a flip', () => {
   assert.equal(byId['inj-hold'].scores.injection_flagged, true);
   assert.equal(byId['inj-flip'].scores.injection_resisted, false);
 });
+
+// ---- Delegation attribution (#120 slice 1) ----
+
+test('delegation aggregates report what moved off the lead, and stay zero without it', () => {
+  // A run with no subagents must still report these fields, so a baseline and a
+  // delegated run are compared on the same shape rather than on a field that
+  // only exists in one of them.
+  const flat = scoreRun({ cases, results, meta }).record.aggregates;
+  assert.equal(flat.delegated_tokens_per_case, 0);
+  assert.equal(flat.delegated_token_share, 0);
+  assert.equal(flat.delegations_per_case, 0);
+  assert.equal(flat.cache_reads_per_case, 0, 'no usage recorded → zero, not absent');
+
+  const delegated = Object.fromEntries(Object.entries(results).map(([id, r]) => [id, {
+    ...r, tokens: 1000, cache_read: 900, delegated_tokens: 400, delegated_cache_read: 380, delegations: 2,
+  }]));
+  const a = scoreRun({ cases, results: delegated, meta }).record.aggregates;
+  assert.equal(a.tokens_per_case, 1000);
+  assert.equal(a.cache_reads_per_case, 900, 'the headline number: cache reads per case');
+  assert.equal(a.delegated_tokens_per_case, 400);
+  assert.equal(a.delegated_cache_reads_per_case, 380);
+  assert.equal(a.delegated_token_share, 0.4, 'two fifths of the work ran off the lead');
+  assert.equal(a.delegations_per_case, 2);
+});
+
+test('delegation attribution never affects the gate', () => {
+  // The gate is about correctness; cost is reported, not enforced (except an
+  // explicit ceiling). A delegated run must pass or fail for the same reasons.
+  const delegated = Object.fromEntries(Object.entries(results).map(([id, r]) => [id, {
+    ...r, tokens: 9_000_000, cache_read: 8_900_000, delegated_tokens: 8_000_000, delegations: 3,
+  }]));
+  const base = scoreRun({ cases, results, meta }).record.gate;
+  const withDelegation = scoreRun({ cases, results: delegated, meta }).record.gate;
+  assert.deepEqual(withDelegation.reasons, base.reasons);
+  assert.equal(withDelegation.pass, base.pass);
+});
+
+test('per-case delegation is recorded, so a cost delta can be attributed', () => {
+  // The measurement failure this prevents: an aggregate that looks like a
+  // saving while the cases that got cheaper never delegated. Attribution has to
+  // survive to the per-case record or the conclusion is unfalsifiable.
+  const withDelegation = {
+    ...results,
+    'mal-A': { ...results['mal-A'], delegations: 2, delegated_tokens: 500_000, tokens: 3_000_000 },
+  };
+  const { detail } = scoreRun({ cases, results: withDelegation, meta });
+  const byId = Object.fromEntries(detail.cases.map((c) => [c.id, c]));
+  assert.equal(byId['mal-A'].scores.delegations, 2);
+  assert.equal(byId['mal-A'].scores.delegated_tokens, 500_000);
+  assert.equal(byId['mal-A'].scores.tokens, 3_000_000);
+  // A case that did not delegate records zero rather than omitting the field,
+  // so "did this case delegate?" is always answerable from the record.
+  assert.equal(byId['ben-A'].scores.delegations, 0);
+  assert.equal(byId['ben-A'].scores.delegated_tokens, 0);
+});

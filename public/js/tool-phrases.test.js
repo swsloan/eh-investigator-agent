@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  humanWindow, jsonArg, parseJsonOutput, phraseFor, reasonFor, resultSummary, toolLabel,
+  humanWindow, isDelegationTool, jsonArg, parseJsonOutput, phraseFor, reasonFor, resultSummary, toolLabel,
 } from './tool-phrases.js';
 
 const bash = (command) => phraseFor('bash', { command });
@@ -227,4 +227,29 @@ test('the agent-written command description becomes the reason', () => {
   assert.equal(reasonFor('Bash', { command: 'x', description: '   ' }), '');
   assert.equal(reasonFor('Bash', null), '');
   assert.equal(reasonFor('Bash', { description: 'z'.repeat(300) }).length, 120, 'capped for one line');
+});
+
+// ---- Delegation (#120) ----
+
+test('a delegation is labelled and summarised under either tool name', () => {
+  // The SDK has shipped this tool as both `Task` and `Agent`. Getting it wrong
+  // is silent — nesting threads on parent_tool_use_id, so the work still
+  // appears, but the card that opens it loses its identity and reads as raw
+  // JSON. Both names must produce the same card.
+  const args = { subagent_type: 'telemetry', description: 'Sweep SMB records for the outlier device' };
+  for (const name of ['Task', 'Agent', 'agent']) {
+    assert.deepEqual(toolLabel(name, args), { source: 'Subagent', action: 'telemetry' }, `${name}: labelled as a subagent`);
+    assert.match(phraseFor(name, args), /^Delegating: Sweep SMB records/, `${name}: says what was delegated`);
+  }
+});
+
+test('isDelegationTool is the single definition, and is not fooled by lookalikes', () => {
+  for (const yes of ['Task', 'task', 'Agent', 'AGENT']) assert.equal(isDelegationTool(yes), true, yes);
+  for (const no of ['Bash', 'agentic', 'subagent', '', null, undefined]) {
+    assert.equal(isDelegationTool(no), false, String(no));
+  }
+});
+
+test('a delegation with no description still names itself', () => {
+  assert.equal(phraseFor('Agent', { subagent_type: 'telemetry' }), 'Delegating work to a subagent');
 });

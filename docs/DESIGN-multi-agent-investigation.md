@@ -191,7 +191,14 @@ the *lead's* context occupancy); and the **audit trail** recorded a delegated
 tool call indistinguishably from the lead's own, so trail entries now name the
 agent that ran it. Both are prerequisites for Slice 1's measurement.
 
-### Slice 1 — Telemetry specialist on Haiku (the measurement)
+### Slice 1 — Telemetry specialist on Haiku (the measurement) — **run; premise refuted**
+
+> **Outcome:** the specialist was built, measured over two 9-case runs, and then
+> **removed from the tree**. What shipped is the measurement apparatus, not the
+> roster: `agents/telemetry.md`, the workspace `agents` symlink, and the lead's
+> delegation rule are all gone, so nothing offers the agent a specialist to
+> spawn. The instrumentation that judged it stays, because it is how any future
+> attempt gets judged. Full numbers below.
 
 One agent, the highest-volume and most mechanical role. Define
 `.claude/agents/telemetry.md` with a Haiku model override; give the lead a
@@ -204,6 +211,113 @@ design should be reconsidered rather than built.
 
 Acceptance: eval gate PASS, `false_close_rate` still 0, and a measured
 cache-read delta reported in the PR.
+
+#### Measured (run `eval-2026-08-12T01-46-28-251Z`, 9 cases, vs baseline `eval-2026-08-06T08-46-01-716Z`)
+
+| | Baseline | Slice 1 | |
+|---|---|---|---|
+| gate | PASS | **PASS** | |
+| `verdict_accuracy` | 1.0 | **1.0** | held |
+| `false_close_rate` | 0 | **0** | held |
+| `ladder_adherence` | 0.4444 | **0.6667** | improved |
+| `false_climb` | 0.5556 | **0.3333** | improved |
+| cost/case | $7.97 | **$6.58** | −17.3% |
+| tokens/case | 14.95M | **12.82M** | −14.3% |
+
+**Correctness held and adherence improved** — the secondary signal moved the
+good way: the lead stopped doing its own sweeps and climbed to packets less
+often.
+
+**The cost result is real but not yet attributable, and should not by itself
+authorise slices 2–4.** Three findings say so:
+
+1. **Only 4 of 9 cases delegated at all** (`delegations_per_case` 0.44), and
+   delegated work was **6.4%** of tokens.
+2. **Tiering alone cannot explain the saving.** Moving 6.4% of tokens to a model
+   ~5× cheaper caps the tiering effect at ~5.1%; the observed saving is 17.3%.
+   The remainder is either context-scoping working as designed (the lead's own
+   context stayed smaller) or run-to-run variance.
+3. **The distribution says variance is large.** Per-case deltas run from −67.6%
+   to +32.6%; **three cases got more expensive**, and one case
+   (`ms-telemetry-fp`, −67.6%) is **56% of the entire saving**. Excluding it the
+   other eight total −8.9%.
+
+The per-case record could not answer "did the cases that got cheaper delegate?"
+because delegation was aggregate-only. That is fixed — `scores` now carries
+`delegations`, `delegated_tokens` and `tokens` per case — but this run predates
+it.
+
+#### Repeat run (`eval-2026-08-12T17-13-33-985Z`) — the saving does not replicate
+
+Same 9 cases, same configuration, same code:
+
+| | Baseline | Run 1 | Run 2 |
+|---|---|---|---|
+| cost/case | $7.97 | $6.58 (−17.3%) | **$7.81 (−1.9%)** |
+| tokens/case | 14.95M | 12.82M | 16.46M |
+| `verdict_accuracy` | 1.0 | 1.0 | **0.889** |
+| `ladder_adherence` | 0.4444 | 0.6667 | **0.4444** |
+| `delegations_per_case` | — | 0.44 | 0.67 |
+| gate | PASS | PASS | PASS |
+
+**Run 1 and Run 2 are the same configuration and differ by 18.7%.** That is the
+noise floor of this eval, and it is larger than the effect being measured — so
+**a 9-case run cannot resolve a ~17% cost difference at one run per arm.** Run
+1's headline saving, its adherence improvement, and its perfect accuracy were
+all sampling noise: none of the three replicated.
+
+#### Attribution — the saving was never delegation's to claim
+
+Run 2 is the first run carrying per-case delegation, and it separates cleanly:
+
+| | n | Baseline | Run 2 | |
+|---|---|---|---|---|
+| cases that **delegated** | 5 | $41.21 | **$52.37** | **+27.1%** |
+| cases that did **not** delegate | 4 | $30.48 | **$17.95** | −41.1% |
+
+**Every dollar of the aggregate saving came from cases that never delegated, and
+the cases that did delegate got substantially more expensive.** That is the
+design's own risk #2 — "delegation overhead exceeds the cache-read saving" —
+observed directly rather than inferred.
+
+Also: the one failing case, `plaintext-http-creds` (benign called **malicious**
+at high confidence), was a case that delegated. n=1, so this is not evidence
+that delegation caused the miss — but it is the shape of risk #1 ("cheap agent
+misreads telemetry, lead inherits a wrong premise"), and it is why
+`false_close_rate` is the wrong-direction-only gate: the miss was benign→malicious,
+so the gate passed while accuracy fell.
+
+#### Verdict on the premise
+
+**The context-scoping premise is not demonstrated, and the measured direction is
+against it.** Per this document's own instruction — *"if the saving is small, the
+context-scoping premise is wrong and the rest of the design should be
+reconsidered rather than built"* — **Slices 2, 3 and 4 should not be built as
+designed.**
+
+What remains valid, and what is in the tree today:
+
+- **Slice 0 (subagent visibility) stands on its own** and is already merged; it
+  is a UI capability, not a cost bet. It also still earns its place with no
+  roster shipped: Claude Code can spawn its own built-in subagents, and when it
+  does, that work is visible and counted rather than invisible.
+- **The measurement plumbing is the durable asset**: delegated tokens are
+  counted in `sumUsage`, per-case `scores.delegations` / `delegated_tokens` are
+  recorded, and `isDelegationTool` covers both tool names. Any future delegation
+  work can be judged instead of assumed — without it, run 2 would have read as a
+  modest ~2% saving and the +27% delegation penalty would have stayed invisible.
+- **The roster itself is not in the tree.** Re-adding one is a deliberate act,
+  not a config flip, which is the correct default for a bet this measurement
+  did not support.
+- If delegation is revisited, the target is **not** "delegate telemetry
+  broadly". The observed overhead is per-delegation, so the only shape worth
+  testing is a much narrower trigger — one where the payload is genuinely large
+  and the specialist's report is genuinely small — and it must be measured with
+  **≥3 runs per arm**, because this eval's noise floor is ~19%.
+
+Note: cache reads could not be compared directly against the baseline (it
+predates the `cache_reads_per_case` breakout), so tokens and cost are the
+comparable fields for these pairs.
 
 ### Slice 2 — Research + reporter on Sonnet
 

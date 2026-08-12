@@ -7,6 +7,20 @@
 //
 // Kept as its own module because the live-activity view renders the same stream.
 
+// The tool that delegates to a subagent. Claude Code has shipped it under both
+// names — the design was written against `Task`, the SDK in use emits `Agent` —
+// and getting this wrong is silent: nesting still works (it threads on
+// `parent_tool_use_id`, not the name), but the delegating card loses its
+// "Subagent · <type>" label and any delegation count reads zero while
+// delegation is plainly happening. Accept both, and key every delegation-aware
+// branch off this one predicate.
+const DELEGATION_TOOLS = new Set(['task', 'agent']);
+
+/** True when this tool call is a delegation to a subagent. Case-insensitive. */
+export function isDelegationTool(toolName) {
+  return DELEGATION_TOOLS.has(String(toolName || '').toLowerCase());
+}
+
 const RECORD_LABEL = {
   dns: 'DNS', cifs: 'SMB', smb: 'SMB', http: 'HTTP', ssl: 'TLS', tls: 'TLS',
   ldap: 'LDAP', kerberos_request: 'Kerberos', kerberos: 'Kerberos', flow: 'flow',
@@ -200,7 +214,7 @@ export function phraseFor(toolName, args) {
   // A delegation reads as what was delegated. Without this the card that opens a
   // whole unit of subagent work summarised itself as its own raw JSON arguments
   // — the least legible line on the most important card (#120 slice 0).
-  if (lower === 'task') {
+  if (isDelegationTool(lower)) {
     const what = typeof args?.description === 'string' ? args.description.trim() : '';
     return what ? `Delegating: ${what.slice(0, 80)}` : 'Delegating work to a subagent';
   }
@@ -252,7 +266,7 @@ export function toolLabel(toolName, args) {
   const lower = name.toLowerCase();
   if (lower === 'skill') return { source: 'Skill', action: String(args?.skill || '').slice(0, 40) };
   if (lower === 'toolsearch') return { source: 'Tool search', action: '' };
-  if (lower === 'task') return { source: 'Subagent', action: String(args?.subagent_type || '').slice(0, 24) };
+  if (isDelegationTool(lower)) return { source: 'Subagent', action: String(args?.subagent_type || '').slice(0, 24) };
   if (/add_memory|memory_add/i.test(name)) return { source: 'Memory', action: 'save' };
   if (/search_nodes|search_facts|memory_search/i.test(name)) return { source: 'Memory', action: 'recall' };
   // An MCP tool: `mcp__server__tool` carries both halves already.
