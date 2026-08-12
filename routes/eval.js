@@ -75,6 +75,9 @@ export function evalRouter({ startEval, startInjectionProbe, reportsDir, casesDi
     // #144: null disables the false-alarm gate outright, a number sets it.
     const falseAlarmTarget = b.falseAlarmTarget === null ? null
       : (Number.isFinite(b.falseAlarmTarget) && b.falseAlarmTarget >= 0 && b.falseAlarmTarget <= 1 ? b.falseAlarmTarget : undefined);
+    // #144 part 3: null disables the relative-accuracy gate, a number sets it.
+    const accuracyDropLimit = b.accuracyDropLimit === null ? null
+      : (Number.isFinite(b.accuracyDropLimit) && b.accuracyDropLimit >= 0 && b.accuracyDropLimit <= 1 ? b.accuracyDropLimit : undefined);
     const caseIds = Array.isArray(b.caseIds) && b.caseIds.length ? b.caseIds.map(String) : null;
     const maxParallel = Number.isFinite(b.maxParallel) && b.maxParallel > 0 ? Math.min(Math.floor(b.maxParallel), 8) : 3;
     const mode = ['live', 'record', 'replay'].includes(b.mode) ? b.mode : 'live';
@@ -86,7 +89,7 @@ export function evalRouter({ startEval, startInjectionProbe, reportsDir, casesDi
     res.json({ ok: true, runId });
 
     startEval({
-      runId, backendId, gateTarget, costCeiling, accuracyFloor, falseAlarmTarget, caseIds, maxParallel, mode, timestamp: new Date().toISOString(),
+      runId, backendId, gateTarget, costCeiling, accuracyFloor, falseAlarmTarget, accuracyDropLimit, caseIds, maxParallel, mode, timestamp: new Date().toISOString(),
       onProgress: trackProgress,
     }).then(finish).catch(failRun);
   });
