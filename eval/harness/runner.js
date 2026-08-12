@@ -9,23 +9,26 @@
 //     POST /api/sessions/:id/message         -> starts the turn
 //     GET  /api/sessions/:id/events (SSE)    -> wait for agent_end
 //     GET  /api/sessions/:id/files/evidence/verdict.json  (files route) -> the verdict
+//     GET  /api/sessions/:id/usage           -> cost/tokens for the case (meta.json)
 //
-// PREREQUISITES before this is safe to run for real (tracked in DESIGN-eval-harness.md):
-//   1. Read-only mode at the excli broker — IMPLEMENTED: start the app with
+// PREREQUISITES for running this against a real appliance (tracked in
+// DESIGN-eval-harness.md). All three are satisfied by the eval compose profile,
+// which is what scripts/run-eval-live.sh brings up:
+//   1. Read-only mode at the excli broker — start the app with
 //      EH_BROKER_READONLY=1 and the broker rejects update_detection and other
 //      write-class tools (see lib/excli-readonly.js).
 //   2. A dedicated group_id (e.g. "evallab") per case so memory writes are sandboxed.
 //   3. A lab RevealX or the excli record/replay shim for reproducibility.
 //
-// Until (1) lands, prefer the offline `--results` path in run-eval.js against
-// recorded verdicts. This function is written to be correct-by-construction but
-// is intentionally unexercised in CI.
+// Still unexercised in CI (it needs a live appliance), so the offline
+// `--results` path in run-eval.js remains the reproducible one.
 import fs from 'node:fs';
 import path from 'node:path';
+import { usageAsCaseMeta } from '../../lib/session-usage.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function runOne(appUrl, c, backend, outDir, timeoutMs) {
+async function runOne(appUrl, c, backend, outDir, timeoutMs, pollMs) {
   // 1. create a session
   const create = await fetch(`${appUrl}/api/sessions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
   if (!create.ok) throw new Error(`create session failed: ${create.status}`);
@@ -42,7 +45,7 @@ async function runOne(appUrl, c, backend, outDir, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   let running = true;
   while (running && Date.now() < deadline) {
-    await sleep(3000);
+    await sleep(pollMs);
     const s = await fetch(`${appUrl}/api/sessions`);
     const list = s.ok ? await s.json() : [];
     const me = list.find((x) => x.id === id);
@@ -50,27 +53,49 @@ async function runOne(appUrl, c, backend, outDir, timeoutMs) {
   }
   if (running) throw new Error(`case ${c.id}: timed out after ${Math.round(timeoutMs / 1000)}s`);
 
-  // TODO(cost): live runs don't yet capture per-case cost/tokens — the runner
-  // only fetches verdict.json, so the scorer sees cost=0. Capturing usage needs a
-  // session-usage endpoint or transcript parse; until then use offline meta.json.
+  const caseDir = path.join(outDir, c.id);
+  fs.mkdirSync(caseDir, { recursive: true });
 
   // 4. fetch the verdict the agent wrote (via the files route)
   const vf = await fetch(`${appUrl}/api/sessions/${id}/files/evidence/verdict.json`);
-  fs.mkdirSync(path.join(outDir, c.id), { recursive: true });
   if (vf.ok) {
-    fs.writeFileSync(path.join(outDir, c.id, 'verdict.json'), await vf.text());
+    fs.writeFileSync(path.join(caseDir, 'verdict.json'), await vf.text());
   } else {
     // agent produced no verdict — leave it absent; the scorer marks it inconclusive.
     console.warn(`case ${c.id}: no evidence/verdict.json (${vf.status})`);
   }
+
+  // 5. capture what the case actually spent. Without this every live run scored
+  // cost=0 — a cost comparison that silently reported "free" — so the only
+  // trustworthy figures came from the in-app runner. The server computes it from
+  // the transcript with the same sumUsage the in-app path uses; we only write it
+  // out under the keys run-eval.js merges from meta.json.
+  //
+  // Ordering is safe: the turn's final usage (and the whole-turn cost) is pushed
+  // before the session stops reporting `running`, which is what step 3 waits on.
+  const uf = await fetch(`${appUrl}/api/sessions/${id}/usage`);
+  if (uf.ok) {
+    const u = await uf.json();
+    fs.writeFileSync(path.join(caseDir, 'meta.json'), `${JSON.stringify(usageAsCaseMeta(u), null, 2)}\n`);
+    if (!u.cost) {
+      // Real and worth saying out loud rather than scoring as $0: a session with
+      // no cost recorded is usually a turn that never ran, not a free one.
+      console.warn(`case ${c.id}: usage reported no cost — check the turn actually ran`);
+    }
+  } else {
+    console.warn(`case ${c.id}: could not read usage (${uf.status}) — this case will score as cost 0`);
+  }
   return id;
 }
 
-export async function runCases({ appUrl, cases, backend = 'claude', outDir, timeoutMs = 600_000 }) {
+// How often to ask whether the turn has finished. A real investigation runs for
+// minutes, so 3s is cheap; tests inject a small value rather than sleeping
+// through the default.
+export async function runCases({ appUrl, cases, backend = 'claude', outDir, timeoutMs = 600_000, pollMs = 3000 }) {
   fs.mkdirSync(outDir, { recursive: true });
   for (const c of cases) {
     console.log(`[runner] ${c.id} …`);
-    try { await runOne(appUrl, c, backend, outDir, timeoutMs); }
+    try { await runOne(appUrl, c, backend, outDir, timeoutMs, pollMs); }
     catch (e) { console.error(`[runner] ${c.id} failed: ${e.message}`); }
   }
   return outDir;
