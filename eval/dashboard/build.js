@@ -257,7 +257,11 @@ function caseTable(detail) {
       : (c.status === 'pass'
         ? '<span class="pill ok">pass</span>'
         : `<span class="pill bad">${regressed ? 'regression' : (c.regression_unconfirmed ? 'fail (new)' : 'fail')}</span>`);
-    const predWrong = !c.scores.verdict_correct ? ` style="color:var(--bad)"` : '';
+    // #128: `verdict_correct` is absent on an unscored case, and `!undefined`
+    // would paint its prediction as an error directly beside a pill saying the
+    // verdict was not scored. No claim was made, so nothing is wrong.
+    const predWrong = c.scores?.disposition_scored !== false && !c.scores.verdict_correct
+      ? ` style="color:var(--bad)"` : '';
     return `<tr class="rowlink"><td class="mono">${esc(c.id)}</td><td>${esc(c.detection_source)}</td>
 <td>${esc(c.expected.disposition)}</td><td${predWrong}>${esc(c.predicted.disposition)}</td>
 <td>${esc(c.predicted.highest_rung_used)}</td><td>${usd(c.scores.cost_usd)}</td>
