@@ -8,6 +8,7 @@ import { containsSecretMaterial } from '../lib/redaction.js';
 import { renderPendingActionsBlock } from '../lib/action-store.js';
 import { assessConclusionQuality } from '../lib/conclusion-quality.js';
 import { recordSafetyEvent, summarizeSafetyEvents } from '../lib/safety-log.js';
+import { sumUsage } from '../lib/session-usage.js';
 import { readTrail, verifyTrail } from '../lib/audit-trail.js';
 
 export function sessionsRouter({
@@ -65,6 +66,22 @@ export function sessionsRouter({
     const session = getSession(sessions, req, res);
     if (!session) return;
     return res.json(assessConclusionQuality(session.workspace));
+  });
+
+  /**
+   * GET /:id/usage — what this session's turns actually cost: cost, tokens,
+   * cache reads, and the delegated share of each (#120). Read-only.
+   *
+   * Exists because the external live eval harness could not see cost at all —
+   * it only ever fetched verdict.json, so every live run scored cost=0 and the
+   * only usable cost numbers came from the in-app runner. Computed from the
+   * transcript with the same `sumUsage` the in-app runner uses, so the two
+   * paths cannot disagree about what a case spent.
+   */
+  router.get('/:id/usage', (req, res) => {
+    const session = getSession(sessions, req, res);
+    if (!session) return;
+    return res.json(sumUsage(session.transcript || []));
   });
 
   /**

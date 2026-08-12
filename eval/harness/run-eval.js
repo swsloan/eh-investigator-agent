@@ -35,12 +35,19 @@ const meta = {
   model: val('--model', ''),
 };
 
-function readResult(resultsDir, id) {
+export function readResult(resultsDir, id) {
   const vf = path.join(resultsDir, id, 'verdict.json');
-  if (!fs.existsSync(vf)) return null;
-  const v = JSON.parse(fs.readFileSync(vf, 'utf8'));
   const mf = path.join(resultsDir, id, 'meta.json');
-  if (fs.existsSync(mf)) Object.assign(v, JSON.parse(fs.readFileSync(mf, 'utf8')));
+  const meta = fs.existsSync(mf) ? JSON.parse(fs.readFileSync(mf, 'utf8')) : null;
+  if (!fs.existsSync(vf)) {
+    // No verdict, but the case still ran and still spent. Scoring it as $0
+    // would make the most wasteful outcome — an expensive investigation that
+    // concluded nothing — the cheapest line in the report. Score it
+    // inconclusive (which is what a missing verdict means) with its real cost.
+    return meta ? { disposition: 'inconclusive', highest_rung_used: 'metrics', detection_source: 'unknown', ...meta } : null;
+  }
+  const v = JSON.parse(fs.readFileSync(vf, 'utf8'));
+  if (meta) Object.assign(v, meta);
   return v;
 }
 
@@ -82,7 +89,11 @@ async function main() {
   const missing = [];
   for (const c of cases) {
     const r = readResult(resultsDir, c.id);
-    if (r) results[c.id] = r; else missing.push(c.id);
+    if (r) results[c.id] = r;
+    // Keyed off the verdict file, not off `r`: a case can now yield a result
+    // (its cost) while still having produced no verdict, and that is exactly
+    // the case the warning exists to name.
+    if (!fs.existsSync(path.join(resultsDir, c.id, 'verdict.json'))) missing.push(c.id);
   }
   if (missing.length) console.warn(`WARN: no verdict for ${missing.length} case(s): ${missing.join(', ')} (scored inconclusive)`);
 
@@ -100,4 +111,8 @@ async function main() {
 
   if (has('--check') && !record.gate.pass) process.exit(1);
 }
-main().catch((e) => { console.error(e.message || e); process.exit(2); });
+// Run only when invoked as the CLI, so the module's helpers can be unit-tested
+// without the import itself scoring a run and calling process.exit.
+const invokedDirectly = process.argv[1]
+  && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+if (invokedDirectly) main().catch((e) => { console.error(e.message || e); process.exit(2); });
