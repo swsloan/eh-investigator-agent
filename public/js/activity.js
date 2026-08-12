@@ -11,7 +11,7 @@
 import { $ } from './dom.js';
 import { fileIconSvg } from './files.js';
 import { state } from './state.js';
-import { allCalls, callDuration, subscribeCalls } from './tool-store.js';
+import { allCalls, callDuration, childrenOf, subscribeCalls, topLevelCalls } from './tool-store.js';
 
 let active = false;      // is the activity view the visible surface?
 let manual = false;      // did the user choose it, rather than a turn starting?
@@ -235,9 +235,9 @@ function summaryNode(summary) {
  * the agent's own `description` was on the wire and unused. Source and action are
  * separate elements so the system reads as a label and the operation as the detail.
  */
-function callCard(record, { faded = false } = {}) {
+function callCard(record, { faded = false, nested = true } = {}) {
   const card = document.createElement('div');
-  card.className = `act-call ${record.status}${faded ? ' faded' : ''}`;
+  card.className = `act-call ${record.status}${faded ? ' faded' : ''}${nested ? '' : ' act-call-child'}`;
   const label = record.label || { source: record.name || 'tool', action: '' };
   if (record.integrationSource) card.dataset.integrationSource = record.integrationSource;
 
@@ -272,7 +272,13 @@ function callCard(record, { faded = false } = {}) {
     reason.textContent = record.reason;
     card.appendChild(reason);
   }
-  if (record.phrase && record.phrase !== record.reason) {
+  // The derived phrase only earns its line when it says something the agent's own
+  // reason does not. A delegation states its description in both, and printing it
+  // twice makes the card look like two different facts. (Guard the reason before
+  // the containment test — every string contains the empty one, which would drop
+  // the phrase on every call that has no reason at all.)
+  const phraseRepeatsReason = Boolean(record.reason) && record.phrase.includes(record.reason);
+  if (record.phrase && record.phrase !== record.reason && !phraseRepeatsReason) {
     const phrase = document.createElement('div');
     phrase.className = 'act-call-phrase';
     phrase.textContent = record.phrase;
@@ -285,7 +291,48 @@ function callCard(record, { faded = false } = {}) {
     card.appendChild(progress);
   }
   if (record.summary?.length) card.appendChild(summaryNode(record.summary));
+  if (nested) appendDelegatedWork(card, record);
   return card;
+}
+
+// Delegated calls shown inside a parent before the rest fold away. A delegation
+// is a unit of work, not a stream to monitor — enough to see what it is doing,
+// not so much that it buries the lead's own calls.
+const VISIBLE_CHILD_CALLS = 4;
+
+/**
+ * The subagent activity threaded under a delegating call (#120 slice 0).
+ *
+ * Without this a `Task` renders as one card reading `Subagent · general-purpose`
+ * with nothing inside it — the live view's whole argument (you can watch the
+ * investigation work) fails exactly where the work was delegated. Newest last
+ * here, unlike the outer stream: within one delegation the order the steps
+ * happened in is the thing worth reading.
+ */
+function appendDelegatedWork(card, record) {
+  const children = childrenOf(record.id);
+  if (!children.length) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'act-call-children';
+
+  const head = document.createElement('div');
+  head.className = 'act-call-children-head';
+  const model = children.find((c) => c.agentModel)?.agentModel || '';
+  head.textContent = model
+    ? `${children.length} call${children.length === 1 ? '' : 's'} · ${model}`
+    : `${children.length} call${children.length === 1 ? '' : 's'}`;
+  wrap.appendChild(head);
+
+  const shown = children.slice(-VISIBLE_CHILD_CALLS);
+  const hidden = children.length - shown.length;
+  if (hidden > 0) {
+    const more = document.createElement('div');
+    more.className = 'act-more act-more-child';
+    more.textContent = `${hidden} earlier call${hidden === 1 ? '' : 's'}`;
+    wrap.appendChild(more);
+  }
+  for (const child of shown) wrap.appendChild(callCard(child, { nested: false }));
+  card.appendChild(wrap);
 }
 
 /**
@@ -298,6 +345,8 @@ function renderToolStream() {
   const host = $('activity-tools');
   const head = $('activity-tools-head');
   if (!host) return;
+  // The count is every call, delegated ones included — "12 calls" should mean
+  // twelve things ran. Only the roots become cards; the rest render inside them.
   const calls = allCalls();
   if (head) {
     head.textContent = calls.length
@@ -308,7 +357,7 @@ function renderToolStream() {
     host.innerHTML = '<div class="act-empty">Nothing has run yet this turn.</div>';
     return;
   }
-  const newestFirst = [...calls].reverse();
+  const newestFirst = [...topLevelCalls()].reverse();
   const shown = newestFirst.slice(0, VISIBLE_CALLS);
   const hidden = newestFirst.length - shown.length;
 

@@ -38,6 +38,15 @@ export function startCall(ev, { phrase = '', integrationSource = '', label = nul
     name: ev?.toolName || '',
     args: ev?.args ?? null,
     phrase,
+    // Delegation (#120 slice 0). `parentId` is the delegating Task call, so a
+    // subagent's work renders threaded under the call that asked for it rather
+    // than flattened into the same stream; `agentModel` is what actually ran it,
+    // which is the whole point of a tiered roster being visible.
+    parentId: ev?.parentToolCallId || null,
+    agentModel: ev?.agentModel || '',
+    // Tokens this delegated unit of work cost, accumulated from subagent_usage.
+    // Only ever non-zero on a parent (delegating) call.
+    agentUsage: null,
     // How the call is named to a human ({source, action}), and the agent's own
     // reason for making it. Supplied by the caller for the same reason `phrase` is:
     // the store holds what ran, not how it reads.
@@ -90,8 +99,41 @@ export function endCall(ev, { output = '', summary = null } = {}) {
 
 export function getCall(id) { return calls.get(id) || null; }
 
+/**
+ * Roll a subagent's token usage onto the call that delegated the work, so a
+ * `Task` card can say what the delegation actually cost. Ignores usage for a
+ * parent that never started (a replay artefact), same as updateCall.
+ */
+export function addAgentUsage(parentId, usage = {}) {
+  const record = calls.get(parentId);
+  if (!record || !usage) return null;
+  const totals = record.agentUsage || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 };
+  for (const key of ['input', 'output', 'cacheRead', 'cacheWrite', 'totalTokens']) {
+    totals[key] += Number(usage[key]) || 0;
+  }
+  record.agentUsage = totals;
+  notify(record);
+  return record;
+}
+
 /** Every call this turn, oldest first — Map preserves insertion order. */
 export function allCalls() { return [...calls.values()]; }
+
+/**
+ * Calls the lead itself made — the roots of the render tree. A delegated call
+ * whose parent never started is treated as a root rather than being hidden: a
+ * missing parent (pruned transcript, out-of-order replay) must never make work
+ * disappear from the view that exists to show all of it.
+ */
+export function topLevelCalls() {
+  return [...calls.values()].filter((c) => !c.parentId || !calls.has(c.parentId));
+}
+
+/** The subagent calls threaded under one delegating call, in start order. */
+export function childrenOf(parentId) {
+  if (!parentId) return [];
+  return [...calls.values()].filter((c) => c.parentId === parentId);
+}
 
 export function runningCalls() {
   return [...calls.values()].filter((c) => c.status === 'running');

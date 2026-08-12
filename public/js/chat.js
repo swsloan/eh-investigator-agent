@@ -15,7 +15,7 @@ import { flushQueuedMessage } from './composer.js';
 import { newUsage, state } from './state.js';
 import { replaceFindingPlaceholders, splitFindings } from './findings.js';
 import { phraseFor, reasonFor, resultSummary, toolLabel } from './tool-phrases.js';
-import { endCall, resetCalls, startCall, updateCall } from './tool-store.js';
+import { addAgentUsage, endCall, resetCalls, startCall, updateCall } from './tool-store.js';
 import { fmtBytes, fmtTime, fmtTokens } from './utils.js';
 import { applyIdleStatus, setStatus } from './status.js';
 
@@ -443,9 +443,73 @@ export function addToolCard(ev) {
   if (integrationSource) card.dataset.integrationSource = integrationSource;
   setIntegrationBadge(card, integrationForToolCall(ev));
   card.querySelector('.tool-head').addEventListener('click', () => card.classList.toggle('open'));
-  agentBody().appendChild(card);
+  // Delegated work renders inside the call that asked for it (#120 slice 0), so
+  // a Task is a unit of work you can open rather than one opaque card.
+  const parentCard = ev.parentToolCallId ? state.toolCards.get(ev.parentToolCallId) : null;
+  if (parentCard) {
+    card.classList.add('tool-card-child');
+    subagentBody(parentCard).appendChild(card);
+    // One subagent runs on one model, so the tier belongs on the delegating card
+    // once — repeated on every child it is noise, and the thing a reader wants to
+    // know is which tier this unit of work ran on.
+    stampAgentModel(parentCard, ev.agentModel);
+  } else {
+    // A parent that never rendered (pruned transcript, out-of-order replay) must
+    // not swallow the call — show it at top level rather than losing it, still
+    // labelled with the tier that ran it.
+    if (ev.parentToolCallId) {
+      card.classList.add('tool-card-orphan');
+      stampAgentModel(card, ev.agentModel);
+    }
+    agentBody().appendChild(card);
+  }
   state.toolCards.set(ev.toolCallId, card);
   autoscroll();
+}
+
+/** The nested container a delegating card holds its subagent's calls in. */
+function subagentBody(parentCard) {
+  let body = parentCard.querySelector(':scope > .tool-children');
+  if (!body) {
+    body = document.createElement('div');
+    body.className = 'tool-children';
+    parentCard.appendChild(body);
+  }
+  return body;
+}
+
+/**
+ * Name the model a delegation ran on, on the delegating card. A tiered roster is
+ * only trustworthy if you can see which tier actually did the work — and the
+ * cheapest way for the config to drift from reality is for nobody to be shown it.
+ */
+function stampAgentModel(card, model) {
+  if (!model || card.querySelector(':scope > .tool-head > .tool-agent-model')) return;
+  const chip = document.createElement('span');
+  chip.className = 'tool-agent-model';
+  chip.textContent = modelLabel(model, model);
+  chip.title = `Delegated to a subagent running ${model}`;
+  card.querySelector('.tool-head').insertBefore(chip, card.querySelector('.tool-chevron'));
+}
+
+/**
+ * Report what a delegation cost on the delegating card. Tokens, not dollars:
+ * per-request cost is not on the wire (it arrives once for the whole turn), and
+ * tokens are the number the context-scoping premise in #120 is actually about.
+ */
+export function applySubagentUsage(ev) {
+  const record = addAgentUsage(ev.parentToolCallId, ev.usage);
+  const card = state.toolCards.get(ev.parentToolCallId);
+  if (!record || !card) return;
+  let readout = card.querySelector(':scope > .tool-head > .tool-agent-usage');
+  if (!readout) {
+    readout = document.createElement('span');
+    readout.className = 'tool-agent-usage';
+    card.querySelector('.tool-head').insertBefore(readout, card.querySelector('.tool-chevron'));
+  }
+  const total = record.agentUsage?.totalTokens || 0;
+  readout.textContent = `${fmtTokens(total)} tok`;
+  readout.title = 'Tokens this delegated work used, including its cache reads.';
 }
 
 function setIntegrationBadge(card, integration) {
