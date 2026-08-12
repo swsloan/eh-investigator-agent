@@ -205,6 +205,48 @@ design should be reconsidered rather than built.
 Acceptance: eval gate PASS, `false_close_rate` still 0, and a measured
 cache-read delta reported in the PR.
 
+#### Measured (run `eval-2026-08-12T01-46-28-251Z`, 9 cases, vs baseline `eval-2026-08-06T08-46-01-716Z`)
+
+| | Baseline | Slice 1 | |
+|---|---|---|---|
+| gate | PASS | **PASS** | |
+| `verdict_accuracy` | 1.0 | **1.0** | held |
+| `false_close_rate` | 0 | **0** | held |
+| `ladder_adherence` | 0.4444 | **0.6667** | improved |
+| `false_climb` | 0.5556 | **0.3333** | improved |
+| cost/case | $7.97 | **$6.58** | −17.3% |
+| tokens/case | 14.95M | **12.82M** | −14.3% |
+
+**Correctness held and adherence improved** — the secondary signal moved the
+good way: the lead stopped doing its own sweeps and climbed to packets less
+often.
+
+**The cost result is real but not yet attributable, and should not by itself
+authorise slices 2–4.** Three findings say so:
+
+1. **Only 4 of 9 cases delegated at all** (`delegations_per_case` 0.44), and
+   delegated work was **6.4%** of tokens.
+2. **Tiering alone cannot explain the saving.** Moving 6.4% of tokens to a model
+   ~5× cheaper caps the tiering effect at ~5.1%; the observed saving is 17.3%.
+   The remainder is either context-scoping working as designed (the lead's own
+   context stayed smaller) or run-to-run variance.
+3. **The distribution says variance is large.** Per-case deltas run from −67.6%
+   to +32.6%; **three cases got more expensive**, and one case
+   (`ms-telemetry-fp`, −67.6%) is **56% of the entire saving**. Excluding it the
+   other eight total −8.9%.
+
+The per-case record could not answer "did the cases that got cheaper delegate?"
+because delegation was aggregate-only. That is fixed — `scores` now carries
+`delegations`, `delegated_tokens` and `tokens` per case — but this run predates
+it.
+
+**Before Slice 2, do two cheap things:** repeat the 9-case run to bound
+variance, and read the now-recorded per-case attribution. If the saving is
+concentrated in cases that did not delegate, the premise has not been
+demonstrated regardless of the headline number. Also worth noting: cache reads
+could not be compared directly (the baseline predates the `cache_reads_per_case`
+breakout), so tokens and cost are the comparable fields for this pair.
+
 ### Slice 2 — Research + reporter on Sonnet
 
 Two more roles, both natural boundaries: research is already isolated behind
