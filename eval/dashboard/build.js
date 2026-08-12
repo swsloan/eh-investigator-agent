@@ -194,6 +194,10 @@ function adherenceBars(a) {
 // ---------- north-star tiles ----------
 function delta(cur, prev, key, opts = {}) {
   if (!prev) return '';
+  // A metric added later (false_alarm_rate, #144) is absent on older records.
+  // Treating absent as 0 would invent a movement that never happened, so a
+  // comparison that has no basis renders nothing at all.
+  if (cur.aggregates[key] == null || prev.aggregates[key] == null) return '';
   const d = cur.aggregates[key] - prev.aggregates[key];
   if (Math.abs(d) < 1e-9) return `<span style="color:var(--ink-faint)">no change vs prev</span>`;
   const goodDown = opts.goodDown;
@@ -211,6 +215,11 @@ function tiles(run, prev) {
 <div class="tile hero" style="border-left-color:${gate.pass ? 'var(--ok)' : 'var(--bad)'}">
   <div class="lbl">False-close rate</div><div class="val" style="color:${gate.pass ? 'var(--ok)' : 'var(--bad)'}">${pct(a.false_close_rate, 1)}</div>
   <div class="sub"><span class="${fcClass}">target &lt; ${pct(gate.false_close_target)}</span> · ${delta(run, prev, 'false_close_rate', { goodDown: true })}</div></div>
+<div class="tile"><div class="lbl">False-alarm rate</div>
+  <div class="val">${a.false_alarm_rate == null ? '—' : pct(a.false_alarm_rate, 1)}</div>
+  <div class="sub">${a.false_alarm_rate == null
+    ? 'not measured on this run'
+    : `${gate.false_alarm_target != null ? `target &lt; ${pct(gate.false_alarm_target)} · ` : ''}${delta(run, prev, 'false_alarm_rate', { goodDown: true })}`}</div></div>
 <div class="tile"><div class="lbl">Verdict accuracy</div><div class="val">${pct(a.verdict_accuracy)}</div><div class="sub">${delta(run, prev, 'verdict_accuracy')}</div></div>
 <div class="tile"><div class="lbl">Ladder adherence</div><div class="val">${pct(a.ladder_adherence)}</div><div class="sub">${delta(run, prev, 'ladder_adherence')}</div></div>
 <div class="tile"><div class="lbl">Cost / case</div><div class="val">${usd(a.cost_per_case_usd)}</div><div class="sub">${delta(run, prev, 'cost_per_case_usd', { goodDown: true, money: true })}</div></div>
@@ -264,15 +273,20 @@ function diffFileName(prevRun, curRun) {
 function diffStrip(prevRun, curRun) {
   const items = [
     ['false_close_rate', 'False-close', true, false],
+    ['false_alarm_rate', 'False-alarm', true, false],
     ['verdict_accuracy', 'Accuracy', false, false],
     ['ladder_adherence', 'Adherence', false, false],
     ['cost_per_case_usd', 'Cost / case', true, true],
   ];
   return `<div class="tiles">${items.map(([k, label, goodDown, money]) => {
     const a = prevRun.aggregates[k], b = curRun.aggregates[k];
+    // Same guard as delta(): a metric one side never recorded has no diff.
+    if (a == null || b == null) {
+      return `<div class="tile"><div class="lbl">${label}</div><div class="val">—</div><div class="sub">not recorded on both runs</div></div>`;
+    }
     const d = b - a;
     const good = goodDown ? d <= 0 : d >= 0;
-    const fmt = money ? usd : (x) => pct(x, k === 'false_close_rate' ? 1 : 0);
+    const fmt = money ? usd : (x) => pct(x, (k === 'false_close_rate' || k === 'false_alarm_rate') ? 1 : 0);
     const arrow = d < 0 ? '&#8600;' : (d > 0 ? '&#8599;' : '');
     const mag = money ? usd(Math.abs(d)) : `${(Math.abs(d) * 100).toFixed(1)} pts`;
     const cls = Math.abs(d) < 1e-9 ? '' : (good ? 'up' : 'bad');

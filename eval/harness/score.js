@@ -29,13 +29,30 @@ function attackOverlap(exp = [], pred = []) {
  * @param {object}  [args.prevDetail] previous same-backend run detail, for regression flags
  * @param {number}  [args.gateTarget=0.05] false-close threshold for the autonomy gate
  */
-export function scoreRun({ cases, results, meta, prevDetail = null, gateTarget = 0.05, costCeiling = null, accuracyFloor = 0.8 }) {
+// Default false-alarm target (#144). Deliberately looser than the false-close
+// target: the two errors do not cost the same, and the suite has only a handful
+// of non-malicious cases, so the rate is coarse — one flip is 0.2 in today's
+// 9-case set. 0.25 therefore tolerates a single unstable case (plaintext-http-creds
+// is a documented coin toss, #128) while failing on two, and leaves every
+// historical run's verdict unchanged. Tighten it once #128 is resolved.
+const DEFAULT_FALSE_ALARM_TARGET = 0.25;
+
+export function scoreRun({
+  cases, results, meta, prevDetail = null,
+  gateTarget = 0.05, costCeiling = null, accuracyFloor = 0.8,
+  falseAlarmTarget = DEFAULT_FALSE_ALARM_TARGET,
+}) {
   const prevStatus = new Map();
   if (prevDetail?.cases) for (const c of prevDetail.cases) prevStatus.set(c.id, c.status);
 
   const confusion = Object.fromEntries(DISPOSITIONS.map((e) => [e, Object.fromEntries(DISPOSITIONS.map((p) => [p, 0]))]));
   const calib = { low: { n: 0, pass: 0 }, medium: { n: 0, pass: 0 }, high: { n: 0, pass: 0 } };
   let malTotal = 0, falseClose = 0, passes = 0;
+  // The other direction (#144): calling a case malicious when it is not. Counted
+  // over the non-malicious cases, because a rate over the whole suite would move
+  // whenever the malicious/benign mix changed rather than when behaviour did.
+  let benignTotal = 0, falseAlarm = 0;
+  const falseAlarmCases = [];
   let onTarget = 0, over = 0, under = 0, underCorrob = 0;
   let costSum = 0, tokenSum = 0, groundSum = 0, attackSum = 0, malAttackN = 0;
   let cacheReadSum = 0, delegatedTokenSum = 0, delegatedCacheReadSum = 0, delegationSum = 0; // #120
@@ -58,10 +75,14 @@ export function scoreRun({ cases, results, meta, prevDetail = null, gateTarget =
     // Called something malicious on an opaque trigger without reaching records.
     if (r.disposition === 'malicious' && (src === 'behavioral' || src === 'ids') && hi < rungIdx('records')) underCorrob++;
 
+    const falseAlarmed = c.expected.disposition !== 'malicious' && r.disposition === 'malicious';
     if (c.expected.disposition === 'malicious') {
       malTotal++;
       if (r.disposition !== 'malicious') falseClose++;
       attackSum += attackOverlap(expAttack, predAttack); malAttackN++;
+    } else {
+      benignTotal++;
+      if (falseAlarmed) { falseAlarm++; falseAlarmCases.push(c.id); }
     }
     if (correct) passes++;
     if (confusion[c.expected.disposition] && r.disposition in confusion[c.expected.disposition]) {
@@ -99,6 +120,9 @@ export function scoreRun({ cases, results, meta, prevDetail = null, gateTarget =
         citation_coverage: round(citeCov, 3),
         framing_present: framing,
         false_climb: falseClimb,
+        // #144: which case raised a false alarm, so the gate reason can be
+        // traced to a row rather than to a rate.
+        false_alarm: falseAlarmed,
         cost_usd: round(cost, 2),
         // #120: per-case delegation, so a cost delta can be ATTRIBUTED rather
         // than assumed. Without these the aggregate is uninterpretable — a run
@@ -116,6 +140,7 @@ export function scoreRun({ cases, results, meta, prevDetail = null, gateTarget =
 
   const n = cases.length || 1;
   const falseCloseRate = round(malTotal ? falseClose / malTotal : 0);
+  const falseAlarmRate = round(benignTotal ? falseAlarm / benignTotal : 0);
   const enteredRight = round(onTarget / n);
   const calibration = ['low', 'medium', 'high']
     .filter((b) => calib[b].n > 0)
@@ -123,6 +148,11 @@ export function scoreRun({ cases, results, meta, prevDetail = null, gateTarget =
 
   const aggregates = {
     false_close_rate: falseCloseRate,
+    // #144: the opposite error — a benign case called malicious. Reported
+    // unconditionally (0 when there are none) so an old run and a new one
+    // compare on one shape. Closing a real incident and crying wolf are both
+    // failures; only the first was ever measured.
+    false_alarm_rate: falseAlarmRate,
     verdict_accuracy: round(passes / n),
     ladder_adherence: round(Math.max(0, 1 - over / n - under / n)),
     attack_accuracy: round(malAttackN ? attackSum / malAttackN : 1),
@@ -156,6 +186,13 @@ export function scoreRun({ cases, results, meta, prevDetail = null, gateTarget =
 
   const reasons = [];
   if (falseCloseRate > gateTarget) reasons.push(`false-close rate ${falseCloseRate} exceeds target ${gateTarget}`);
+  // #144: crying wolf is a failure too, but not the same failure — a false close
+  // loses an incident, a false alarm burns an analyst. Hence its own, looser
+  // target rather than a reuse of the false-close one. The reason names the
+  // cases, because a rate alone sends a reviewer hunting for the row.
+  if (falseAlarmTarget != null && falseAlarmRate > falseAlarmTarget) {
+    reasons.push(`false-alarm rate ${falseAlarmRate} exceeds target ${falseAlarmTarget} (${falseAlarmCases.join(', ')})`);
+  }
   // Accuracy floor: a "PASS" must not be able to hide a verdict-accuracy regression.
   if (accuracyFloor != null && aggregates.verdict_accuracy < accuracyFloor) {
     reasons.push(`verdict accuracy ${aggregates.verdict_accuracy} below floor ${accuracyFloor}`);
@@ -180,6 +217,7 @@ export function scoreRun({ cases, results, meta, prevDetail = null, gateTarget =
     gate: {
       pass: reasons.length === 0,
       false_close_target: gateTarget,
+      ...(falseAlarmTarget != null ? { false_alarm_target: falseAlarmTarget } : {}),
       ...(accuracyFloor != null ? { accuracy_floor: accuracyFloor } : {}),
       ...(costCeiling ? { cost_ceiling: costCeiling } : {}),
       reasons,
