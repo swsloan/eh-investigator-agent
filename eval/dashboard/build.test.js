@@ -148,3 +148,16 @@ test('a confirmed regression is still called one', () => {
   const diff = Object.entries(files).find(([f]) => f.startsWith('diff-'))?.[1] || '';
   assert.match(diff, /1 regression\(s\)/);
 });
+
+test('a PASS that skipped the relative accuracy check says so', () => {
+  // Silence would imply the run survived a check it never faced.
+  const skipped = run('eval-20', {}, { ...GATE, accuracy_drop_limit: 0.15, accuracy_vs_prev: { not_checked: 'no previous run' } });
+  const html = buildWith([skipped], [detailWith('eval-20', 'pass')])['eval-20.html'];
+  assert.match(html, /vs-prev check skipped: no previous run/);
+});
+
+test('a run that survived the relative check does not carry the caveat', () => {
+  const checked = run('eval-21', {}, { ...GATE, accuracy_drop_limit: 0.15, accuracy_vs_prev: { drop: 0, prev: 1, cur: 1, comparable: 6, regressed: 0 } });
+  const html = buildWith([checked], [detailWith('eval-21', 'pass')])['eval-21.html'];
+  assert.ok(!/check skipped/.test(html));
+});

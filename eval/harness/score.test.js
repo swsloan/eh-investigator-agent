@@ -1,7 +1,7 @@
 // Unit test for the scorer. Run: node --test eval/harness/score.test.js
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyChange, scoreRun } from './score.js';
+import { accuracyDrop, classifyChange, scoreRun } from './score.js';
 
 const cases = [
   { id: 'mal-A', expected: { disposition: 'malicious', attack: ['T1'], min_rung: 'records' } },
@@ -353,4 +353,103 @@ test('prior samples are capped, so an old defect stops colouring the verdict', (
   const malB = detail.cases.find((c) => c.id === 'mal-B');
   assert.equal(malB.prior_statuses.length, 5, 'the five most recent samples');
   assert.equal(malB.regressed_from, 'p0', 'named against the newest');
+});
+
+// ---- Relative accuracy gate (#144 part 3) ----
+
+/** A 6-case suite: enough comparable cases that one flip is not the whole story. */
+const relCases = Array.from({ length: 6 }, (_, i) => ({
+  id: `c${i}`, expected: { disposition: 'malicious', attack: [], min_rung: 'records' },
+}));
+const relResults = (...failing) => Object.fromEntries(relCases.map((c) => [c.id, {
+  disposition: failing.includes(c.id) ? 'benign' : 'malicious',
+  confidence: 'high', highest_rung_used: 'records', detection_source: 'behavioral', attack: [],
+}]));
+/** A prior run where every case passed. */
+const allPassed = (runId = 'prev-1') => ({ run_id: runId, cases: relCases.map((c) => ({ id: c.id, status: 'pass' })) });
+const relGate = (results, prevDetails, opts = {}) => scoreRun({
+  cases: relCases, results, meta, prevDetails, gateTarget: 1, accuracyFloor: null, ...opts,
+}).record.gate;
+
+test('a systematic accuracy drop fails the gate the absolute floor would clear', () => {
+  // Three of six regress: accuracy 1.0 -> 0.5, which is far above the 0.8 floor
+  // in absolute terms only because the floor cannot see a change.
+  const g = relGate(relResults('c0', 'c1', 'c2'), [allPassed()]);
+  assert.equal(g.pass, false);
+  const reason = g.reasons.find((r) => /accuracy fell/.test(r));
+  assert.ok(reason, 'the gate names the relative check');
+  assert.match(reason, /prev-1/, 'and the run it fell against');
+  assert.match(reason, /3 regressed/);
+  assert.equal(g.accuracy_vs_prev.drop, 0.5);
+});
+
+test('a single case flipping never fails the relative gate', () => {
+  // The property that keeps this from becoming the bug it replaces. One case is
+  // 16.7 pts in a 6-case suite — over the 15pt limit — and must still not fail,
+  // because one case is not a systematic drop.
+  const g = relGate(relResults('c0'), [allPassed()]);
+  assert.equal(g.accuracy_vs_prev.drop > 0.15, true, 'the drop does exceed the points limit');
+  assert.equal(g.accuracy_vs_prev.regressed, 1);
+  assert.ok(!g.reasons.some((r) => /accuracy fell/.test(r)), 'but one case does not fail the run');
+  assert.equal(g.pass, true);
+});
+
+test('an unstable case cannot contribute to the drop', () => {
+  // The #127 dependency. c0 flaps, so its failure this run is noise: excluded
+  // from the comparison, leaving one genuine regression, which cannot fail.
+  const flapping = [
+    { run_id: 'p0', cases: [{ id: 'c0', status: 'pass' }, ...relCases.slice(1).map((c) => ({ id: c.id, status: 'pass' }))] },
+    { run_id: 'p1', cases: [{ id: 'c0', status: 'fail' }] },
+    { run_id: 'p2', cases: [{ id: 'c0', status: 'pass' }] },
+  ];
+  const { record, detail } = scoreRun({
+    cases: relCases, results: relResults('c0', 'c1'), meta, prevDetails: flapping,
+    gateTarget: 1, accuracyFloor: null,
+  });
+  assert.equal(detail.cases.find((c) => c.id === 'c0').unstable, true);
+  assert.equal(record.gate.accuracy_vs_prev.comparable, 5, 'the flapping case is not compared');
+  assert.equal(record.gate.accuracy_vs_prev.regressed, 1, 'only the genuine one counts');
+  assert.ok(!record.gate.reasons.some((r) => /accuracy fell/.test(r)));
+});
+
+test('too few comparable cases declines to judge, and says so', () => {
+  // The four single-case A/B runs in the real history each show a +/-100pt
+  // "drop". Judging on that is worse than not judging.
+  const g = relGate(relResults('c0', 'c1', 'c2'), [{ run_id: 'tiny', cases: [{ id: 'c0', status: 'pass' }] }]);
+  assert.equal(g.accuracy_vs_prev.not_checked, 'only 1 comparable stable case(s)');
+  assert.ok(!g.reasons.some((r) => /accuracy fell/.test(r)));
+});
+
+test('no previous run is reported as unjudged rather than as a pass', () => {
+  const g = relGate(relResults('c0', 'c1', 'c2'), []);
+  assert.equal(g.accuracy_vs_prev.not_checked, 'no previous run');
+});
+
+test('an accuracy improvement never fails the gate', () => {
+  const prevMostlyFailed = { run_id: 'p', cases: relCases.map((c, i) => ({ id: c.id, status: i < 4 ? 'fail' : 'pass' })) };
+  const g = relGate(relResults(), [prevMostlyFailed]);
+  assert.equal(g.accuracy_vs_prev.drop < 0, true, 'accuracy went up');
+  assert.equal(g.pass, true);
+});
+
+test('the relative check can be disabled, and then records nothing', () => {
+  const g = relGate(relResults('c0', 'c1', 'c2'), [allPassed()], { accuracyDropLimit: null });
+  assert.equal(g.accuracy_drop_limit, undefined);
+  assert.equal(g.accuracy_vs_prev, undefined);
+  assert.equal(g.pass, true, 'the drop no longer gates');
+});
+
+test('accuracyDrop is directly checkable', () => {
+  const cur = [
+    { id: 'a', status: 'fail' }, { id: 'b', status: 'fail' },
+    { id: 'c', status: 'pass' }, { id: 'd', status: 'pass' },
+  ];
+  const prev = { run_id: 'p', cases: cur.map((c) => ({ id: c.id, status: 'pass' })) };
+  const d = accuracyDrop(cur, prev);
+  assert.equal(d.checked, true);
+  assert.equal(d.drop, 0.5);
+  assert.equal(d.regressed, 2);
+  assert.equal(d.comparable, 4);
+  // A case absent from the previous run cannot be compared.
+  assert.equal(accuracyDrop([...cur, { id: 'new', status: 'fail' }], prev).comparable, 4);
 });

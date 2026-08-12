@@ -50,6 +50,58 @@ const MIN_SAMPLES_TO_CONFIRM = 2;
 // enough that a long-fixed defect stops colouring the verdict.
 const MAX_PRIOR_SAMPLES = 5;
 
+// Relative accuracy gate (#144 part 3). The absolute floor carries the comment
+// "a PASS must not be able to hide a verdict-accuracy regression" but compares
+// against a fixed 0.8, so 1.0 → 0.81 passes. These bound the relative check.
+//
+// Calibrated against the real report history rather than chosen:
+//   · The largest drop on any multi-case pair was 11.1 pts — one case failing in
+//     a 9-case suite — so a limit at or below that fires on a single flip.
+//   · Points alone are suite-size dependent: one case is 11.1 pts of 9 but 20.0
+//     of 5. So the drop must ALSO come from at least two cases; that is what
+//     makes "systematic" mean the same thing whatever the suite size.
+//   · Below a handful of comparable cases the arithmetic is too coarse to mean
+//     anything: the four single-case A/B runs in the history each show a ±100pt
+//     "drop". The check declines to judge rather than judging badly.
+// No historical pair changes verdict under these values.
+const DEFAULT_ACCURACY_DROP_LIMIT = 0.15;
+const MIN_REGRESSED_FOR_DROP = 2;
+const MIN_COMPARABLE_CASES = 4;
+
+/**
+ * Has accuracy fallen materially against the previous run (#144 part 3)?
+ *
+ * Compared over the cases both runs actually ran, **excluding those the
+ * stability check (#127) marked unstable** — a coin toss must not be able to
+ * push a run through the gate on its own, which is the dependency that kept
+ * this behind #127.
+ *
+ * Returns `{ checked, drop, prevAccuracy, curAccuracy, comparable, regressed,
+ * reason }`. `checked: false` means there was not enough comparable history to
+ * form an opinion, which is reported rather than treated as a pass.
+ */
+export function accuracyDrop(curCases, prevDetail) {
+  const none = { checked: false, comparable: 0, regressed: 0 };
+  if (!prevDetail?.cases?.length) return { ...none, reason: 'no previous run' };
+  const prevStatus = new Map(prevDetail.cases.map((c) => [c.id, c.status]));
+  const comparable = curCases.filter((c) => prevStatus.has(c.id) && !c.unstable);
+  if (comparable.length < MIN_COMPARABLE_CASES) {
+    return { ...none, comparable: comparable.length, reason: `only ${comparable.length} comparable stable case(s)` };
+  }
+  const passed = (list, statusOf) => list.filter((c) => statusOf(c) === 'pass').length / list.length;
+  const curAccuracy = passed(comparable, (c) => c.status);
+  const prevAccuracy = passed(comparable, (c) => prevStatus.get(c.id));
+  const regressed = comparable.filter((c) => prevStatus.get(c.id) === 'pass' && c.status === 'fail').length;
+  return {
+    checked: true,
+    comparable: comparable.length,
+    regressed,
+    prevAccuracy: round(prevAccuracy),
+    curAccuracy: round(curAccuracy),
+    drop: round(prevAccuracy - curAccuracy),
+  };
+}
+
 /**
  * What the prior samples support about a case's current status (#127).
  *
@@ -88,6 +140,7 @@ export function scoreRun({
   cases, results, meta, prevDetail = null, prevDetails = [],
   gateTarget = 0.05, costCeiling = null, accuracyFloor = 0.8,
   falseAlarmTarget = DEFAULT_FALSE_ALARM_TARGET,
+  accuracyDropLimit = DEFAULT_ACCURACY_DROP_LIMIT,
 }) {
   // Prior samples per case, newest first (#127). `prevDetails` is the window;
   // `prevDetail` is still accepted as a one-run window so older callers keep
@@ -260,6 +313,18 @@ export function scoreRun({
   if (falseAlarmTarget != null && falseAlarmRate > falseAlarmTarget) {
     reasons.push(`false-alarm rate ${falseAlarmRate} exceeds target ${falseAlarmTarget} (${falseAlarmCases.join(', ')})`);
   }
+  // #144 part 3: the absolute floor cannot see a regression — 1.0 → 0.81 clears
+  // a floor of 0.8. This is the check its own comment always claimed to be.
+  // Both conditions must hold: a material drop AND more than one case behind it,
+  // so a single flip cannot fail a run whatever the suite size.
+  const drop = accuracyDrop(outCases, window[0] || null);
+  if (accuracyDropLimit != null && drop.checked
+      && drop.drop > accuracyDropLimit && drop.regressed >= MIN_REGRESSED_FOR_DROP) {
+    reasons.push(
+      `verdict accuracy fell ${(drop.drop * 100).toFixed(1)} pts vs ${window[0].run_id} `
+      + `(${drop.prevAccuracy} → ${drop.curAccuracy} over ${drop.comparable} stable case(s); ${drop.regressed} regressed)`,
+    );
+  }
   // Accuracy floor: a "PASS" must not be able to hide a verdict-accuracy regression.
   if (accuracyFloor != null && aggregates.verdict_accuracy < accuracyFloor) {
     reasons.push(`verdict accuracy ${aggregates.verdict_accuracy} below floor ${accuracyFloor}`);
@@ -285,6 +350,14 @@ export function scoreRun({
       pass: reasons.length === 0,
       false_close_target: gateTarget,
       ...(falseAlarmTarget != null ? { false_alarm_target: falseAlarmTarget } : {}),
+      // #144 part 3: recorded whether or not it fired, so a reader can tell a
+      // run that held its accuracy from one the check declined to judge.
+      ...(accuracyDropLimit != null ? {
+        accuracy_drop_limit: accuracyDropLimit,
+        accuracy_vs_prev: drop.checked
+          ? { drop: drop.drop, prev: drop.prevAccuracy, cur: drop.curAccuracy, comparable: drop.comparable, regressed: drop.regressed }
+          : { not_checked: drop.reason },
+      } : {}),
       ...(accuracyFloor != null ? { accuracy_floor: accuracyFloor } : {}),
       ...(costCeiling ? { cost_ceiling: costCeiling } : {}),
       reasons,

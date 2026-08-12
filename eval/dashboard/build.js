@@ -220,7 +220,12 @@ function tiles(run, prev) {
   <div class="sub">${a.false_alarm_rate == null
     ? 'not measured on this run'
     : `${gate.false_alarm_target != null ? `target &lt; ${pct(gate.false_alarm_target)} · ` : ''}${delta(run, prev, 'false_alarm_rate', { goodDown: true })}`}</div></div>
-<div class="tile"><div class="lbl">Verdict accuracy</div><div class="val">${pct(a.verdict_accuracy)}</div><div class="sub">${delta(run, prev, 'verdict_accuracy')}</div></div>
+<div class="tile"><div class="lbl">Verdict accuracy</div><div class="val">${pct(a.verdict_accuracy)}</div>
+  <div class="sub">${delta(run, prev, 'verdict_accuracy')}${gate.accuracy_vs_prev?.not_checked
+    // #144 part 3: a PASS that skipped the relative check is not the same as one
+    // that survived it. Say which, rather than letting silence imply the latter.
+    ? `<span style="color:var(--ink-faint)"> · vs-prev check skipped: ${esc(gate.accuracy_vs_prev.not_checked)}</span>`
+    : ''}</div></div>
 <div class="tile"><div class="lbl">Ladder adherence</div><div class="val">${pct(a.ladder_adherence)}</div><div class="sub">${delta(run, prev, 'ladder_adherence')}</div></div>
 <div class="tile"><div class="lbl">Cost / case</div><div class="val">${usd(a.cost_per_case_usd)}</div><div class="sub">${delta(run, prev, 'cost_per_case_usd', { goodDown: true, money: true })}</div></div>
 </div>`;
