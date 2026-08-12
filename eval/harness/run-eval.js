@@ -25,10 +25,27 @@ const val = (f, d) => { const i = args.indexOf(f); return i >= 0 && args[i + 1] 
 const CASES_DIR = path.resolve(val('--cases', path.join(ROOT, 'eval/cases')));
 const REPORTS_DIR = path.resolve(val('--reports', path.join(ROOT, 'eval/reports')));
 const GATE = Number(val('--gate', '0.05'));
-// #144: --false-alarm <rate>, or `off` to disable that gate.
-const FALSE_ALARM = has('--false-alarm')
-  ? (val('--false-alarm', '') === 'off' ? null : Number(val('--false-alarm', '')))
-  : undefined;
+/**
+ * `--false-alarm <rate 0..1>` | `--false-alarm off` | absent (#144).
+ *
+ * Returns `undefined` to keep the scorer's default, `null` to measure without
+ * gating, or the rate. Throws on anything else, because every malformed value
+ * silently changes the gate rather than failing: a bare `--false-alarm` parses
+ * as `0` (the strictest possible gate), and `abc` or `5` parse to values the
+ * rate can never exceed (the gate quietly does nothing). A CI gate that turned
+ * itself off because of a typo is the failure mode worth refusing outright.
+ */
+export function parseFalseAlarmTarget(argv) {
+  const i = argv.indexOf('--false-alarm');
+  if (i < 0) return undefined;
+  const raw = String(argv[i + 1] ?? '').trim();
+  if (raw === 'off') return null;
+  const n = Number(raw);
+  if (!raw || raw.startsWith('--') || !Number.isFinite(n) || n < 0 || n > 1) {
+    throw new Error('--false-alarm takes a rate between 0 and 1, or "off".');
+  }
+  return n;
+}
 const meta = {
   run_id: val('--run-id', `run-${(process.env.EVAL_STAMP || 'unstamped')}`),
   timestamp: process.env.EVAL_STAMP || 'unstamped',
@@ -70,6 +87,9 @@ function loadPrevDetail(backend) {
 }
 
 async function main() {
+  // Parsed here rather than at module scope so an invalid value fails the
+  // command through main()'s handler instead of exiting on import.
+  const falseAlarmTarget = parseFalseAlarmTarget(args);
   const cases = loadCases(CASES_DIR);
   let resultsDir = val('--results', '');
 
@@ -103,7 +123,8 @@ async function main() {
 
   const { record, detail } = scoreRun({
     cases, results, meta, prevDetail: loadPrevDetail(meta.backend), gateTarget: GATE,
-    ...(FALSE_ALARM === undefined ? {} : { falseAlarmTarget: FALSE_ALARM }),
+    // undefined = keep the scorer's default; null = measure but never gate.
+    ...(falseAlarmTarget === undefined ? {} : { falseAlarmTarget }),
   });
 
   fs.mkdirSync(REPORTS_DIR, { recursive: true });
