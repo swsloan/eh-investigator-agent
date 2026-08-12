@@ -3,6 +3,7 @@ import { applyInvestigationPlanEvent, refreshInvestigationPlan } from './plan-ri
 import {
   addSysNote,
   addToolCard,
+  applySubagentUsage,
   updateToolCard,
   addUserMessage,
   agentErrorText,
@@ -198,6 +199,24 @@ export function handleEvent(ev) {
       finishToolCard(ev);
       if (!state.replaying) refreshFilesCallback();
       break;
+
+    // #120 slice 0: tokens a delegated subagent spent. Accumulated into the
+    // session totals — they were previously dropped with the rest of the
+    // subagent's message, so every delegated run under-reported — but
+    // deliberately NOT into contextTokens: that readout means "how full is the
+    // lead's context", and a subagent's own small context must not overwrite it.
+    case 'subagent_usage': {
+      const usage = ev.usage;
+      if (usage) {
+        state.usage.input += usage.input || 0;
+        state.usage.output += usage.output || 0;
+        state.usage.cacheRead += usage.cacheRead || 0;
+        state.usage.cacheWrite += usage.cacheWrite || 0;
+        updateUsage();
+      }
+      applySubagentUsage(ev);
+      break;
+    }
 
     case 'investigation_plan_updated':
       applyInvestigationPlanEvent(ev, { sessionId: state.session?.id || '' });

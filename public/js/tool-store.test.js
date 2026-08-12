@@ -1,8 +1,8 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  allCalls, callDuration, endCall, getCall, resetCalls, runningCalls,
-  startCall, subscribeCalls, updateCall,
+  addAgentUsage, allCalls, callDuration, childrenOf, endCall, getCall, resetCalls,
+  runningCalls, startCall, subscribeCalls, topLevelCalls, updateCall,
 } from './tool-store.js';
 
 beforeEach(() => resetCalls());
@@ -87,4 +87,62 @@ test('reset clears the turn and announces it', () => {
   resetCalls();
   assert.equal(allCalls().length, 0);
   assert.equal(seen.at(-1), null, 'a null notification is the signal to re-render empty');
+});
+
+// ---- Delegated work (#120 slice 0) ----
+
+/** A lead call that delegates, and the subagent calls threaded under it. */
+function delegation() {
+  startCall({ toolCallId: 'task', toolName: 'Task', args: { subagent_type: 'telemetry' } });
+  startCall({ toolCallId: 'c1', toolName: 'bash', parentToolCallId: 'task', agentModel: 'claude-haiku-4-5-20251001' });
+  startCall({ toolCallId: 'c2', toolName: 'bash', parentToolCallId: 'task', agentModel: 'claude-haiku-4-5-20251001' });
+}
+
+test('a delegated call records its parent and the tier that ran it', () => {
+  delegation();
+  assert.equal(getCall('c1').parentId, 'task');
+  assert.equal(getCall('c1').agentModel, 'claude-haiku-4-5-20251001');
+  assert.equal(getCall('task').parentId, null, "the lead's own call has no parent");
+  assert.equal(getCall('task').agentModel, '');
+});
+
+test('roots and children partition the turn', () => {
+  delegation();
+  startCall({ toolCallId: 'own', toolName: 'read' });
+  assert.deepEqual(topLevelCalls().map((c) => c.id), ['task', 'own']);
+  assert.deepEqual(childrenOf('task').map((c) => c.id), ['c1', 'c2'], 'children keep start order');
+  assert.deepEqual(childrenOf('own'), []);
+  assert.deepEqual(childrenOf(null), []);
+  assert.equal(allCalls().length, 4, 'every call is still in the turn');
+});
+
+test('a delegated call whose parent never started is a root, not a disappearance', () => {
+  // Replay can slim the parent out of the transcript. Work must never vanish
+  // from the view whose whole job is showing all of it.
+  startCall({ toolCallId: 'orphan', toolName: 'bash', parentToolCallId: 'gone' });
+  assert.deepEqual(topLevelCalls().map((c) => c.id), ['orphan']);
+  assert.equal(getCall('orphan').parentId, 'gone', 'it still knows it was delegated');
+});
+
+test('subagent usage accumulates onto the delegating call', () => {
+  delegation();
+  addAgentUsage('task', { input: 10, output: 5, cacheRead: 4000, cacheWrite: 100, totalTokens: 4115 });
+  addAgentUsage('task', { input: 2, output: 3, cacheRead: 1000, cacheWrite: 0, totalTokens: 1005 });
+  const totals = getCall('task').agentUsage;
+  assert.equal(totals.cacheRead, 5000);
+  assert.equal(totals.totalTokens, 5120);
+  assert.equal(getCall('c1').agentUsage, null, 'usage lands on the parent, not the children');
+});
+
+test('usage for a parent that never started is ignored', () => {
+  assert.equal(addAgentUsage('ghost', { totalTokens: 10 }), null);
+  assert.equal(allCalls().length, 0, 'no phantom call is created');
+});
+
+test('usage notifies subscribers so the card can re-render', () => {
+  delegation();
+  const seen = [];
+  subscribeCalls((r) => seen.push(r?.id));
+  addAgentUsage('task', { totalTokens: 10 });
+  assert.deepEqual(seen, ['task']);
 });

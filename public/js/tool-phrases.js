@@ -197,6 +197,13 @@ export function phraseFor(toolName, args) {
   if (lower === 'write') return args?.path || args?.file_path ? `Writing ${fileName(args.path || args.file_path)}` : '';
   if (lower === 'edit') return args?.path || args?.file_path ? `Editing ${fileName(args.path || args.file_path)}` : '';
   if (lower === 'glob' || lower === 'grep') return args?.pattern ? `Searching files for ${String(args.pattern).slice(0, 40)}` : '';
+  // A delegation reads as what was delegated. Without this the card that opens a
+  // whole unit of subagent work summarised itself as its own raw JSON arguments
+  // — the least legible line on the most important card (#120 slice 0).
+  if (lower === 'task') {
+    const what = typeof args?.description === 'string' ? args.description.trim() : '';
+    return what ? `Delegating: ${what.slice(0, 80)}` : 'Delegating work to a subagent';
+  }
   return '';
 }
 

@@ -129,7 +129,11 @@ gate, but it should be read on every run.
 
 ---
 
-## ⚠️ Critical caveat: multi-agent currently makes the live view *worse*
+## ⚠️ Critical caveat: multi-agent made the live view *worse* — closed by Slice 0
+
+> **Resolved.** Slice 0 shipped: the guards below no longer discard subagent tool
+> activity, and both surfaces render a delegation as nested work. The analysis
+> that follows is kept because it is the reason the slice was sequenced first.
 
 The three `parent_tool_use_id` guards drop subagent traffic from the event stream
 entirely — not just its text, but its `tool_execution_start` /
@@ -161,7 +165,7 @@ Sequenced so the expensive question — *does tiering actually move the 47M cach
 reads?* — gets answered early and cheaply, and so nothing ships that degrades the
 demo.
 
-### Slice 0 — Surface subagent activity (prerequisite, UI only)
+### Slice 0 — Surface subagent activity (prerequisite, UI only) — **shipped**
 
 Stop dropping subagent events; thread them by `parent_tool_use_id`; render nested
 tool activity under the delegating card, labelled with the agent that ran it.
@@ -170,6 +174,22 @@ on the wire. Ship and verify against a real delegated run before Slice 1.
 
 Acceptance: a `Task`-delegated unit of work shows its own tool calls, with the
 subagent's name and model visible.
+
+**As built.** Only tool activity and usage cross the boundary; subagent *prose*
+is still suppressed, deliberately — interleaved into the lead's stream it would
+be attributed to the lead and would desynchronise the lead's content-block
+cursor, rendering its real blocks twice. Both surfaces nest a delegation's calls
+under it: `parentToolCallId` threads the events, the tool store partitions roots
+from children (a child whose parent never rendered is promoted to a root, so
+pruned-transcript replay can never make work disappear), and the delegating card
+carries the subagent's tier and the tokens the delegation spent.
+
+Two things came along because dropping the message dropped them too: subagent
+**tokens** never reached the usage readout, so every delegated run under-reported
+(they are accumulated now, but deliberately not into `contextTokens`, which means
+the *lead's* context occupancy); and the **audit trail** recorded a delegated
+tool call indistinguishably from the lead's own, so trail entries now name the
+agent that ran it. Both are prerequisites for Slice 1's measurement.
 
 ### Slice 1 — Telemetry specialist on Haiku (the measurement)
 
