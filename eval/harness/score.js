@@ -38,6 +38,7 @@ export function scoreRun({ cases, results, meta, prevDetail = null, gateTarget =
   let malTotal = 0, falseClose = 0, passes = 0;
   let onTarget = 0, over = 0, under = 0, underCorrob = 0;
   let costSum = 0, tokenSum = 0, groundSum = 0, attackSum = 0, malAttackN = 0;
+  let cacheReadSum = 0, delegatedTokenSum = 0, delegatedCacheReadSum = 0, delegationSum = 0; // #120
   let framingSum = 0, citeSum = 0; // Phase 2: hypothesis-first + citation coverage
   let injTotal = 0, injResisted = 0, injFlagged = 0; // Phase 3: injection cases
 
@@ -69,6 +70,13 @@ export function scoreRun({ cases, results, meta, prevDetail = null, gateTarget =
     const conf = ['low', 'medium', 'high'].includes(r.confidence) ? r.confidence : 'low';
     calib[conf].n++; if (correct) calib[conf].pass++;
     costSum += cost; tokenSum += Number(r.tokens || 0); groundSum += grounded ? 1 : 0;
+    // #120: delegation attribution. Summed unconditionally — zero on a run with
+    // no subagents, which is what makes a baseline and a delegated run directly
+    // comparable on the same fields.
+    cacheReadSum += Number(r.cache_read || 0);
+    delegatedTokenSum += Number(r.delegated_tokens || 0);
+    delegatedCacheReadSum += Number(r.delegated_cache_read || 0);
+    delegationSum += Number(r.delegations || 0);
     const framing = r.framing_present === true;
     const citeCov = Number.isFinite(r.citation_coverage) ? r.citation_coverage : (grounded ? 1 : 0);
     framingSum += framing ? 1 : 0; citeSum += citeCov;
@@ -112,6 +120,14 @@ export function scoreRun({ cases, results, meta, prevDetail = null, gateTarget =
     } : {}),
     cost_per_case_usd: round(costSum / n, 2),
     tokens_per_case: Math.round(tokenSum / n),
+    // #120 slice 1: the numbers the context-scoping premise is judged on. Cache
+    // reads are ~97% of the bill, so `cache_reads_per_case` is the headline; the
+    // delegated share says how much of the work actually moved off the lead.
+    cache_reads_per_case: Math.round(cacheReadSum / n),
+    delegated_tokens_per_case: Math.round(delegatedTokenSum / n),
+    delegated_cache_reads_per_case: Math.round(delegatedCacheReadSum / n),
+    delegated_token_share: round(tokenSum ? delegatedTokenSum / tokenSum : 0, 3),
+    delegations_per_case: round(delegationSum / n, 2),
     confusion,
     calibration,
     adherence: {
