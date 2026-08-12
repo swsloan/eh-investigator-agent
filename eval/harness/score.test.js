@@ -152,3 +152,75 @@ test('per-case delegation is recorded, so a cost delta can be attributed', () =>
   assert.equal(byId['ben-A'].scores.delegations, 0);
   assert.equal(byId['ben-A'].scores.delegated_tokens, 0);
 });
+
+// ---- False alarms (#144) ----
+
+/** Cases with a benign majority, so the false-alarm rate has room to move. */
+const faCases = [
+  { id: 'mal-1', expected: { disposition: 'malicious', attack: [], min_rung: 'records' } },
+  { id: 'ben-1', expected: { disposition: 'benign', attack: [], min_rung: 'metrics' } },
+  { id: 'ben-2', expected: { disposition: 'benign', attack: [], min_rung: 'metrics' } },
+  { id: 'fp-1', expected: { disposition: 'false-positive', attack: [], min_rung: 'metrics' } },
+  { id: 'bauth-1', expected: { disposition: 'benign-authorized', attack: [], min_rung: 'metrics' } },
+];
+const ok = (d) => ({ disposition: d, confidence: 'high', highest_rung_used: 'metrics', detection_source: 'behavioral', attack: [] });
+const faResults = (...criers) => Object.fromEntries(faCases.map((c) => [
+  c.id, ok(criers.includes(c.id) ? 'malicious' : c.expected.disposition),
+]));
+
+test('false alarms are counted over the non-malicious cases and reported always', () => {
+  const clean = scoreRun({ cases: faCases, results: faResults(), meta }).record.aggregates;
+  assert.equal(clean.false_alarm_rate, 0, 'reported as 0, not omitted, so runs compare on one shape');
+
+  const one = scoreRun({ cases: faCases, results: faResults('ben-1'), meta }).record.aggregates;
+  assert.equal(one.false_alarm_rate, 0.25, '1 of the 4 non-malicious cases');
+  assert.equal(one.false_close_rate, 0, 'the other direction is untouched');
+});
+
+test('crying wolf fails the gate, and the reason names the case', () => {
+  const { record } = scoreRun({
+    cases: faCases, results: faResults('ben-1', 'fp-1'), meta, accuracyFloor: null,
+  });
+  assert.equal(record.aggregates.false_alarm_rate, 0.5);
+  assert.equal(record.gate.pass, false);
+  const reason = record.gate.reasons.find((r) => /false-alarm/.test(r));
+  assert.ok(reason, 'the gate says which check failed');
+  assert.match(reason, /ben-1/); assert.match(reason, /fp-1/);
+  assert.equal(record.gate.false_alarm_target, 0.25, 'the target is recorded with the verdict');
+});
+
+test('the default tolerates one unstable case but not two', () => {
+  // Calibration, not taste: plaintext-http-creds is a documented coin toss
+  // (#128) and one flip is 0.2 in the real 9-case suite. A target that failed on
+  // a single flip would fail ~half of all runs for a known, tracked reason, and
+  // a gate people learn to ignore is worse than a loose one.
+  const one = scoreRun({ cases: faCases, results: faResults('ben-1'), meta, accuracyFloor: null }).record.gate;
+  assert.equal(one.pass, true, '0.25 is not > 0.25');
+  const two = scoreRun({ cases: faCases, results: faResults('ben-1', 'ben-2'), meta, accuracyFloor: null }).record.gate;
+  assert.equal(two.pass, false);
+});
+
+test('the false-alarm gate can be disabled without disabling the metric', () => {
+  const { record } = scoreRun({
+    cases: faCases, results: faResults('ben-1', 'ben-2', 'fp-1'), meta,
+    accuracyFloor: null, falseAlarmTarget: null,
+  });
+  assert.equal(record.aggregates.false_alarm_rate, 0.75, 'still measured');
+  assert.ok(!record.gate.reasons.some((r) => /false-alarm/.test(r)), 'but never gated');
+  assert.equal(record.gate.false_alarm_target, undefined);
+  assert.equal(record.gate.pass, true);
+});
+
+test('a suite with no non-malicious cases reports 0 rather than dividing by zero', () => {
+  const onlyMal = [{ id: 'm', expected: { disposition: 'malicious', attack: [], min_rung: 'records' } }];
+  const a = scoreRun({ cases: onlyMal, results: { m: ok('malicious') }, meta }).record.aggregates;
+  assert.equal(a.false_alarm_rate, 0);
+});
+
+test('the offending case is flagged per row, not only in the rate', () => {
+  const { detail } = scoreRun({ cases: faCases, results: faResults('ben-1'), meta });
+  const byId = Object.fromEntries(detail.cases.map((c) => [c.id, c]));
+  assert.equal(byId['ben-1'].scores.false_alarm, true);
+  assert.equal(byId['ben-2'].scores.false_alarm, false);
+  assert.equal(byId['mal-1'].scores.false_alarm, false, 'a malicious case can never be a false alarm');
+});

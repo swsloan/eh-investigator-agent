@@ -72,6 +72,9 @@ export function evalRouter({ startEval, startInjectionProbe, reportsDir, casesDi
     const gateTarget = Number.isFinite(b.gateTarget) ? b.gateTarget : undefined;
     const costCeiling = Number.isFinite(b.costCeiling) && b.costCeiling > 0 ? b.costCeiling : null;
     const accuracyFloor = Number.isFinite(b.accuracyFloor) && b.accuracyFloor >= 0 && b.accuracyFloor <= 1 ? b.accuracyFloor : undefined;
+    // #144: null disables the false-alarm gate outright, a number sets it.
+    const falseAlarmTarget = b.falseAlarmTarget === null ? null
+      : (Number.isFinite(b.falseAlarmTarget) && b.falseAlarmTarget >= 0 && b.falseAlarmTarget <= 1 ? b.falseAlarmTarget : undefined);
     const caseIds = Array.isArray(b.caseIds) && b.caseIds.length ? b.caseIds.map(String) : null;
     const maxParallel = Number.isFinite(b.maxParallel) && b.maxParallel > 0 ? Math.min(Math.floor(b.maxParallel), 8) : 3;
     const mode = ['live', 'record', 'replay'].includes(b.mode) ? b.mode : 'live';
@@ -83,7 +86,7 @@ export function evalRouter({ startEval, startInjectionProbe, reportsDir, casesDi
     res.json({ ok: true, runId });
 
     startEval({
-      runId, backendId, gateTarget, costCeiling, accuracyFloor, caseIds, maxParallel, mode, timestamp: new Date().toISOString(),
+      runId, backendId, gateTarget, costCeiling, accuracyFloor, falseAlarmTarget, caseIds, maxParallel, mode, timestamp: new Date().toISOString(),
       onProgress: trackProgress,
     }).then(finish).catch(failRun);
   });
