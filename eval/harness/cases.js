@@ -16,6 +16,15 @@ export function loadCases(dir) {
     if (!RUNGS.includes(c.expected.min_rung)) {
       throw new Error(`${where}: expected.min_rung must be one of ${RUNGS.join('|')}`);
     }
+    // A case still needs a labelled disposition even when it is not scored on
+    // one (#128): the label documents the right answer, and scoring can be
+    // switched back on without re-deriving it.
+    if (c.scoring !== undefined && (typeof c.scoring !== 'object' || c.scoring === null || Array.isArray(c.scoring))) {
+      throw new Error(`${where}: "scoring" must be an object`);
+    }
+    if (c.scoring?.disposition !== undefined && typeof c.scoring.disposition !== 'boolean') {
+      throw new Error(`${where}: scoring.disposition must be a boolean`);
+    }
     cases.push(c);
   }
   cases.sort((a, b) => a.id.localeCompare(b.id));

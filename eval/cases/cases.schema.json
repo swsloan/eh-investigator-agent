@@ -10,6 +10,17 @@
     "prompt": { "type": "string", "description": "What the agent is asked to investigate (e.g. a detection id + host)." },
     "group_id": { "type": "string", "description": "Memory namespace for the run; use an isolated evallab namespace." },
     "notes": { "type": "string" },
+    "scoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Which signals this case contributes to. Everything defaults to true; a case is a full test unless it says otherwise.",
+      "properties": {
+        "disposition": {
+          "type": "boolean",
+          "description": "Score the verdict (accuracy, confusion, calibration, false-close, false-alarm). Set false for a case whose disposition is not reproducible enough to mean anything — it still scores ladder adherence and cost, and its `expected.disposition` stays as documentation of the right answer. See #128."
+        }
+      }
+    },
     "expected": {
       "type": "object",
       "additionalProperties": false,

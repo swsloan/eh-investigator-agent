@@ -220,8 +220,11 @@ function tiles(run, prev) {
   <div class="sub">${a.false_alarm_rate == null
     ? 'not measured on this run'
     : `${gate.false_alarm_target != null ? `target &lt; ${pct(gate.false_alarm_target)} · ` : ''}${delta(run, prev, 'false_alarm_rate', { goodDown: true })}`}</div></div>
-<div class="tile"><div class="lbl">Verdict accuracy</div><div class="val">${pct(a.verdict_accuracy)}</div>
-  <div class="sub">${delta(run, prev, 'verdict_accuracy')}${gate.accuracy_vs_prev?.not_checked
+<div class="tile"><div class="lbl">Verdict accuracy</div>
+  <div class="val">${a.verdict_accuracy == null ? '—' : pct(a.verdict_accuracy)}</div>
+  <div class="sub">${a.verdict_accuracy == null
+    ? 'no case in this run was scored on its verdict'
+    : delta(run, prev, 'verdict_accuracy')}${gate.accuracy_vs_prev?.not_checked
     // #144 part 3: a PASS that skipped the relative check is not the same as one
     // that survived it. Say which, rather than letting silence imply the latter.
     ? `<span style="color:var(--ink-faint)"> · vs-prev check skipped: ${esc(gate.accuracy_vs_prev.not_checked)}</span>`
@@ -247,9 +250,13 @@ function caseTable(detail) {
       const seen = (c.prior_statuses || []).join(', ');
       flags.push(`<span class="pill" style="color:var(--warn);background:var(--warn-bg)" title="prior runs: ${esc(seen)}">unstable</span>`);
     }
-    const status = c.status === 'pass'
-      ? '<span class="pill ok">pass</span>'
-      : `<span class="pill bad">${regressed ? 'regression' : (c.regression_unconfirmed ? 'fail (new)' : 'fail')}</span>`;
+    // #128: a ladder fixture has no verdict to pass or fail. Saying so beats
+    // showing it as a failure (alarming and wrong) or a pass (a claim nobody made).
+    const status = c.scores?.disposition_scored === false
+      ? '<span class="pill" style="color:var(--ink-faint)" title="scored on ladder adherence only">verdict not scored</span>'
+      : (c.status === 'pass'
+        ? '<span class="pill ok">pass</span>'
+        : `<span class="pill bad">${regressed ? 'regression' : (c.regression_unconfirmed ? 'fail (new)' : 'fail')}</span>`);
     const predWrong = !c.scores.verdict_correct ? ` style="color:var(--bad)"` : '';
     return `<tr class="rowlink"><td class="mono">${esc(c.id)}</td><td>${esc(c.detection_source)}</td>
 <td>${esc(c.expected.disposition)}</td><td${predWrong}>${esc(c.predicted.disposition)}</td>
@@ -258,7 +265,11 @@ function caseTable(detail) {
   }).join('');
   const passed = detail.cases.filter((c) => c.status === 'pass').length;
   const regr = detail.cases.filter((c) => c.regressed_from).length;
-  return `<div class="note">${passed}/${detail.cases.length} pass${regr ? ` · ${regr} regression` : ''}</div>
+  // #128: judged out of judged. "8/10 pass" when two carry no verdict reads as
+  // two failures.
+  const judged = detail.cases.filter((c) => c.scores?.disposition_scored !== false).length;
+  const fixtures = detail.cases.length - judged;
+  return `<div class="note">${passed}/${judged} pass${fixtures ? ` · ${fixtures} ladder fixture${fixtures === 1 ? '' : 's'} (verdict not scored)` : ''}${regr ? ` · ${regr} regression` : ''}</div>
 <table><tr><th>case</th><th>source</th><th>expected</th><th>predicted</th><th>rung</th><th>cost</th><th style="text-align:right">status</th></tr>${rows}</table>`;
 }
 

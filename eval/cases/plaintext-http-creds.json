@@ -1,1 +1,8 @@
-{ "id": "plaintext-http-creds", "prompt": "Investigate hardening detection 4294967811 (Plaintext Credentials Received over HTTP) on www.acmelegal.lab (172.16.204.196).", "group_id": "evallab", "notes": "SEED label. Hygiene finding — credentials sent in cleartext to an internal web app. Benign (real, low sophistication) hardening/remediation item, not a threat. Confirm via records.", "expected": { "disposition": "benign", "attack": [], "min_rung": "records" } }
+{
+  "id": "plaintext-http-creds",
+  "prompt": "Investigate hardening detection 4294967811 (Plaintext Credentials Received over HTTP) on www.acmelegal.lab (172.16.204.196).",
+  "group_id": "evallab",
+  "notes": "LADDER FIXTURE (#128), not a disposition test. Hygiene finding — credentials sent in cleartext to an internal web app. Benign (real, low sophistication) hardening/remediation item, not a threat; settling it needs records, never packets. Across 12 recorded runs the disposition is 5/12 correct while the over-climb is 8/8 reproducible since 2026-08-10 (before that, 0/4), at 2.4x the cost — and even its correct runs climb to packets and cite ~10 ATT&CK techniques against an expected empty set. Its disposition therefore measures luck, so it is scored on the climb only. The expected label is retained as documentation of the right answer and is deliberately NOT scored. Restore disposition scoring once the scope bleed is fixed and the verdict is stable.",
+  "expected": { "disposition": "benign", "attack": [], "min_rung": "records" },
+  "scoring": { "disposition": false }
+}
