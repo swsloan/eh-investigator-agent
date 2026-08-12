@@ -191,7 +191,14 @@ the *lead's* context occupancy); and the **audit trail** recorded a delegated
 tool call indistinguishably from the lead's own, so trail entries now name the
 agent that ran it. Both are prerequisites for Slice 1's measurement.
 
-### Slice 1 — Telemetry specialist on Haiku (the measurement)
+### Slice 1 — Telemetry specialist on Haiku (the measurement) — **run; premise refuted**
+
+> **Outcome:** the specialist was built, measured over two 9-case runs, and then
+> **removed from the tree**. What shipped is the measurement apparatus, not the
+> roster: `agents/telemetry.md`, the workspace `agents` symlink, and the lead's
+> delegation rule are all gone, so nothing offers the agent a specialist to
+> spawn. The instrumentation that judged it stays, because it is how any future
+> attempt gets judged. Full numbers below.
 
 One agent, the highest-volume and most mechanical role. Define
 `.claude/agents/telemetry.md` with a Haiku model override; give the lead a
@@ -288,13 +295,20 @@ context-scoping premise is wrong and the rest of the design should be
 reconsidered rather than built"* — **Slices 2, 3 and 4 should not be built as
 designed.**
 
-What remains valid:
+What remains valid, and what is in the tree today:
 
 - **Slice 0 (subagent visibility) stands on its own** and is already merged; it
-  is a UI capability, not a cost bet.
-- **The measurement plumbing is the durable asset**: delegated tokens are now
-  counted, per-case attribution is recorded, and `isDelegationTool` covers both
-  tool names. Any future delegation work can be judged instead of assumed.
+  is a UI capability, not a cost bet. It also still earns its place with no
+  roster shipped: Claude Code can spawn its own built-in subagents, and when it
+  does, that work is visible and counted rather than invisible.
+- **The measurement plumbing is the durable asset**: delegated tokens are
+  counted in `sumUsage`, per-case `scores.delegations` / `delegated_tokens` are
+  recorded, and `isDelegationTool` covers both tool names. Any future delegation
+  work can be judged instead of assumed — without it, run 2 would have read as a
+  modest ~2% saving and the +27% delegation penalty would have stayed invisible.
+- **The roster itself is not in the tree.** Re-adding one is a deliberate act,
+  not a config flip, which is the correct default for a bet this measurement
+  did not support.
 - If delegation is revisited, the target is **not** "delegate telemetry
   broadly". The observed overhead is per-delegation, so the only shape worth
   testing is a much narrower trigger — one where the payload is genuinely large
