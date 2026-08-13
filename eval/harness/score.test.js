@@ -453,3 +453,84 @@ test('accuracyDrop is directly checkable', () => {
   // A case absent from the previous run cannot be compared.
   assert.equal(accuracyDrop([...cur, { id: 'new', status: 'fail' }], prev).comparable, 4);
 });
+
+// ---- Ladder-only fixtures (#128) ----
+
+const fixtureCases = [
+  { id: 'judged-1', expected: { disposition: 'malicious', attack: [], min_rung: 'records' } },
+  { id: 'judged-2', expected: { disposition: 'benign', attack: [], min_rung: 'metrics' } },
+  // Labelled benign, but the label is documentation only — not scored.
+  { id: 'fixture', expected: { disposition: 'benign', attack: [], min_rung: 'records' }, scoring: { disposition: false } },
+];
+const fixtureResults = {
+  'judged-1': { disposition: 'malicious', confidence: 'high', highest_rung_used: 'records', detection_source: 'behavioral', attack: [] },
+  'judged-2': { disposition: 'benign', confidence: 'high', highest_rung_used: 'metrics', detection_source: 'behavioral', attack: [] },
+  // Wrong disposition AND over-climbed: the wrongness must not count, the climb must.
+  fixture: { disposition: 'malicious', confidence: 'high', highest_rung_used: 'packets', detection_source: 'behavioral', attack: ['T1021'] },
+};
+
+test('a ladder fixture does not dilute accuracy with a verdict nobody judged', () => {
+  const { record } = scoreRun({ cases: fixtureCases, results: fixtureResults, meta });
+  const a = record.aggregates;
+  assert.equal(a.verdict_accuracy, 1, 'both judged cases were right; the fixture is not counted');
+  assert.equal(a.disposition_cases, 2, 'and the denominator says how many were judged');
+});
+
+test('a ladder fixture still scores the climb — that is what it is for', () => {
+  const a = scoreRun({ cases: fixtureCases, results: fixtureResults, meta }).record.aggregates;
+  assert.equal(a.adherence.false_climb, 0.3333, 'over-climb counted over ALL cases');
+  assert.equal(a.ladder_adherence, 0.6667);
+});
+
+test("a fixture's wrong verdict reaches no verdict signal", () => {
+  const a = scoreRun({ cases: fixtureCases, results: fixtureResults, meta }).record.aggregates;
+  // It predicted malicious on a benign-labelled case: a false alarm, if judged.
+  assert.equal(a.false_alarm_rate, 0, 'not a false alarm — its verdict is not scored');
+  assert.equal(a.false_close_rate, 0);
+  assert.equal(a.confusion.benign.malicious, 0, 'and it is absent from the confusion matrix');
+  const highBucket = a.calibration.find((b) => b.bucket === 'high');
+  assert.equal(highBucket.n, 2, 'and from calibration, which would otherwise count it as a confident miss');
+});
+
+test('a fixture is marked unscored rather than failed', () => {
+  const { detail } = scoreRun({ cases: fixtureCases, results: fixtureResults, meta });
+  const f = detail.cases.find((c) => c.id === 'fixture');
+  assert.equal(f.status, 'unscored');
+  assert.equal(f.scores.disposition_scored, false);
+  assert.equal(f.scores.verdict_correct, undefined, 'no correctness claim is made');
+  assert.equal(f.scores.false_climb, true, 'but the climb is still recorded');
+  assert.equal(f.expected.disposition, 'benign', 'and the label survives as documentation');
+});
+
+test('an unscored case can neither regress nor drag the relative accuracy check', () => {
+  // Both #127 and #144-part-3 must ignore it: there is no verdict to change.
+  const prevDetails = [{ run_id: 'p0', cases: [
+    { id: 'judged-1', status: 'pass' }, { id: 'judged-2', status: 'pass' }, { id: 'fixture', status: 'pass' },
+  ] }];
+  const { record, detail } = scoreRun({ cases: fixtureCases, results: fixtureResults, meta, prevDetails });
+  const f = detail.cases.find((c) => c.id === 'fixture');
+  assert.equal(f.regressed_from, undefined, 'pass -> unscored is not a regression');
+  assert.equal(f.regression_unconfirmed, undefined);
+  // Only the two judged cases are comparable — which is below the minimum the
+  // relative check needs, so it declines and says how many it found. That count
+  // is the proof the fixture was excluded: three cases went in, two came out.
+  assert.equal(record.gate.accuracy_vs_prev.not_checked, 'only 2 comparable stable case(s)');
+});
+
+test('a suite of nothing but fixtures reports no accuracy rather than dividing by zero', () => {
+  const only = [fixtureCases[2]];
+  const a = scoreRun({ cases: only, results: fixtureResults, meta }).record.aggregates;
+  assert.equal(a.disposition_cases, 0);
+  assert.equal(a.verdict_accuracy, null, 'null, not 0 — no verdict was judged, which is not the same as every verdict being wrong');
+  assert.equal(a.adherence.false_climb, 1, 'the ladder signal still works');
+});
+
+test('a fixture-only run cannot fail the accuracy floor it was never judged against', () => {
+  // null coerces to 0 in a `<` comparison, so without an explicit guard this
+  // reports "accuracy 0 below floor 0.8" for a run that judged nothing.
+  const { record } = scoreRun({
+    cases: [fixtureCases[2]], results: fixtureResults, meta, accuracyFloor: 0.8,
+  });
+  assert.equal(record.aggregates.verdict_accuracy, null);
+  assert.ok(!record.gate.reasons.some((r) => /accuracy/.test(r)), 'no accuracy reason');
+});

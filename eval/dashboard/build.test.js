@@ -161,3 +161,14 @@ test('a run that survived the relative check does not carry the caveat', () => {
   const html = buildWith([checked], [detailWith('eval-21', 'pass')])['eval-21.html'];
   assert.ok(!/check skipped/.test(html));
 });
+
+test('an unscored prediction is not painted as an error', () => {
+  // The pill says "verdict not scored"; colouring the prediction red beside it
+  // asserts a mistake nobody claimed. `!undefined` made that the default.
+  const r = run('eval-30', {});
+  const d = detailWith('eval-30', 'unscored');
+  d.cases[0].scores = { cost_usd: 1, false_climb: true, disposition_scored: false };
+  const html = buildWith([r], [d])['eval-30.html'];
+  assert.match(html, /verdict not scored/);
+  assert.ok(!/<td style="color:var\(--bad\)">/.test(html), 'the prediction cell is not styled as wrong');
+});
