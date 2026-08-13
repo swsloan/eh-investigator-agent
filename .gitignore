@@ -32,3 +32,6 @@ eval/reports/
 # NOTE: excli archives are fetched + checksum-verified at build/install time
 # (see vendor/excli/source.env and scripts/fetch-excli.sh), not committed.
 # .env.example is the template (no secrets) and IS committed.
+
+# Local state written by scripts/check-claude-sdk.js (per-machine, goes stale immediately).
+.claude-sdk-check.json
