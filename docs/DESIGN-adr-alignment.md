@@ -216,3 +216,50 @@ runs **keyless**, so we could get an external reference point for
 - Their benchmark measures detectors watching an agent. We *are* the agent. Some
   of ADR-Bench is therefore a test of Claude Code's own behaviour rather than of
   our code — worth separating before quoting any score.
+
+---
+
+## Status since this review (2026-08-12)
+
+The review above is left as written — it is a dated assessment and its provenance
+note says what it was based on. This section records what has happened to its
+proposals since, so a reader does not re-derive work that has landed.
+
+| Proposal | Status |
+|---|---|
+| 1a. Gate over-calling (false-positive rate beside `false_close_rate`) | **Done** (#144 → PR #145). `false_alarm_rate` is computed over the non-malicious cases, reported unconditionally, and gated on its own target (default 0.25, calibrated against the recorded history). |
+| 1b. Watch promotion drift (print executed composition) | **Open.** Still not reported per run, and the drift this review identified is still invisible unless someone counts. |
+| 2. Technique coverage matrix | **Open.** |
+| 3. Attended/unattended session flag | **Done** (#137 → PR #139). `lib/presence.js`; stamped on every write proposal, surfaced in the transcript and as an `unattended_proposal` safety event, and it selects how an approval is delivered. Eval runs, injection probes and the topology session are marked unattended. |
+| 4. `AgentEvent` export | **Open.** |
+| 5. Triage tier, after #120 Slice 0 | Slice 0 **done** (PR #141): subagent activity is threaded by `parent_tool_use_id` and rendered nested. The triage tier itself is **untested** — see the correction below. |
+
+### A correction worth carrying: #120 did not refute triage-first
+
+#120 was closed after measuring delegation and finding against it — delegating
+cases cost **+27.1%** versus their own baselines, and the aggregate saving was
+entirely attributable to cases that never delegated. That result is about
+**delegation-under-a-lead**: a lead investigator handing bounded collection to a
+cheaper specialist mid-investigation, which is what this repo built and measured.
+
+It says nothing about the pattern in §3 above. ADR's shape is **cheap triage
+first, gating whether the expensive tier runs at all** — a different structure
+with a different cost mechanism (skip the expensive pass entirely, rather than
+move part of it). Whatever one concludes from #120, the triage-first design
+remains untested here, and the instrumentation to judge it now exists:
+`cache_reads_per_case`, per-case delegation attribution, and honest live-run cost
+capture (#143).
+
+### The open question turned out to be load-bearing
+
+> *Is `ladder_adherence` / `false_climb` actually a security metric rather than a
+> quality one?*
+
+#128 supplies evidence. `plaintext-http-creds` over-climbs to `packets` in **8 of
+8** runs since 2026-08-10 at 2.4× the cost, and in the runs where it also gets the
+verdict wrong it assembles a lateral-movement narrative — ten ATT&CK techniques
+against an expected empty set — out of evidence it should never have collected.
+An agent that wanders past the question it was asked and builds a story from what
+it finds nearby is, in this review's own taxonomy, closer to Agentic Control-Flow
+Hijacking than to a quality defect. `false_climb` is still ungated, still
+0.28–0.56 suite-wide, and #128 remains open for the ladder-discipline fix.
