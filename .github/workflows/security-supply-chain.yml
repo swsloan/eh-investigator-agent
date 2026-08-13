@@ -18,6 +18,18 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # GHSA-jhhc-3hcp-qhm5 / CVE-2026-49452 — "WeasyPrint has CSS Injection
+          # via Presentational Hints" (moderate). Allowed because it is
+          # UNFIXABLE, not because it is unimportant: the advisory covers
+          # `<= 68.1` with `first_patched_version: null`, so every WeasyPrint
+          # release ever published is affected, including the 66.0 we are on.
+          # Without this, any PR that so much as touches requirements.txt fails
+          # a check it cannot satisfy at any version — which trains people to
+          # ignore the check rather than fix anything.
+          # Tracked with its exposure analysis in #153; remove this line the
+          # moment a patched release exists.
+          allow-ghsas: GHSA-jhhc-3hcp-qhm5
 
   image-security:
     runs-on: ubuntu-latest

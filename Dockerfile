@@ -58,7 +58,7 @@ RUN echo "wireshark-common wireshark-common/install-setuid boolean false" | debc
 # --break-system-packages is required on Debian (PEP 668); --ignore-installed avoids
 # trying to uninstall apt's dpkg-managed weasyprint (which has no pip RECORD) — the
 # pip build lands in /usr/local, which precedes apt's dist-packages on both PATH and
-# sys.path, so `weasyprint` and `python3 -m weasyprint` both resolve to 66.0. Deps
+# sys.path, so `weasyprint` and `python3 -m weasyprint` both resolve to 68.0. Deps
 # ship as manylinux wheels (no compiler needed).
 COPY requirements.txt ./
 RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir -r requirements.txt \
