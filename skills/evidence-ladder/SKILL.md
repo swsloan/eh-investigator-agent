@@ -37,6 +37,24 @@ benign**:
 Stating the benign test first is what keeps you from confirming a bias with
 selective queries. Record it in the ledger (§5).
 
+**The test must be answerable, and it must be about *this* detection.** Two ways
+a framing goes wrong, both of which make every later rung look warranted:
+
+- **A universal negative.** "The host never contacted anything hostile", "no
+  attacker-controlled client was ever involved", "this was never abused
+  anywhere" — no amount of evidence settles a claim about everywhere and
+  everyone, so the test never resolves and the doubt becomes permanent by
+  construction. Bound it to what you can actually search: *"no unexpected peer in
+  the detection's window"*, *"nothing in the records available for these
+  entities"*. A bounded search that comes back clean **is** the answer — record
+  it as resolved, not as doubt that remains.
+- **A second, escalated hypothesis.** Having written the beacon hypothesis above,
+  do not append "…and the escalated form is that the operator has already moved
+  laterally from it". That is a hypothesis about *different activity* — usually
+  activity this detection never flagged — so it belongs to §3's scope rule, not
+  to the depth of this investigation. One detection, one hypothesis, one deciding
+  question.
+
 **Persist the framing before you climb.** After Tier-1 metrics + entity
 resolution and *before* pulling any records or packets, write
 `evidence/hypothesis.json`:
@@ -47,6 +65,7 @@ resolution and *before* pulling any records or packets, write
   "disconfirming_test": "If the destination is a known-good update/telemetry endpoint and the periodicity matches a scheduled job, this is benign.",
   "entities_in_scope": ["10.0.20.5 (WIN-BACKUP01)", "10.0.10.4 (DC01)"],
   "detection_source": "ids | behavioral | ard | unknown",
+  "detection_window": "2026-06-09T12:02:55Z .. 2026-07-25T04:13:59Z",
   "planned_rung": "records"
 }
 ```
@@ -76,9 +95,25 @@ Rules:
   settled verdict (especially all the way to packets on a benign/FP close) is
   over-investigation: pure cost and time with no change to the answer. Deeper
   rungs are warranted only when *real residual doubt* remains — which, for a
-  suspected-malicious hypothesis you have **not** been able to disprove, is
-  exactly when the depth *is* justified. The test is "does the next rung change
-  the verdict?", not "could I gather more?"
+  suspected-malicious hypothesis you have **not** been able to disprove **on an
+  answerable test** (§2), is exactly when the depth *is* justified. Doubt that
+  survives only because the test cannot be settled by any evidence is not
+  residual doubt; it is a badly framed test. The test is "does the next rung
+  change the verdict?", not "could I gather more?"
+- **Scope is the detection's own claim, inside its own window.** The detection
+  names a server, a client set and an active interval — that interval is in
+  `hypothesis.json` precisely so this stays checkable. Activity from a host the
+  detection does not name, or dated outside its active window, is a *different*
+  investigation: record it with `./investigation-plan` pivot, and raise it as its
+  own finding. It is never evidence for this verdict and never a reason to climb
+  here. A related finding you hand over is good work; a related finding you chase
+  to packets under this detection's name is scope bleed.
+- **Remediation detail is not a verdict question.** Which credentials to rotate,
+  which host to patch, which rule to write — gather it *after* the disposition is
+  set, or hand it over as separate work. "The operator will need to know which
+  accounts were exposed" is a sound reason to write a recommendation and an
+  unsound reason to climb: it does not change the disposition, and the
+  disposition is the only test this section recognises.
 - Each climb costs money and time. Justify it or don't make it.
 
 ## 4. Trust the trigger according to its source
