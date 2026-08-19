@@ -17,7 +17,7 @@ pull request.
 | FalkorDB image | `falkordb/falkordb:latest@sha256:9042fdc4e53f5390ca5a3993aa71506523970efb40ffb9a98e6a4b1a9a4f8862` |
 | Embedding server image | `ghcr.io/ggml-org/llama.cpp:server@sha256:e10504c7f5c5bacece7e7e5957760eee53868642d853fe5ecfe8611065929a24` |
 | Pi CLI | `@earendil-works/pi-coding-agent@0.80.10` |
-| Claude Code CLI | `@anthropic-ai/claude-code@2.1.224` (kept at parity with `@anthropic-ai/claude-agent-sdk`) |
+| Claude Code CLI | `@anthropic-ai/claude-code@2.1.232` (kept at parity with `@anthropic-ai/claude-agent-sdk`) |
 | Graphiti Anthropic Python SDK | `anthropic==0.117.0` |
 | Graphiti docstring parser | `docstring-parser==0.18.0` |
 | Node packages | Exact top-level versions in `package.json`; complete tree in `package-lock.json` |

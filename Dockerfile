@@ -78,7 +78,7 @@ RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir -r re
 # postinstall to fetch its platform-native binary, so install it separately
 # without --ignore-scripts.
 RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.80.10 \
-    && npm install -g @anthropic-ai/claude-code@2.1.224 \
+    && npm install -g @anthropic-ai/claude-code@2.1.232 \
     && claude --version
 
 COPY package.json package-lock.json ./
