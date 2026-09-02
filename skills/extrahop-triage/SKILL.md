@@ -43,6 +43,24 @@ behavior, pivot back to this triage workflow.
   chat, become Detection Sets, or hand off to the authoritative
   `investigation-reporting` skill for a durable report.
 
+The three `wire-indicators-*` files below are lookup tables, not workflows. They
+say which record fields and values corroborate a technique, which rung settles
+it, and what benign activity looks identical. Load one once a detection is
+already in scope and you are choosing what to pull — they narrow a query, never
+widen scope. An indicator you find outside the detection's own claim and window
+is a pivot, not evidence here (`evidence-ladder` §3). They are L2 references:
+skip them for L1 queue sweeps.
+
+- `references/wire-indicators-identity.md` - load for detections involving
+  Active Directory, Kerberos, NTLM, SMB, or host-to-host movement (DCSync,
+  coercion, relay, ticket forgery, Kerberoasting, PsExec/WMI/DCOM, admin-share
+  fan-out, internal recon).
+- `references/wire-indicators-c2-exfil.md` - load for beaconing and C2
+  channels, DNS tunnelling or DGA, TLS/certificate posture, lookalike domains,
+  data staging, exfiltration, and ransomware encryption.
+- `references/wire-indicators-ot.md` - load only when industrial protocols
+  (Modbus, DNP3, historians) or L2/ARP anomalies are in scope.
+
 ## Execution Contract
 
 This project uses `./excli-interface`, not an ExtraHop MCP server.
