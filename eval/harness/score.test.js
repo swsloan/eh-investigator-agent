@@ -598,3 +598,29 @@ test('scoreRun reports the pair per case and in aggregate, over malicious cases 
   assert.equal(out.record.aggregates.attack_precision, 0.5);
   assert.equal(out.record.aggregates.attack_accuracy, 0, 'the strict aggregate is untouched');
 });
+
+test('scoring.attack:false keeps a case out of the ATT&CK aggregate but still scores its verdict', () => {
+  const mk = (scoring) => scoreRun({
+    cases: [
+      { id: 'curated', expected: { disposition: 'malicious', attack: ['T1071.001'], min_rung: 'records' } },
+      { id: 'promoted', scoring, expected: { disposition: 'malicious', attack: ['T1', 'T2', 'T3'], min_rung: 'records' } },
+    ],
+    results: {
+      curated: { disposition: 'malicious', confidence: 'high', highest_rung_used: 'records', attack: ['T1071.001'] },
+      promoted: { disposition: 'malicious', confidence: 'high', highest_rung_used: 'records', attack: ['T1', 'T2', 'T3'] },
+    },
+    meta: { run_id: 'r', timestamp: 't', backend: 'claude' },
+  });
+  const withIt = mk(undefined).record.aggregates;
+  const without = mk({ attack: false }).record.aggregates;
+  assert.equal(withIt.attack_cases, 2);
+  assert.equal(without.attack_cases, 1, 'the excluded case no longer backs the number');
+  assert.equal(without.attack_accuracy, 1, 'and only the curated case sets it');
+  // Excluding it from ATT&CK must not exclude it from the verdict.
+  assert.equal(mk({ attack: false }).record.aggregates.verdict_accuracy, 1);
+  assert.equal(mk({ attack: false }).record.aggregates.disposition_cases, 2);
+  // Per-case numbers stay visible for eyeballing.
+  const c = mk({ attack: false }).detail.cases.find((x) => x.id === 'promoted');
+  assert.equal(c.scores.attack_scored, false);
+  assert.equal(c.scores.attack_overlap, 1);
+});

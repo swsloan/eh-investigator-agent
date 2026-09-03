@@ -252,9 +252,18 @@ export function scoreRun({
       if (c.expected.disposition === 'malicious') {
         malTotal++;
         if (r.disposition !== 'malicious') falseClose++;
-        attackSum += attackOverlap(expAttack, predAttack); malAttackN++;
-        const pr = attackPrecisionRecall(expAttack, predAttack);
-        attackPrecSum += pr.precision; attackRecallSum += pr.recall;
+        // `scoring.attack: false` excludes a case from the ATT&CK measures while
+        // it still scores its disposition, ladder and cost. Needed because the
+        // "Promote to eval case" flow pre-fills expected.attack from the agent's
+        // OWN verdict (routes/eval.js), so a promoted case scores the agent
+        // against its own prior answer until a human adjudicates it. Counting
+        // that as ground truth makes attack_accuracy circular: it would reward
+        // repeating a previous run rather than being right.
+        if (c.scoring?.attack !== false) {
+          attackSum += attackOverlap(expAttack, predAttack); malAttackN++;
+          const pr = attackPrecisionRecall(expAttack, predAttack);
+          attackPrecSum += pr.precision; attackRecallSum += pr.recall;
+        }
       } else {
         benignTotal++;
         if (falseAlarmed) { falseAlarm++; falseAlarmCases.push(c.id); }
@@ -293,6 +302,9 @@ export function scoreRun({
       predicted: { disposition: r.disposition, confidence: conf, highest_rung_used: r.highest_rung_used, attack: predAttack },
       scores: {
         ...(scoresDisposition ? { verdict_correct: correct } : { disposition_scored: false }),
+        // Per-case values stay visible even when excluded from the aggregate, so
+        // an unadjudicated case can still be eyeballed; `attack_scored` says which.
+        attack_scored: c.scoring?.attack !== false,
         attack_overlap: round(attackOverlap(expAttack, predAttack), 3),
         attack_precision: round(attackPrecisionRecall(expAttack, predAttack).precision, 3),
         attack_recall: round(attackPrecisionRecall(expAttack, predAttack).recall, 3),
@@ -352,6 +364,8 @@ export function scoreRun({
     disposition_cases: dispositionN,
     ladder_adherence: round(Math.max(0, 1 - over / n - under / n)),
     attack_accuracy: round(malAttackN ? attackSum / malAttackN : 1),
+    // How many malicious cases the ATT&CK measures actually rest on.
+    attack_cases: malAttackN,
     // Diagnostic pair for attack_accuracy: which half of it moved.
     attack_precision: round(malAttackN ? attackPrecSum / malAttackN : 1),
     attack_recall: round(malAttackN ? attackRecallSum / malAttackN : 1),
