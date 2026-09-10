@@ -1,7 +1,7 @@
 // Unit test for the scorer. Run: node --test eval/harness/score.test.js
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { accuracyDrop, classifyChange, scoreRun } from './score.js';
+import { accuracyDrop, classifyChange, scoreRun, attackPrecisionRecall } from './score.js';
 
 const cases = [
   { id: 'mal-A', expected: { disposition: 'malicious', attack: ['T1'], min_rung: 'records' } },
@@ -533,4 +533,94 @@ test('a fixture-only run cannot fail the accuracy floor it was never judged agai
   });
   assert.equal(record.aggregates.verdict_accuracy, null);
   assert.ok(!record.gate.reasons.some((r) => /accuracy/.test(r)), 'no accuracy reason');
+});
+
+// ATT&CK precision/recall (#160 follow-up). attack_accuracy is a Jaccard, and a
+// single scalar cannot say whether a change added extras or lost hits.
+test('recall and precision separate over-listing from missing', () => {
+  // The lamehug shape: both expected techniques found, seven extras added.
+  const pr = attackPrecisionRecall(['T1059.001', 'T1071.001'], [
+    'T1059.001', 'T1071.001', 'T1041', 'T1048.002', 'T1087.002', 'T1090.002', 'T1102', 'T1135', 'T1482',
+  ]);
+  assert.equal(pr.recall, 1, 'found everything expected');
+  assert.equal(Number(pr.precision.toFixed(3)), 0.222, 'and diluted it sevenfold');
+});
+
+test('a more specific prediction is a match, not a miss plus an extra', () => {
+  const pr = attackPrecisionRecall(['T1021'], ['T1021.006']);
+  assert.equal(pr.recall, 1);
+  assert.equal(pr.precision, 1);
+  // Strict Jaccard scores the same pair 0 — that is why attack_overlap is kept
+  // unchanged and this is reported alongside it rather than replacing it.
+});
+
+test('a less specific prediction matches too, in the other direction', () => {
+  const pr = attackPrecisionRecall(['T1078.002'], ['T1078']);
+  assert.equal(pr.matched, 1);
+});
+
+test('kin-tolerance cannot be farmed by naming several children of one parent', () => {
+  const pr = attackPrecisionRecall(['T1021'], ['T1021.001', 'T1021.002', 'T1021.006']);
+  assert.equal(pr.matched, 1, 'one expected technique, one match');
+  assert.equal(pr.recall, 1);
+  assert.equal(Number(pr.precision.toFixed(3)), 0.333, 'the other two are still extras');
+});
+
+test('unrelated techniques match nothing, and empty sets agree', () => {
+  const miss = attackPrecisionRecall(['T1486'], ['T1071.001']);
+  assert.equal(miss.matched, 0);
+  assert.equal(miss.precision, 0);
+  assert.equal(miss.recall, 0);
+  const both = attackPrecisionRecall([], []);
+  assert.equal(both.precision, 1);
+  assert.equal(both.recall, 1);
+  // T1071 must not match T10710 — the boundary is the dot, not the prefix.
+  assert.equal(attackPrecisionRecall(['T1071'], ['T10710']).matched, 0);
+});
+
+test('scoreRun reports the pair per case and in aggregate, over malicious cases only', () => {
+  const out = scoreRun({
+    cases: [
+      { id: 'm', expected: { disposition: 'malicious', attack: ['T1021'], min_rung: 'records' } },
+      { id: 'b', expected: { disposition: 'benign', attack: [], min_rung: 'records' } },
+    ],
+    results: {
+      m: { disposition: 'malicious', confidence: 'high', highest_rung_used: 'records', attack: ['T1021.006', 'T1047'] },
+      b: { disposition: 'benign', confidence: 'high', highest_rung_used: 'records', attack: [] },
+    },
+    meta: { run_id: 'r', timestamp: 't', backend: 'claude' },
+  });
+  const m = out.detail.cases.find((c) => c.id === 'm');
+  assert.equal(m.scores.attack_recall, 1);
+  assert.equal(m.scores.attack_precision, 0.5);
+  assert.equal(m.scores.attack_overlap, 0, 'strict Jaccard is unchanged and still 0 here');
+  assert.equal(out.record.aggregates.attack_recall, 1);
+  assert.equal(out.record.aggregates.attack_precision, 0.5);
+  assert.equal(out.record.aggregates.attack_accuracy, 0, 'the strict aggregate is untouched');
+});
+
+test('scoring.attack:false keeps a case out of the ATT&CK aggregate but still scores its verdict', () => {
+  const mk = (scoring) => scoreRun({
+    cases: [
+      { id: 'curated', expected: { disposition: 'malicious', attack: ['T1071.001'], min_rung: 'records' } },
+      { id: 'promoted', scoring, expected: { disposition: 'malicious', attack: ['T1', 'T2', 'T3'], min_rung: 'records' } },
+    ],
+    results: {
+      curated: { disposition: 'malicious', confidence: 'high', highest_rung_used: 'records', attack: ['T1071.001'] },
+      promoted: { disposition: 'malicious', confidence: 'high', highest_rung_used: 'records', attack: ['T1', 'T2', 'T3'] },
+    },
+    meta: { run_id: 'r', timestamp: 't', backend: 'claude' },
+  });
+  const withIt = mk(undefined).record.aggregates;
+  const without = mk({ attack: false }).record.aggregates;
+  assert.equal(withIt.attack_cases, 2);
+  assert.equal(without.attack_cases, 1, 'the excluded case no longer backs the number');
+  assert.equal(without.attack_accuracy, 1, 'and only the curated case sets it');
+  // Excluding it from ATT&CK must not exclude it from the verdict.
+  assert.equal(mk({ attack: false }).record.aggregates.verdict_accuracy, 1);
+  assert.equal(mk({ attack: false }).record.aggregates.disposition_cases, 2);
+  // Per-case numbers stay visible for eyeballing.
+  const c = mk({ attack: false }).detail.cases.find((x) => x.id === 'promoted');
+  assert.equal(c.scores.attack_scored, false);
+  assert.equal(c.scores.attack_overlap, 1);
 });

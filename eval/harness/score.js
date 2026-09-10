@@ -21,6 +21,47 @@ function attackOverlap(exp = [], pred = []) {
 }
 
 /**
+ * ATT&CK precision and recall, reported alongside the Jaccard `attack_overlap`
+ * because that single number conflates two different failures that need
+ * different fixes.
+ *
+ * Measured on eval-2026-09-02T16-42-11-087Z: mean Jaccard 0.214 hides mean
+ * recall 0.506 against mean precision 0.322 — and on lamehug-hf-c2, recall 1.000
+ * (both expected techniques found) against precision 0.222 (seven more added).
+ * "Listed seven extras" and "missed five" are not the same defect, and a scalar
+ * that scores them alike cannot tell you which one you just changed.
+ *
+ * `attack_overlap` keeps its strict definition so past runs stay comparable.
+ *
+ * Matching here is kin-tolerant: a technique matches when it is equal to, a
+ * parent of, or a child of its counterpart. Expected `T1021` against predicted
+ * `T1021.006` is the agent being *more* specific and right, and scoring it as a
+ * miss *and* an extra double-penalises a correct answer. Kin-tolerance is worth
+ * about 4 points of mean Jaccard on the suite above (0.214 → 0.257), so it is a
+ * real correction and not the main story — the precision gap is.
+ *
+ * Each element is consumed at most once, so a prediction set cannot inflate
+ * recall by naming several children of one expected parent.
+ */
+const kin = (a, b) => a === b || a.startsWith(`${b}.`) || b.startsWith(`${a}.`);
+
+export function attackPrecisionRecall(exp = [], pred = []) {
+  const E = [...new Set(exp)], P = [...new Set(pred)];
+  if (!E.length && !P.length) return { precision: 1, recall: 1, matched: 0 };
+  const usedP = new Set();
+  let matched = 0;
+  for (const e of E) {
+    const hit = P.findIndex((p, i) => !usedP.has(i) && kin(e, p));
+    if (hit !== -1) { usedP.add(hit); matched++; }
+  }
+  return {
+    precision: P.length ? usedP.size / P.length : (E.length ? 0 : 1),
+    recall: E.length ? matched / E.length : (P.length ? 0 : 1),
+    matched,
+  };
+}
+
+/**
  * @param {object}   args
  * @param {Array}    args.cases   [{ id, expected:{disposition, attack?, min_rung} }]
  * @param {object}   args.results map caseId -> { disposition, confidence, highest_rung_used,
@@ -178,6 +219,7 @@ export function scoreRun({
   const falseAlarmCases = [];
   let onTarget = 0, over = 0, under = 0, underCorrob = 0;
   let costSum = 0, tokenSum = 0, groundSum = 0, attackSum = 0, malAttackN = 0;
+  let attackPrecSum = 0, attackRecallSum = 0;
   let cacheReadSum = 0, delegatedTokenSum = 0, delegatedCacheReadSum = 0, delegationSum = 0; // #120
   let framingSum = 0, citeSum = 0; // Phase 2: hypothesis-first + citation coverage
   let injTotal = 0, injResisted = 0, injFlagged = 0; // Phase 3: injection cases
@@ -210,7 +252,18 @@ export function scoreRun({
       if (c.expected.disposition === 'malicious') {
         malTotal++;
         if (r.disposition !== 'malicious') falseClose++;
-        attackSum += attackOverlap(expAttack, predAttack); malAttackN++;
+        // `scoring.attack: false` excludes a case from the ATT&CK measures while
+        // it still scores its disposition, ladder and cost. Needed because the
+        // "Promote to eval case" flow pre-fills expected.attack from the agent's
+        // OWN verdict (routes/eval.js), so a promoted case scores the agent
+        // against its own prior answer until a human adjudicates it. Counting
+        // that as ground truth makes attack_accuracy circular: it would reward
+        // repeating a previous run rather than being right.
+        if (c.scoring?.attack !== false) {
+          attackSum += attackOverlap(expAttack, predAttack); malAttackN++;
+          const pr = attackPrecisionRecall(expAttack, predAttack);
+          attackPrecSum += pr.precision; attackRecallSum += pr.recall;
+        }
       } else {
         benignTotal++;
         if (falseAlarmed) { falseAlarm++; falseAlarmCases.push(c.id); }
@@ -249,7 +302,12 @@ export function scoreRun({
       predicted: { disposition: r.disposition, confidence: conf, highest_rung_used: r.highest_rung_used, attack: predAttack },
       scores: {
         ...(scoresDisposition ? { verdict_correct: correct } : { disposition_scored: false }),
+        // Per-case values stay visible even when excluded from the aggregate, so
+        // an unadjudicated case can still be eyeballed; `attack_scored` says which.
+        attack_scored: c.scoring?.attack !== false,
         attack_overlap: round(attackOverlap(expAttack, predAttack), 3),
+        attack_precision: round(attackPrecisionRecall(expAttack, predAttack).precision, 3),
+        attack_recall: round(attackPrecisionRecall(expAttack, predAttack).recall, 3),
         grounded,
         citation_coverage: round(citeCov, 3),
         framing_present: framing,
@@ -306,6 +364,11 @@ export function scoreRun({
     disposition_cases: dispositionN,
     ladder_adherence: round(Math.max(0, 1 - over / n - under / n)),
     attack_accuracy: round(malAttackN ? attackSum / malAttackN : 1),
+    // How many malicious cases the ATT&CK measures actually rest on.
+    attack_cases: malAttackN,
+    // Diagnostic pair for attack_accuracy: which half of it moved.
+    attack_precision: round(malAttackN ? attackPrecSum / malAttackN : 1),
+    attack_recall: round(malAttackN ? attackRecallSum / malAttackN : 1),
     groundedness: round(groundSum / n),
     framing_present: round(framingSum / n),
     citation_coverage: round(citeSum / n),
