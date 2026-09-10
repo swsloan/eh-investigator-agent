@@ -116,6 +116,30 @@ Rules:
   disposition is the only test this section recognises.
 - Each climb costs money and time. Justify it or don't make it.
 
+### What to pull once you know the rung
+
+Three lookup tables say which record fields and values corroborate a technique,
+which rung settles it, and — as importantly — what benign activity is
+indistinguishable from it. Load one when a detection is already in scope and you
+are choosing what to query. They **narrow a query; they never widen scope**: an
+indicator you find outside the detection's own claim and window is a pivot under
+the rule above, not evidence here. They are records-tier work — skip them for a
+broad queue sweep.
+
+- `references/wire-indicators-identity.md` — Active Directory, Kerberos, NTLM,
+  SMB, host-to-host movement: DCSync, coercion, NTLM relay, ticket forgery,
+  Kerberoasting, PsExec/WMI/DCOM, admin-share fan-out, internal recon.
+- `references/wire-indicators-c2-exfil.md` — beaconing and C2 channels, DNS
+  tunnelling and DGA, TLS/certificate posture, lookalike domains, data staging,
+  exfiltration, ransomware encryption.
+- `references/wire-indicators-ot.md` — Modbus, DNP3, historians, and L2/ARP
+  anomalies. Only when OT is in scope.
+
+Each file opens with the identifiers that do **not** exist on the wire — event
+IDs, AD access masks, NTSTATUS codes — because a zero-result query against one
+of those means *wrong query*, never *no attack*, and reporting it as a negative
+finding is a confident wrong answer.
+
 ## 4. Trust the trigger according to its source
 
 A detection is a *lead*, not a conclusion. Corroborate before it enters a
