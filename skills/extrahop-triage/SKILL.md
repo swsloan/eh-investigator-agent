@@ -43,6 +43,11 @@ behavior, pivot back to this triage workflow.
   chat, become Detection Sets, or hand off to the authoritative
   `investigation-reporting` skill for a durable report.
 
+For the wire-level indicators that corroborate a specific technique at the
+records rung — AD/Kerberos/NTLM/SMB, C2 and exfiltration, OT protocols — see the
+`wire-indicators-*` references under the `evidence-ladder` skill, which owns the
+rung decision they support.
+
 ## Execution Contract
 
 This project uses `./excli-interface`, not an ExtraHop MCP server.
