@@ -34,6 +34,7 @@ import {
   loadConfig, loadDotEnv, resolveConfig, reversingLabsEnabled, saveConfig,
 } from './lib/settings.js';
 import { createSecretStore } from './lib/secrets.js';
+import { writeFalconRuntimeEnv } from './lib/falcon-env.js';
 import { writeGraphitiRuntimeEnv } from './lib/embedder-env.js';
 import { runEvalInApp } from './lib/eval-runner.js';
 import { runInjectionProbes } from './lib/injection-probe.js';
@@ -113,6 +114,16 @@ function falconMcpServers(settings, secrets) {
   return { falcon: { type: 'http', url: settings.falcon.url } };
 }
 
+/** Credentials for the falcon-mcp sidecar env file, from the secret store. */
+function falconRuntimeCreds(settings) {
+  const secrets = secretStore?.get?.() || {};
+  return {
+    clientId: secrets.falconClientId,
+    clientSecret: secrets.falconClientSecret,
+    baseUrl: settings.falcon?.baseUrl,
+  };
+}
+
 /** Every MCP server a session should see. */
 function sessionMcpServers(settings) {
   return {
@@ -158,6 +169,10 @@ function graphitiRuntimeMemory(settings) {
   };
 }
 writeGraphitiRuntimeEnv(graphitiRuntimeMemory(prefs()));
+// Same contract for the Falcon sidecar: the secret store is the single source of
+// truth and the app renders the env file the sidecar reads. Written at boot and
+// on every settings save so .env is never a second place to put the credential.
+writeFalconRuntimeEnv(falconRuntimeCreds(prefs()));
 
 const catalogs = new Map(); // backend id -> model catalog
 function catalogFor(backendId) {
@@ -493,6 +508,7 @@ function onConfigChanged() {
   // Re-emit the embedder env file so a Settings → Memory change lands where the
   // Graphiti sidecar will read it on its next restart.
   writeGraphitiRuntimeEnv(graphitiRuntimeMemory(settings));
+  writeFalconRuntimeEnv(falconRuntimeCreds(settings));
   warnOnInsecureTls(settings);
   for (const session of [...sessions.values()]) {
     if (session.promptCount !== 0 || session.running) continue;

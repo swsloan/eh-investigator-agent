@@ -54,6 +54,7 @@ services:
       # Embedder). Bind-mounted below so the graphiti-mcp service reads the same
       # file via its env_file on restart.
       EH_EMBEDDER_ENV_PATH: /app/graphiti/runtime/embedder.env
+      EH_FALCON_ENV_PATH: /app/falcon/runtime/falcon.env
       # RevealX Enterprise
       EXTRAHOP_HOST: ${EXTRAHOP_HOST:-}
       EXTRAHOP_API_KEY: ${EXTRAHOP_API_KEY:-}
@@ -74,6 +75,8 @@ services:
       # directory bind (not a single file) so a fresh clone with no file yet
       # doesn't get a directory created in its place.
       - ./graphiti/runtime:/app/graphiti/runtime
+      # The app renders the Falcon sidecar's credentials here (0600).
+      - ./falcon/runtime:/app/falcon/runtime
     restart: unless-stopped
 
   # --- Graphiti temporal-memory stack (Phase 0 PoC) ---
@@ -194,9 +197,11 @@ services:
   # unchanged: no image pull, no container, no tool surface. Bring it up with
   #   docker compose --profile falcon up -d
   #
-  # Credentials come from .env (or the app secret store, which writes them here
-  # on save). The app only advertises the server to the agent when BOTH the
-  # toggle and credentials are present — see falconMcpServers() in server.js.
+  # Credentials come from the app secret store, which renders falcon/runtime/
+  # falcon.env on every settings save (env_file below). .env remains a fallback
+  # for deployments that prefer compose-level config. The app only advertises the
+  # server to the agent when BOTH the toggle and credentials are present — see
+  # falconMcpServers() in server.js.
   falcon-mcp:
     image: quay.io/crowdstrike/falcon-mcp:latest
     profiles: ["falcon"]
@@ -216,7 +221,16 @@ services:
       - "streamable-http"
       - "--host"
       - "0.0.0.0"
+    # App-managed credentials. The app renders this from its secret store on every
+    # settings save, so Settings is the ONE place the credential is entered — the
+    # same contract graphiti/runtime/embedder.env uses. required:false so the
+    # service still starts (and fails visibly on auth) before it is written.
+    env_file:
+      - path: ./falcon/runtime/falcon.env
+        required: false
     environment:
+      # .env fallback, for a deployment that prefers compose-level config. The
+      # env_file above wins when present.
       FALCON_CLIENT_ID: ${FALCON_CLIENT_ID:-}
       FALCON_CLIENT_SECRET: ${FALCON_CLIENT_SECRET:-}
       FALCON_BASE_URL: ${FALCON_BASE_URL:-https://api.crowdstrike.com}
