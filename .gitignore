@@ -35,3 +35,6 @@ eval/reports/
 
 # Local state written by scripts/check-claude-sdk.js (per-machine, goes stale immediately).
 .claude-sdk-check.json
+
+# App-rendered Falcon sidecar credentials (never commit)
+falcon/runtime/falcon.env
