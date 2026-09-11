@@ -98,6 +98,29 @@ function memoryMcpServers(settings) {
   return { graphiti: { type: 'http', url: settings.memory.url } };
 }
 
+/**
+ * CrowdStrike Falcon MCP, when it is both enabled AND has credentials.
+ *
+ * Gated on the secret store rather than the toggle alone: advertising a server
+ * the sidecar cannot authenticate to gives the agent a tool surface that fails
+ * on every call, and an agent that reads "endpoint telemetry unavailable" from a
+ * tool error is one step from reporting it as a finding about the estate.
+ * Absent credentials, the capability is simply not present.
+ */
+function falconMcpServers(settings, secrets) {
+  if (!settings.falcon?.enabled || !settings.falcon?.url) return {};
+  if (!secrets?.falconClientId || !secrets?.falconClientSecret) return {};
+  return { falcon: { type: 'http', url: settings.falcon.url } };
+}
+
+/** Every MCP server a session should see. */
+function sessionMcpServers(settings) {
+  return {
+    ...memoryMcpServers(settings),
+    ...falconMcpServers(settings, secretStore?.get?.() || {}),
+  };
+}
+
 // First run with no backend chosen: adopt the sole installed backend, or the
 // default. A configured-but-missing backend is never silently swapped —
 // preflight reports it instead.
@@ -334,7 +357,7 @@ function createSession(id = crypto.randomUUID(), { backend: backendId } = {}) {
     modelPinned: false,
     env: agentEnv,
     subscriptionAuth: claudeSubscription,
-    mcpServers: memoryMcpServers(settings),
+    mcpServers: sessionMcpServers(settings),
     redact,
   });
   session.on('event', (event) => broadcast(id, event));

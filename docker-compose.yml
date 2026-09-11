@@ -187,6 +187,44 @@ services:
 
   # Graphiti MCP server (HTTP transport on :8000/mcp/). Anthropic does the
   # entity/edge extraction; our custom config + ExtraHop ontology is mounted in.
+  # CrowdStrike Falcon MCP (optional). Endpoint telemetry for the questions the
+  # wire cannot answer — process lineage, file writes, removable-media vectors.
+  #
+  # Started under the `falcon` profile, so `docker compose up -d` without it is
+  # unchanged: no image pull, no container, no tool surface. Bring it up with
+  #   docker compose --profile falcon up -d
+  #
+  # Credentials come from .env (or the app secret store, which writes them here
+  # on save). The app only advertises the server to the agent when BOTH the
+  # toggle and credentials are present — see falconMcpServers() in server.js.
+  falcon-mcp:
+    image: quay.io/crowdstrike/falcon-mcp:latest
+    profiles: ["falcon"]
+    restart: unless-stopped
+    command:
+      # --read-only is NOT optional here. This app's whole posture is that the
+      # agent reads and a human approves writes (the governed write path); a
+      # containment or host-quarantine tool reachable straight from the model
+      # would be a far larger write capability than anything ExtraHop exposes.
+      - "--read-only"
+      # Bound the tool surface. The server ships 100+ tools across 30+ modules;
+      # every one of them costs context in every session that has the server
+      # attached, for a capability most investigations never reach for (#14).
+      - "--modules"
+      - "${FALCON_MODULES:-detections,hosts,incidents,intel}"
+      - "--transport"
+      - "streamable-http"
+      - "--host"
+      - "0.0.0.0"
+    environment:
+      FALCON_CLIENT_ID: ${FALCON_CLIENT_ID:-}
+      FALCON_CLIENT_SECRET: ${FALCON_CLIENT_SECRET:-}
+      FALCON_BASE_URL: ${FALCON_BASE_URL:-https://api.crowdstrike.com}
+    # Loopback only, consistent with every other service here. The app reaches it
+    # by service name on the compose network; the published port is for debugging.
+    ports:
+      - "127.0.0.1:8100:8000"
+
   graphiti-mcp:
     # Custom image = upstream standalone + the anthropic package (see graphiti/Dockerfile).
     image: eh-graphiti-mcp:local
