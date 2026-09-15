@@ -1,7 +1,7 @@
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadMergedCases, promoteCase, writeOverride } from '../lib/eval-cases.js';
+import { firstUserPrompt, loadMergedCases, promoteCase, writeOverride } from '../lib/eval-cases.js';
 
 const DISPOSITIONS = ['malicious', 'benign', 'false-positive', 'benign-authorized', 'inconclusive'];
 const RUNGS = ['metrics', 'records', 'packets'];
@@ -148,9 +148,18 @@ export function evalRouter({ startEval, startInjectionProbe, reportsDir, casesDi
     try { verdict = JSON.parse(fs.readFileSync(path.join(session.workspace, 'evidence', 'verdict.json'), 'utf8')); }
     catch { /* no verdict yet — fields default blank/malicious */ }
     const title = session.title || 'investigation';
+    // #162: the reproduction prompt comes from the session's own first user
+    // turn. The title is a 3-6 word model summary sliced to 60 chars and drops
+    // exactly what makes a case runnable (target, date); seeding from it
+    // produced cases that investigate "now" and find nothing. An empty prompt
+    // here is honest — the dialog can require an edit — where a title-derived
+    // one merely looks filled in.
+    const prompt = firstUserPrompt(session.workspace);
     res.json({
       id: slugify(title) || `case-${String(req.params.sessionId).slice(0, 8)}`,
-      prompt: `Investigate: ${title}.`,
+      prompt,
+      // Lets the UI say WHY the field is blank instead of silently offering one.
+      prompt_recovered: Boolean(prompt),
       group_id: 'evallab',
       notes: (verdict && typeof verdict.summary === 'string') ? verdict.summary : '',
       expected: {
@@ -158,6 +167,10 @@ export function evalRouter({ startEval, startInjectionProbe, reportsDir, casesDi
         min_rung: RUNGS.includes(verdict?.highest_rung_used) ? verdict.highest_rung_used : 'records',
         attack: Array.isArray(verdict?.attack_techniques) ? verdict.attack_techniques.map(String) : [],
       },
+      // #163: every field above came from the agent's own verdict. Say so, so
+      // the dialog can mark them for adjudication rather than presenting them
+      // as ground truth.
+      expected_source: verdict ? 'agent' : 'default',
       has_verdict: !!verdict,
     });
   });
@@ -175,16 +188,28 @@ export function evalRouter({ startEval, startInjectionProbe, reportsDir, casesDi
     if (loadMergedCases(casesDir, overridesPath).some((c) => c.id === id)) {
       return res.status(409).json({ error: `A case with id "${id}" already exists — choose a different id.` });
     }
+    // #163: unless a human signs off in this same request, the ATT&CK set is
+    // whatever the agent wrote about itself. Scoring against that rewards
+    // repeating a previous run rather than being right, so a promoted case
+    // stays out of the ATT&CK aggregate until adjudicated. Disposition, ladder
+    // and cost still score — those an analyst can sanity-check at a glance,
+    // and the case is useful immediately.
+    const adjudicated = b.signed_off === true;
     promoteCase(overridesPath, {
       id,
       prompt: b.prompt.trim(),
       group_id: (typeof b.group_id === 'string' && b.group_id) ? b.group_id : 'evallab',
       notes: typeof b.notes === 'string' ? b.notes : '',
       expected: { disposition: exp.disposition, min_rung: exp.min_rung, attack: Array.isArray(exp.attack) ? exp.attack.map(String) : [] },
+      ...(adjudicated ? {} : { scoring: { attack: false } }),
+      // Provenance the store could not previously express: nothing in a promoted
+      // case distinguished an adjudicated label from one copied off the agent,
+      // which is why diagnosing #163 took reading the route rather than the data.
+      expected_source: adjudicated ? 'analyst' : 'agent',
       promoted_from: typeof b.sessionId === 'string' ? b.sessionId : null,
       promoted_at: new Date().toISOString(),
     });
-    if (b.signed_off === true) writeOverride(overridesPath, id, { signed_off: true });
+    if (adjudicated) writeOverride(overridesPath, id, { signed_off: true });
     const merged = loadMergedCases(casesDir, overridesPath).find((c) => c.id === id);
     res.json({ ok: true, case: merged });
   });
@@ -209,7 +234,18 @@ export function evalRouter({ startEval, startInjectionProbe, reportsDir, casesDi
       patch.expected = e;
     }
     if (typeof b.notes === 'string') patch.notes = b.notes;
-    if (typeof b.signed_off === 'boolean') patch.signed_off = b.signed_off;
+    if (typeof b.signed_off === 'boolean') {
+      patch.signed_off = b.signed_off;
+      // Signing off IS the adjudication (#163). A promoted case carries
+      // scoring.attack:false until a human has looked at its ATT&CK set; the
+      // sign-off is what lifts it, so the analyst never has to know the flag
+      // exists. Un-signing puts it back, because the labels are agent-sourced
+      // again as far as anyone can prove.
+      if (current.promoted || current.expected_source === 'agent') {
+        patch.scoring = b.signed_off ? {} : { attack: false };
+        patch.expected_source = b.signed_off ? 'analyst' : 'agent';
+      }
+    }
     if (!Object.keys(patch).length) return res.status(400).json({ error: 'Nothing to update.' });
     writeOverride(overridesPath, req.params.id, patch);
     const merged = loadMergedCases(casesDir, overridesPath).find((c) => c.id === req.params.id);
