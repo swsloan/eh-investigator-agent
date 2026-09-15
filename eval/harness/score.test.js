@@ -624,3 +624,58 @@ test('scoring.attack:false keeps a case out of the ATT&CK aggregate but still sc
   assert.equal(c.scores.attack_scored, false);
   assert.equal(c.scores.attack_overlap, 1);
 });
+
+// #175: an unreadable verdict is a missing answer, not a dangerous one.
+const invalidCase = (predicted) => scoreRun({
+  cases: [
+    { id: 'mal', expected: { disposition: 'malicious', attack: ['T1'], min_rung: 'records' } },
+    { id: 'ok', expected: { disposition: 'benign', attack: [], min_rung: 'records' } },
+  ],
+  results: {
+    mal: { disposition: predicted, confidence: 'high', highest_rung_used: 'records', attack: ['T1'] },
+    ok: { disposition: 'benign', confidence: 'high', highest_rung_used: 'records', attack: [] },
+  },
+  meta: { run_id: 'r', timestamp: 't', backend: 'claude' },
+});
+
+test('an out-of-vocabulary disposition does not count as a false close', () => {
+  // The exact shape seen four times across the run history.
+  for (const bad of ['true_positive', 'true-positive', 'malicious_true_positive']) {
+    const a = invalidCase(bad).record.aggregates;
+    assert.equal(a.false_close_rate, 0, `"${bad}" must not read as calling a real threat benign`);
+    assert.equal(a.invalid_disposition_cases, 1);
+    // It is excluded from the verdict population rather than scored wrong: one
+    // benign case remains, and it passed.
+    assert.equal(a.disposition_cases, 1);
+    assert.equal(a.verdict_accuracy, 1);
+  }
+});
+
+test('an invalid verdict gets its own status, so it is not a regression signal', () => {
+  const out = invalidCase('true_positive');
+  const c = out.detail.cases.find((x) => x.id === 'mal');
+  assert.equal(c.status, 'invalid', 'distinct from fail AND from unscored');
+  // #127 filters priors to pass/fail; 'invalid' must not be read as behaviour.
+  assert.equal(accuracyDrop([{ id: 'mal', status: 'invalid' }], { cases: [{ id: 'mal', status: 'pass' }] }).checked, false);
+});
+
+test('a valid but wrong disposition still fails, loudly', () => {
+  // The guard must not become a way to launder real false closes.
+  const a = invalidCase('benign').record.aggregates;
+  assert.equal(a.false_close_rate, 1, 'calling a malicious case benign is still the worst error');
+  assert.equal(a.invalid_disposition_cases, 0);
+  assert.equal(invalidCase('benign').detail.cases.find((x) => x.id === 'mal').status, 'fail');
+});
+
+test('a missing verdict is invalid, not a false close', () => {
+  for (const missing of [undefined, null, '']) {
+    const a = invalidCase(missing).record.aggregates;
+    assert.equal(a.false_close_rate, 0);
+    assert.equal(a.invalid_disposition_cases, 1);
+  }
+});
+
+test('invalid_disposition_cases is reported as 0 on a clean run', () => {
+  // Reported unconditionally so an old run and a new one compare on one shape.
+  assert.equal(invalidCase('malicious').record.aggregates.invalid_disposition_cases, 0);
+});
