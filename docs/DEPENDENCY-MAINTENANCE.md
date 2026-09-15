@@ -37,6 +37,17 @@ maintained line bundling the patched tar 7.5.19, and it is installed in the
 cleared several HIGH findings (7 → 3). **Remove this override** once a
 `node:26-slim` shipping fixed npm is published, and re-pin the base digest then.
 
+**Why perl-base is upgraded in-layer (2026-09-15).** The pinned `node:26-slim`
+ships `perl-base` 5.40.1-6, carrying three CRITICALs — CVE-2026-13221,
+CVE-2026-42496, CVE-2026-8376 — fixed in Debian's 5.40.1-6+deb13u1 security
+release. Bumping the base digest does **not** clear them: the current
+`node:26-slim` (`sha256:14bf3eac…`) still ships the vulnerable build, verified
+2026-09-15. So the `Dockerfile` runs a targeted `apt-get install --only-upgrade
+perl-base` in the existing apt layer — named rather than a blanket `apt-get
+upgrade`, so the change stays reviewable and the pinning doctrine holds.
+Measured on a clean build: CRITICAL 3 → 0, HIGH 57 → 53. **Drop this** once a
+`node:26-slim` ships the fixed perl and re-pin the base digest then.
+
 **Why WeasyPrint is pip-installed over apt in the image (2026-07-30).** Debian's
 `weasyprint` apt package is stale (62.x); its first-generation CSS Grid
 implementation mis-sizes `fr`/`repeat()` tracks and collapses grid-based

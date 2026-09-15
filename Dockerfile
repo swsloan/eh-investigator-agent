@@ -46,8 +46,17 @@ WORKDIR /app
 # NOTE: the Wireshark GUI is intentionally omitted — the "Open in Wireshark"
 # feature launches a desktop app and is meaningless in a headless container;
 # its preflight check is optional and will simply report unavailable.
+# perl-base is upgraded explicitly: the pinned node:26-slim ships 5.40.1-6, which
+# carries three CRITICALs (CVE-2026-13221, CVE-2026-42496, CVE-2026-8376) fixed in
+# 5.40.1-6+deb13u1. Bumping the base digest does NOT help — the current
+# node:26-slim still ships the vulnerable build — so the security release has to
+# be pulled in here, the same approach graphiti/Dockerfile already takes for its
+# stale base. Named rather than a blanket `apt-get upgrade` so the change stays
+# reviewable and the pin doctrine holds. Drop this once a node:26-slim ships the
+# fix; see docs/DEPENDENCY-MAINTENANCE.md.
 RUN echo "wireshark-common wireshark-common/install-setuid boolean false" | debconf-set-selections \
     && apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends --only-upgrade perl-base \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
        ca-certificates curl tar tshark weasyprint python3-pip jq \
     && rm -rf /var/lib/apt/lists/*
