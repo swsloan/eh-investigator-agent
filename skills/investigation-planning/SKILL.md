@@ -20,7 +20,8 @@ the plan.
 1. Orient to the request. You may read relevant skills and user-provided files,
    run `./excli-interface -listtools`, and read a tool's `-help` before planning.
    Keep this to capability and scope discovery; do not begin collecting
-   investigative evidence yet.
+   investigative evidence yet. Enumerate the questions you are being asked before
+   you plan how to answer them — see **Scope reconciliation**.
 2. Initialize the plan before the first evidence query or other substantive
    investigation step. `plan_type` is required and must be exactly one of
    `threat_hunt`, `security_investigation`, or `performance_investigation`.
@@ -37,6 +38,34 @@ For a simple lookup, use one to three checklist items. For a broader incident,
 hunt, or performance investigation, prefer three to seven outcome-oriented
 items. Do not turn the plan into a second transcript or a command-by-command
 log.
+
+## Scope reconciliation
+
+Before initializing the plan, write down the discrete questions the work has to
+answer, then check that list against the material the request points at. The
+prompt is not always the whole assignment: an attached brief, an exercise, a
+ticket, or a linked advisory routinely enumerates more questions than the message
+that forwarded it, and a request phrased as prose can carry five obligations in a
+single sentence.
+
+- **Enumerate, then compare.** If the source material lists N questions and the
+  prompt asks M of them, say so in the plan and either answer the remainder or ask
+  which the user wants. Silently answering M is the most common way this agent
+  returns work that is accurate and incomplete.
+- **One checklist item per question** when the request is question-shaped. That is
+  what makes an unanswered question surface as `pending` at reconciliation instead
+  of disappearing.
+- **A missing data source is not a missing answer.** "The crowdstrike-falcon
+  integration is not configured" blocks a *data pull*; it does not block "what would
+  an endpoint sensor have seen here?" Answer the analytic question from reasoning,
+  label it as reasoning, and record the data gap separately. Reserve `blocked` for
+  questions no answer of any kind can reach.
+- **Test the premises you were handed.** A request can assert something false — that
+  a name resolves nowhere else, that a flag means what it usually means. Where a
+  premise is load-bearing and cheap to check, check it, and report the correction
+  plainly rather than building on it.
+- **Re-run this after a pivot.** A new lead adds obligations as readily as it
+  redirects existing ones.
 
 ## Tool contract
 

@@ -114,6 +114,45 @@ returns `null`, not an error. Use `.body`.
 means "none that are not suppressed" — see **Suppressed detections** below before
 a negative finding carries a verdict.
 
+## Paired record types (the answer lives in a separate record)
+
+Several protocols split one transaction across **two** record types: the request
+carries who asked and what for, the response carries what came back. Query only the
+`_request` half and you get rows that look complete and are not — client, server and
+the question, with the answer silently absent. Nothing in the result says a half is
+missing, which puts this in the same class of trap as the default `limit`.
+
+Pairs: `~dns_request`/`~dns_response`, `~kerberos_request`/`~kerberos_response`,
+`~ldap_request`/`~ldap_response`, `~aaa_request`/`~aaa_response`,
+`~dhcp_request`/`~dhcp_response`, `~snmp_request`/`~snmp_response`,
+`~dicom_request`/`~dicom_response`, `~mongodb_request`/`~mongodb_response`,
+`~rpc_request`/`~rpc_response`, plus the session `_open`/`_close` pairs
+(`~ssl_open`/`~ssl_close`, `~ssh_open`/`~ssh_close`, `~quic_open`/`~quic_close`).
+
+**Query the pair whenever the question turns on what the server returned** — the
+resolved address, the TTL, the authority or error flags, the ticket, the search
+result, the accept or reject. In those cases the `_response` record is the evidence
+and the `_request` record is not. Request-only is fine when you want the *ask* itself
+(for example the principal name on `~kerberos_request` during an identity sweep).
+
+```bash
+# WRONG — proves the host asked, never what it was told
+./excli-interface search_records -json '{"types":["~dns_request"],"filter":{"field":"qname","operator":"=","operand":"c2.example.com"},"from":-604800000,"limit":500}'
+# RIGHT — both halves; answers, TTLs and flags come from the response rows
+./excli-interface search_records -json '{"types":["~dns_request","~dns_response"],"filter":{"field":"qname","operator":"=","operand":"c2.example.com"},"from":-604800000,"limit":1000}'
+```
+
+For DNS in particular, `answers[]`, `ttl`, `isAuthoritative`, `isRecursionAvailable`
+and `processingTime` exist **only** on `~dns_response`. Treat any claim about *how* a
+name resolved — local zone versus recursion, split-horizon override, sinkhole,
+NXDOMAIN — as unsupported until you have read the response rows. Two cautions once you
+have them: compare the internal answer against public resolution before calling a name
+attacker-controlled, and do not lean on `isAuthoritative` alone, because some resolvers
+set it on answers they recursed for. Corroborate with `processingTime` (a local zone
+answers in well under 2 ms; recursion is orders of magnitude slower) and with whether
+the resolver itself ever queried upstream for that name — search `_request` rows with
+the resolver as `client`.
+
 ## Participants and properties now come from EQL
 
 `search_detectionactivity` is gone, and this is more than a rename. The binary's

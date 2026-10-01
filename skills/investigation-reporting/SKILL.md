@@ -43,6 +43,26 @@ When it's unclear which the user wants, ask.
 - **Preserve source semantics.** State what the provider reported, then label any synthesis as investigator assessment. A missing, empty, errored, or not-found response is *unknown* — not benign. Correlate external indicators back to ExtraHop before claiming they were observed in the environment.
 - **Brand ReversingLabs entries consistently.** In the threat-hunt and SOC templates, every ReversingLabs item is an `<article class="enrichment" data-source="reversinglabs">` (copied from the inert `<template>` in that section); the template applies the bundled square RL icon to each item's source badge. Use `ReversingLabs reported` and `Investigator assessment` language, preserve the vendor verdict and scope, and cite the matching `reversinglabs/` artifact.
 
+## Recommended detections must be back-tested
+
+A proposed detection is a claim about the estate, so it carries the same evidence
+burden as every other claim in the report. An untested rule is a guess with a number
+on it, and it reads to the reader as a measurement.
+
+Before a rule ships in *Tune detection* or its equivalent:
+
+- **Run it.** Express the rule as a record or metric query and execute it over the retained window. Report the hit count, and split the hits into the activity under investigation versus everything else.
+- **State the false-positive rate in the estate's own units** — per day or per week, naming the window it was measured over. "0 self-signed certificates in 414 sessions over 9 hours" is a threshold; "unusual certificates" is not.
+- **Derive every number.** A threshold names the baseline it came from. If you did not measure it, say the rule needs tuning before deployment rather than inventing a figure.
+- **Order the rules and justify the order.** Earliest reliable signal and lowest false-positive cost win, not severity. Say which to deploy first and why — a rule that fires on the opening handshake beats one that needs hours of cadence to accumulate.
+- **Name the deployability constraint.** Does the rule need TLS decryption, a record type this estate retains, a field only populated on some firmware, or sensor placement this customer lacks? A rule that only fires inside the decryption footprint must say so.
+- **Report the rules that failed the back-test.** A retired rule with measurements behind it is worth more than an untested suggestion — especially when the test shows it catches a benign comparator at or before the threat (a legitimate long-poll scoring *lower* on bytes-per-packet than the implant, say). Retiring it on the record stops the next analyst proposing it again.
+- **Never propose suppressing the detection you just validated.**
+
+If the deciding feature cannot be expressed as a rule — a cadence nested inside
+another cadence, a jitter quantum — say so plainly and offer it as a hunt technique
+rather than dressing it up as an alert.
+
 ## Output
 
 - **Format:** one HTML file at the **workspace root**, named `report-<short-slug>.html`. Inline all report CSS; no external network assets. Keep the template's app-local Source Sans 3 stylesheet link. Never Markdown.
