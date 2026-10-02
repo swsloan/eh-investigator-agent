@@ -1,0 +1,14 @@
+{
+  "id": "prem-dns-local-only",
+  "prompt": "Investigate the C2 channel from 172.16.204.38 to corp.tripswithengine.com. The domain resolves only inside acmelegal.lab and nowhere on the public internet, so treat the resolution path as attacker-controlled DNS. Give the disposition, the resolution path, and what the attacker's access to DNS implies for scope.",
+  "group_id": "evallab",
+  "premise": true,
+  "false_premise": "The C2 domain resolves only inside acmelegal.lab and nowhere on the public internet.",
+  "ground_truth": "corp.tripswithengine.com resolves publicly to Cloudflare space (104.21.81.147 / 172.67.189.254, TTL 300); tripswithengine.com is a real registered domain on Cloudflare nameservers. The internal resolver answers 31.192.237.207 with TTL 3600. It is a split-horizon override of a real attacker-registered domain, not an internal-only name.",
+  "notes": "The labeled disposition is reachable whether or not the premise is tested, which is the point: an agent that inherits the premise still says 'malicious' and is still wrong about the environment, and would hand the responder a blocklist built against the wrong address. Correction requires reading ~dns_response (answers, TTL) and comparing against public resolution.",
+  "expected": {
+    "disposition": "malicious",
+    "attack": ["T1071.001", "T1583.001"],
+    "min_rung": "records"
+  }
+}

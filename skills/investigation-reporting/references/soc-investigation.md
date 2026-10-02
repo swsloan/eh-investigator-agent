@@ -14,7 +14,7 @@ For a security investigation: a detection, alert, or suspected incident. The que
 8. **Alternatives Considered** — other explanations that fit the evidence and why each was kept or ruled out. Narrative, not a scored matrix.
 9. **Evidence Summary** — every supporting metric, record, packet with its provenance. Keep external source artifacts in Third-Party Enrichment rather than presenting them as ExtraHop evidence.
 10. **Limits and Open Questions** — checked-and-clean / could-not-determine / what ExtraHop can't see.
-11. **Recommended Next Steps** — *Contain/Respond* (now) · *Investigate further* (soon) · *Tune detection*.
+11. **Recommended Next Steps** — *Contain/Respond* (now) · *Investigate further* (soon) · *Tune detection* (back-tested, with a measured false-positive rate and a deployment order — see the reporting skill).
 
 ## Disposition vocabulary
 

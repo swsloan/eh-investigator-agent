@@ -37,11 +37,33 @@ When it's unclear which the user wants, ask.
 - **It resolves.** End in a verdict/outcome/answer with calibrated confidence — even when that answer is *inconclusive* or *not determined*.
 - **Show the evidence depth.** Fill the ladder strip under the verdict card: mark the rungs you actually reached (metrics → records → packets) with class `reached`, and — SOC reports only — the detection source. Keep it consistent with `evidence/verdict.json`; see the `evidence-ladder` skill.
 - **Don't overclaim.** "Correlates with" is not "caused by."
+- **Every derived number names its basis.** A rate, a mean, a bytes-per-packet figure states the record type and the arithmetic behind it. Flow-record `bytes`/`pkts` and pcap TCP-payload totals measure different quantities, and printed side by side they read as one measurement that does not reconcile. Compute any comparator the same way from the same source, and when a later sample supersedes an earlier one, say so rather than leaving both in the document.
+- **Bound the claim, not just the limits section.** When a count came off a query that hit its `limit`, or off a window that starts at the retention edge, the sentence depending on it carries the bound: "the only client in the 1,000 rows returned", not "the only client ever". A caveat three sections away does not travel with the claim when a reader quotes it.
 - **Two readers, one document.** The top (verdict + summary) stands alone for the 30-second reader; reasoning and provenance sit below for the auditor.
 - **Name the blind spots.** Every report says what was checked-and-clean, what's unknown, and what the tool itself can't see (e.g. *What ExtraHop can't see*).
 - **Keep third-party enrichment distinct.** In threat-hunt and SOC reports, put material web research and vendor/tool findings in the **Third-Party Enrichment** section, separate from ExtraHop observations. Use the `security-research` skill for current external context. Cite the original URL and local `research/` memo for web claims; cite the local source artifact and collection UTC for every other provider. Never present an external claim as an ExtraHop observation. Keep the section only when enrichment materially informs identity, intent, severity, scope, or response; delete it otherwise. One card equals one source finding or lookup.
 - **Preserve source semantics.** State what the provider reported, then label any synthesis as investigator assessment. A missing, empty, errored, or not-found response is *unknown* — not benign. Correlate external indicators back to ExtraHop before claiming they were observed in the environment.
 - **Brand ReversingLabs entries consistently.** In the threat-hunt and SOC templates, every ReversingLabs item is an `<article class="enrichment" data-source="reversinglabs">` (copied from the inert `<template>` in that section); the template applies the bundled square RL icon to each item's source badge. Use `ReversingLabs reported` and `Investigator assessment` language, preserve the vendor verdict and scope, and cite the matching `reversinglabs/` artifact.
+
+## Recommended detections must be back-tested
+
+A proposed detection is a claim about the estate, so it carries the same evidence
+burden as every other claim in the report. An untested rule is a guess with a number
+on it, and it reads to the reader as a measurement.
+
+Before a rule ships in *Tune detection* or its equivalent:
+
+- **Run it.** Express the rule as a record or metric query and execute it over the retained window. Report the hit count, and split the hits into the activity under investigation versus everything else.
+- **State the false-positive rate in the estate's own units** — per day or per week, naming the window it was measured over. "0 self-signed certificates in 414 sessions over 9 hours" is a threshold; "unusual certificates" is not.
+- **Derive every number.** A threshold names the baseline it came from. If you did not measure it, say the rule needs tuning before deployment rather than inventing a figure.
+- **Order the rules and justify the order.** Earliest reliable signal and lowest false-positive cost win, not severity. Say which to deploy first and why — a rule that fires on the opening handshake beats one that needs hours of cadence to accumulate.
+- **Name the deployability constraint.** Does the rule need TLS decryption, a record type this estate retains, a field only populated on some firmware, or sensor placement this customer lacks? A rule that only fires inside the decryption footprint must say so.
+- **Report the rules that failed the back-test.** A retired rule with measurements behind it is worth more than an untested suggestion — especially when the test shows it catches a benign comparator at or before the threat (a legitimate long-poll scoring *lower* on bytes-per-packet than the implant, say). Retiring it on the record stops the next analyst proposing it again.
+- **Never propose suppressing the detection you just validated.**
+
+If the deciding feature cannot be expressed as a rule — a cadence nested inside
+another cadence, a jitter quantum — say so plainly and offer it as a hunt technique
+rather than dressing it up as an alert.
 
 ## Output
 

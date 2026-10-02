@@ -198,9 +198,12 @@ what to retrieve. Your job:
    Match the ask to the right call:
    - **open/listening ports, services** → `~flow` records for the device
      (`discovery_id`), or `net_detail`; report ports + protocols.
-   - **DNS activity** → `~dns_request` records filtered to the client `discovery_id`.
+   - **DNS activity** → `~dns_request` **and** `~dns_response` records filtered to
+     the client `discovery_id`. The request rows give the names asked for; the
+     resolved addresses, TTLs and authority flags live only in the response rows.
    - **users / who authenticated** → `~kerberos_request` / `~ntlm` for the device
-     (same as §3's identity sweep, scoped to this one host).
+     (same as §3's identity sweep, scoped to this one host). The request carries the
+     principal; add `~kerberos_response` only if success/failure matters.
    - **software / OS / vendor** → `get_device` on the OID.
    - **detailed peers** → `net_detail` (bytes) plus protocol `_client`/`_server`
      categories for the protocols carried.
