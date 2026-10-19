@@ -10,7 +10,7 @@
 #     `graphiti-mcp`. This service is only reachable on the internal compose
 #     network and loopback-published (127.0.0.1:8000), consistent with the
 #     app's localhost-only model, so disabling the check here is safe.
-FROM zepai/knowledge-graph-mcp:standalone@sha256:52d619bc3c45527dd5e6c5c413f3024f50d79fa672c81f4b384eb04bff85ca84
+FROM zepai/knowledge-graph-mcp:standalone@sha256:befb285c706da9853f3f9d741e49eabd6994b62521c822fba2dee99f2a161749
 
 # (0) Patch the upstream base's OS packages. The pinned Debian 12 base is stale:
 # Trivy flags 4 CRITICAL (libgnutls30, libssl3, openssl — all TLS libs) plus OS-
